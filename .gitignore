@@ -1,0 +1,11 @@
+.godot/
+build/
+bin/
+__pycache__/
+*.py[cod]
+assets/extracted/
+assets/converted/
+assets/levels/
+assets/player/
+assets/hud/
+*.tmp
