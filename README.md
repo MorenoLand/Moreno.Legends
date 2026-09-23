@@ -1,6 +1,8 @@
-# A playable slice built from local Legends 2 assets
+# Cross-platform Mega Man Legends 2 port
 
-The project starts in an extracted ST0F area with the original textured Mega Man player, geometry collision, a health display and arm-cannon projectiles. The area selector loads all 13 extracted areas.
+The goal is to port Mega Man Legends 2 to Godot/Redot for Linux, Windows, macOS and WebAssembly, with mobile support as a possible additional target. The client should extract its required assets from the user's disc files rather than distribute exported game data.
+
+The current implementation loads extracted ST0F areas with the original textured and animated Mega Man player, geometry collision and arm-cannon projectiles. The full game and automatic client-side disc import are still in development.
 
 Open this folder with Redot 26.2 or a compatible Godot 4 editor and run the main scene. WASD moves relative to the camera; mouse movement or Q/E orbits it, Space jumps, left mouse fires, right mouse holds shoulder aim, Esc releases the mouse, and F respawns. Aiming reduces movement speed and limits how quickly Mega Man turns; camera and shots collide with level geometry.
 
