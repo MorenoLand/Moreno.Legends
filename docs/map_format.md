@@ -32,6 +32,12 @@ Y = 0x400 - tile[6] * 16 - ((placement_height & 0x7F00) >> 4)
 
 Local signed-byte vertices are shifted by the model header's coordinate shift and added to these origins. The traced path applies no placement rotation. The exporter converts game units by 1/256 and reverses Y for Godot; quad triangle winding is adjusted accordingly. Placement-origin evidence is at SLES 0x8002F14C through 0x8002F204.
 
+## Terrain
+
+Occupied cell bit `0x8000` gates drawing (`0x80027CB0–0x80027CB8`), then bit `0x4000` selects terrain (`0x80027E84`). Its four native Y values are exactly `-tile[4..7] * 16` (`0x80027D7C–0x80027DFC`), so Godot heights are `tile[4..7] / 16`, with no placement-origin `0x400` subtraction. Terrain (`0x80027E90–0x80027EAC`) and placements (`0x80027FFC–0x80028018`) load the same GTE translation from `0x1F800028`; adding that subtraction lowered the terrain four world units beneath buildings. Native corner order is `(1,3,0,2)` with bit `0x2000`, otherwise `(0,1,2,3)` (`0x800281DC–0x800282B8`).
+
+Placement cells also draw a terrain underlay only when the signed placement height is negative (`0x80027FEC`). The draw uses placement X/Z bytes 6/7, current cell corner heights/colors, and flags `(cell_flags & 0xF000) | placement_height_low_byte | 0xC000` (`0x80028128–0x80028184`); identical contributions are deduplicated. ST08's selected placements have positive height `0x4000`, so they supply their authored floor meshes rather than this underlay.
+
 ## Textures and audio
 
 The stage's `STxxT.BIN` contains executable overlay data and type-2/type-3 texture sections. Texture palettes use XY at +0x0C, color/palette counts at +0x10, image XY at +0x14 and word width/height at +0x18. Compressed sections use the u16 bitfield length at +0x24. Palettes and pixels are restored into PSX VRAM coordinates, then each model's CLUT/TPAGE is decoded into an embedded PNG. The [DashGL texture documentation](https://docs.dashgl.com/format/psx/megaman-legends-2/textures) describes the codec and VRAM texture layouts.

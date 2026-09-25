@@ -108,15 +108,24 @@ def terrain_binding(path, area):
 	if address is None or not 48 <= address - base + 48 <= end - 128: raise ValueError(f"{path.name} terrain UV pointer is unresolved")
 	position = address - base + 48
 	return {"source_call": hex(base + call - 48), "uv_pointer": hex(address), "uv_words": list(struct.unpack_from("<32I", data, position)), "native_renderer": "SLES0x80027E84 selects terrain when cell&0x4000; UV0x80028534; TPAGE0x80026EB8; CLUT0x80028950"}
-def terrain_groups(tiles, binding):
+def terrain_groups(tiles, binding, placements):
 	groups = defaultdict(list)
+	seen = set()
 	executable = (ROOT / "build/disc-assets/SLES_035.56").read_bytes(); rotation_base = 0x800 + 0x8006af14 - 0x80010000
 	for (x, z), tile in tiles.items():
 		flags = read_u16(tile, 0)
-		if flags == 0xffff or not flags & 0x4000: continue
+		if flags == 0xffff or not flags & 0x8000: continue
+		if not flags & 0x4000:
+			if not flags & 0x8000: continue
+			_, _, _, height, x, z = placements[flags & 0x7ff]
+			if not height & 0x8000: continue
+			flags = (flags & 0xf000) | (height & 0xff) | 0xc000
+		key = (x, z, flags, bytes(tile[4:12]))
+		if key in seen: continue
+		seen.add(key)
 		word = binding["uv_words"][flags & 31]; u0, v0, u1, v1 = struct.unpack("<4B", struct.pack("<I", word)); v1 = (v1 + 31) & 255; uv = [(u0 + .5, v0 + .5), (u1 + .5, v0 + .5), (u0 + .5, v1 + .5), (u1 + .5, v1 + .5)]
 		rotation = ((flags >> 8) & 3); order = list(executable[rotation_base + rotation * 4:rotation_base + rotation * 4 + 4]); uv = [uv[index] for index in order]
-		x0 = ((x << 9) - 0x8000) * UNIT; z0 = ((z << 9) - 0x8000) * UNIT; heights = [(tile[index] * 16 - 0x400) * UNIT for index in range(4, 8)]
+		x0 = ((x << 9) - 0x8000) * UNIT; z0 = ((z << 9) - 0x8000) * UNIT; heights = [tile[index] * 16 * UNIT for index in range(4, 8)]
 		corners = [(-x0, heights[0], z0 + 2), (-x0 - 2, heights[1], z0 + 2), (-x0, heights[2], z0), (-x0 - 2, heights[3], z0)]; order = (1, 3, 0, 2) if flags & 0x2000 else (0, 1, 2, 3); clut = ((496 + bool(flags & 128)) << 6) | ((flags >> 3) & 8)
 		groups[((clut, 0x1e), bool(flags & 0x800), 0)].append(([corners[index] for index in order], [uv[index] for index in order], [tile[8 + index] for index in order]))
 	return groups
@@ -167,7 +176,7 @@ def export_maps(stage_name, input_dir, output_dir):
 		area = stage.area(index)
 		if area is None: continue
 		tiles, ids = area; glb = Glb(vram, texture_cache); quads = 0
-		ground = terrain_groups(tiles, terrain_binding(texture_path, index)) if any(read_u16(tile, 0) != 0xffff and read_u16(tile, 0) & 0xc000 == 0xc000 for tile in tiles.values()) else {}
+		ground = terrain_groups(tiles, terrain_binding(texture_path, index), stage.placements) if any(read_u16(tile, 0) != 0xffff and read_u16(tile, 0) & 0x8000 and (read_u16(tile, 0) & 0x4000 or stage.placements[read_u16(tile, 0) & 0x7ff][3] & 0x8000) for tile in tiles.values()) else {}
 		if ground: glb.instance("terrain", -1, ground, [0, 0, 0]); quads += sum(len(faces) for faces in ground.values())
 		if not ids and not ground: continue
 		for placement_id in ids:
@@ -410,8 +419,8 @@ def export_geometry(input_dir, output_dir, stages):
 			area = stage.area(area_index)
 			if area is None: continue
 			tiles, placement_ids = area; glb = Glb(vram, texture_cache); quads = 0
-			ground_binding = terrain_binding(texture_path, area_index) if any(read_u16(tile, 0) != 0xffff and read_u16(tile, 0) & 0x4000 for tile in tiles.values()) else None
-			ground = terrain_groups(tiles, ground_binding) if ground_binding else {}
+			ground_binding = terrain_binding(texture_path, area_index) if any(read_u16(tile, 0) != 0xffff and read_u16(tile, 0) & 0x8000 and (read_u16(tile, 0) & 0x4000 or stage.placements[read_u16(tile, 0) & 0x7ff][3] & 0x8000) for tile in tiles.values()) else None
+			ground = terrain_groups(tiles, ground_binding, stage.placements) if ground_binding else {}
 			if ground: glb.instance("terrain", -1, ground, [0, 0, 0]); quads += sum(len(faces) for faces in ground.values())
 			if not placement_ids and not ground: continue
 			for placement_id in placement_ids:
