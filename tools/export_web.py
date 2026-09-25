@@ -1,0 +1,117 @@
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+
+ROOT = Path(__file__).resolve().parents[1]
+PACK_SCRIPT = '''extends SceneTree
+func _initialize() -> void:
+\tvar config: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://build/web/packs.json"))
+\tfor group: String in config:
+\t\tvar packer := PCKPacker.new()
+\t\tif packer.pck_start(config[group].output) != OK: quit(1); return
+\t\tfor entry: Array in config[group].files:
+\t\t\tif packer.add_file(entry[0], entry[1]) != OK: quit(1); return
+\t\tif packer.flush() != OK: quit(1); return
+\tquit()
+'''
+
+def run(engine, *arguments):
+    subprocess.run([str(engine), "--headless", "--audio-driver", "Dummy", "--path", str(ROOT), *arguments], cwd=ROOT, check=True, creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+
+def group_files(directory):
+    entries = {}
+    for path in [directory] if directory.is_file() else sorted(directory.rglob("*")):
+        if not path.is_file() or path.name.startswith(".") or path.suffix == ".import":
+            continue
+        relative = "res://" + path.relative_to(ROOT).as_posix()
+        import_path = path.with_name(path.name + ".import")
+        if import_path.exists():
+            entries[relative + ".import"] = str(import_path)
+            for target in set(re.findall(r'"(res://\.godot/imported/[^"\n]+)"', import_path.read_text(encoding="utf-8"))):
+                imported = ROOT / target.removeprefix("res://")
+                if not imported.is_file():
+                    raise FileNotFoundError(imported)
+                entries[target] = str(imported)
+        else:
+            entries[relative] = str(path)
+    return entries
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--engine", type=Path, required=True, metavar="EDITOR_EXECUTABLE", help="Path to the Godot or Redot editor executable (.exe on Windows); not an exported .pck, .html, or .wasm file")
+    parser.add_argument("--chunk-mib", type=int, default=4)
+    args = parser.parse_args()
+    if args.engine.suffix.lower() in {".pck", ".html", ".wasm", ".zip"}:
+        parser.error("--engine must point to the Godot or Redot editor executable, not an exported game asset")
+    if not args.engine.is_file():
+        parser.error("--engine must point to an existing Godot or Redot editor executable")
+    if os.name == "nt":
+        if args.engine.suffix.lower() != ".exe":
+            parser.error("--engine must point to the Godot or Redot editor .exe on Windows")
+        with args.engine.open("rb") as stream:
+            if stream.read(2) != b"MZ":
+                parser.error("--engine is not a Windows executable")
+    elif not os.access(args.engine, os.X_OK):
+        parser.error("--engine must point to an executable Godot or Redot editor file")
+    if args.chunk_mib < 1 or args.chunk_mib > 16:
+        parser.error("--chunk-mib must be between 1 and 16")
+    build = ROOT / "build" / "web"
+    output = ROOT / "bin" / "web"
+    packs = output / "packs"
+    build.mkdir(parents=True, exist_ok=True)
+    packs.mkdir(parents=True, exist_ok=True)
+    run(args.engine, "--editor", "--import")
+    groups = {"stage-" + path.name: [path] for path in sorted((ROOT / "assets" / "levels").iterdir()) if path.is_dir()}
+    groups.update({"audio-" + path.name: [path] for path in sorted((ROOT / "assets" / "audio").iterdir()) if path.is_dir()})
+    library = ROOT / "assets" / "library"
+    if library.is_dir():
+        groups.update({"library-" + path.parent.name + "-" + path.name: [path] for path in sorted(library.glob("*/*")) if path.is_dir()})
+    groups["opening"] = [ROOT / "assets" / "opening", ROOT / "assets" / "video"]
+    groups["shared"] = [ROOT / "assets" / name for name in ("minimap", "flutter", "stage_props")]
+    groups["shared"].append(ROOT / "assets" / "opening" / "effects")
+    audio_directory = ROOT / "assets" / "audio" / "ST0F"
+    audio = json.loads((audio_directory / "manifest.json").read_text(encoding="utf-8"))
+    title_key = audio["roles"]["title_music"]
+    menu_keys = {key for role, key in audio["roles"].items() if role.startswith("menu_")}
+    groups["menu-audio"] = [audio_directory / "manifest.json", audio_directory / audio["music"][title_key]["file"], *[audio_directory / audio["effects"][key]["file"] for key in sorted(menu_keys)]]
+    config = {}
+    for group, directories in groups.items():
+        files = {}
+        for directory in directories:
+            files.update(group_files(directory))
+        config[group] = {"output": str(build / (group + ".pck")), "files": sorted(files.items())}
+    menu_paths = {entry[0] for entry in config["menu-audio"]["files"]}
+    config["audio-ST0F"]["files"] = [entry for entry in config["audio-ST0F"]["files"] if entry[0] not in menu_paths]
+    shared_paths = {entry[0] for entry in config["shared"]["files"]}
+    config["opening"]["files"] = [entry for entry in config["opening"]["files"] if entry[0] not in shared_paths]
+    (build / "packs.json").write_text(json.dumps(config), encoding="utf-8")
+    script = build / "pack.gd"
+    script.write_text(PACK_SCRIPT, encoding="utf-8")
+    run(args.engine, "--script", "res://build/web/pack.gd")
+    manifest = {"version": 1, "groups": {}}
+    for group, entry in config.items():
+        source = Path(entry["output"])
+        digest = hashlib.sha256()
+        chunks = []
+        with source.open("rb") as stream:
+            while data := stream.read(args.chunk_mib * 1024 * 1024):
+                digest.update(data)
+                chunk_hash = hashlib.sha256(data).hexdigest()
+                name = chunk_hash + ".part"
+                (packs / name).write_bytes(data)
+                chunks.append({"path": "packs/" + name, "bytes": len(data), "sha256": chunk_hash})
+        manifest["groups"][group] = {"bytes": source.stat().st_size, "sha256": digest.hexdigest(), "chunks": chunks}
+    (packs / "manifest.json").write_text(json.dumps(manifest, separators=(",", ":")), encoding="utf-8")
+    current_paths = {chunk["path"] for entry in manifest["groups"].values() for chunk in entry["chunks"]}
+    for chunk_path in packs.glob("*.part"):
+        if "packs/" + chunk_path.name not in current_paths and re.fullmatch(r"[a-f0-9]{64}\.part", chunk_path.name):
+            chunk_path.unlink()
+    run(args.engine, "--export-release", "Web", str(output / "index.html"))
+    print(json.dumps({"core_bytes": (output / "index.pck").stat().st_size, "groups": {group: {"bytes": entry["bytes"], "chunks": len(entry["chunks"])} for group, entry in manifest["groups"].items()}}, indent=2))
+
+if __name__ == "__main__":
+    main()

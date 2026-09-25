@@ -1,22 +1,30 @@
-[gd_scene load_steps=6 format=3]
-[ext_resource type="Script" path="res://scripts/level_game.gd" id="1"]
-[ext_resource type="PackedScene" path="res://assets/levels/ST0F/area_00.glb" id="2"]
-[ext_resource type="PackedScene" path="res://scenes/megaman_player.tscn" id="3"]
-[ext_resource type="Script" path="res://scripts/game_hud.gd" id="4"]
+[gd_scene load_steps=5 format=3 uid="uid://cij1ycjevtg54"]
+
+[ext_resource type="Script" uid="uid://bc3oimy5usa4w" path="res://scripts/world/gameplay.gd" id="1"]
+[ext_resource type="PackedScene" path="res://scenes/player.tscn" id="3"]
+[ext_resource type="Script" uid="uid://cfpk5e0pa8ubk" path="res://scripts/ui/game_hud.gd" id="4"]
+
 [sub_resource type="Environment" id="Environment"]
 background_mode = 1
 background_color = Color(0.08, 0.1, 0.14, 1)
 ambient_light_source = 2
 ambient_light_color = Color(1, 1, 1, 1)
-ambient_light_energy = 1.0
-[node name="ExtractedLevel" type="Node3D"]
+
+[node name="Gameplay" type="Node3D"]
 script = ExtResource("1")
+
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Environment")
-[node name="Level" parent="." instance=ExtResource("2")]
+
+[node name="Level" type="Node3D" parent="."]
+
 [node name="Player" parent="." instance=ExtResource("3")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.98828316)
+
 [node name="HUD" type="CanvasLayer" parent="."]
+
 [node name="GameHUD" type="Control" parent="HUD"]
+layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -24,14 +32,19 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("4")
+
 [node name="AreaPicker" type="OptionButton" parent="HUD"]
+anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
 offset_left = -161.0
 offset_top = 16.0
 offset_right = -16.0
 offset_bottom = 50.0
+
 [node name="Controls" type="Label" parent="HUD"]
+visible = false
+anchors_preset = 12
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -39,5 +52,4 @@ offset_left = 16.0
 offset_top = -34.0
 offset_right = -16.0
 offset_bottom = -12.0
-mouse_filter = 2
-text = "WASD: move   Mouse / Q/E: camera   Space: jump   Left mouse: fire   Right mouse: aim   Esc: release mouse   F: respawn"
+text = "WASD: run   Shift: walk   Mouse / Q/E: camera   Space: jump   Left mouse: fire   Right mouse: aim   F / Mouse4: special / lifter   R: interact   O: respawn   Esc: release mouse"

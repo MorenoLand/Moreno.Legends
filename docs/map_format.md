@@ -1,8 +1,10 @@
 # Stage geometry extraction
 
-`python tools/export_maps.py --stage ST0F` exports the local PAL disc's ST0F areas into `assets/levels/ST0F`. The project starts `scenes/extracted_level.tscn`; its area selector loads the generated GLBs. The runtime now adds mesh collision and a third-person player; WASD walks, the mouse or Q/E turns the camera, Space jumps, right mouse aims, left mouse fires, and F respawns.
+`python tools/world.py maps --stage ST0F` exports the local PAL disc's ST0F areas into `assets/levels/ST0F`. The project starts `scenes/main.tscn`, then loads the shared `scenes/gameplay.tscn` for gameplay. Its area selector loads the generated GLBs. The runtime adds mesh collision and a third-person player; WASD runs, Shift walks, the mouse or Q/E turns the camera, Space jumps, right mouse aims, left mouse fires, R interacts, and O respawns. F and Mouse4 are bound to Special Weapon / Lifter, whose gameplay behavior is still being implemented.
 
-ST0F contains 13 populated area grids, 288 placements and 8,592 exported quads. Geometry, palettes, UVs, vertex brightness and placement positions come from the disc. The current export uses the stored placement state and the first detailed mesh reference; NPC logic, original collision rules, scripted state changes and PSX blend equations are not decoded.
+ST0F contains 13 populated area grids, 288 placements and 8,592 exported quads. Geometry, palettes, UVs, vertex brightness and placement positions come from the disc. The current export uses the stored placement state and the first detailed mesh reference. Actor activation boxes, class-five/class-eight movement and combat, and door destinations have been traced; original collision rules and the complete stage scripting system remain unported.
+
+The actor runtime currently implements class-five states 4/7/10/12/14/15 and class-eight states 0–4/255. Class-five states 0/1/2/13, shared spatial avoidance, airborne collision adapters, native death effects and item drops remain unported. Normal source HP is 23 for class five and 60 for class eight. Rendered geometry supplies collision layer one, the player uses layer two, camera proxies use layer four, and actors use layer eight.
 
 ## Root structure
 

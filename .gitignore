@@ -8,4 +8,15 @@ assets/converted/
 assets/levels/
 assets/player/
 assets/hud/
+assets/minimap/
+assets/audio/
+assets/menu/
+assets/effects/
+assets/video/
+assets/opening/
+assets/locations/
+assets/stage_props/
+assets/flutter/
+assets/library/
+assets/dialogue/
 *.tmp
