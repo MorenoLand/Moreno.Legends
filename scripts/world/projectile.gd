@@ -1,11 +1,12 @@
 extends Node3D
 signal hit_surface(position: Vector3, normal: Vector3)
+signal impact_sound_requested(sound_id: int, position: Vector3)
 @export var speed := 15.0
 @export var lifetime := 14.0 / 30.0
 @export var damage := 8
 @export var attack_level := 0
 @export var hit_flags := 0x40000
-@export var impact_texture: Texture2D
+const NativeImpact := preload("res://scripts/world/native_impact.gd")
 var direction := Vector3.FORWARD
 var age := 0.0
 var resolved := false
@@ -35,22 +36,16 @@ func _physics_process(delta: float) -> void:
 	set_physics_process(false)
 	var normal: Vector3 = hit["normal"]
 	var target := hit["collider"] as Node
+	var actor_hit := target != null and (target.has_method("receive_hit") or target.has_method("take_hit"))
 	if target != null and target.has_method("receive_hit"): target.receive_hit(damage, hit_flags, direction)
 	elif target != null and target.has_method("take_hit"): target.take_hit(damage)
 	hit_surface.emit(point, normal)
-	_impact(point + normal * 0.03)
+	_impact(point, actor_hit)
 	queue_free()
-func _impact(position: Vector3) -> void:
-	if impact_texture == null: return
-	var effect := Sprite3D.new()
-	effect.texture = impact_texture
-	effect.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	effect.pixel_size = 0.004
-	effect.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
-	effect.shaded = false
+func _impact(position: Vector3, actor_hit: bool) -> void:
+	if actor_hit: impact_sound_requested.emit(0x9B, position)
+	var effect := NativeImpact.new()
+	effect.attack_level = attack_level
+	effect.profile = "actor" if actor_hit else "wall"
 	get_parent().add_child(effect)
 	effect.global_position = position
-	var tween := effect.create_tween().set_parallel()
-	tween.tween_property(effect, "scale", Vector3.ONE * 1.7, 0.16)
-	tween.tween_property(effect, "modulate:a", 0.0, 0.16)
-	tween.chain().tween_callback(effect.queue_free)

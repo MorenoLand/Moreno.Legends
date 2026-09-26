@@ -71,13 +71,14 @@ def main():
     if library.is_dir():
         groups.update({"library-" + path.parent.name + "-" + path.name: [path] for path in sorted(library.glob("*/*")) if path.is_dir()})
     groups["opening"] = [ROOT / "assets" / "opening", ROOT / "assets" / "video"]
-    groups["shared"] = [ROOT / "assets" / name for name in ("minimap", "flutter", "stage_props")]
+    groups["shared"] = [ROOT / "assets" / name for name in ("minimap", "flutter", "stage_props", "weather")]
     groups["shared"].append(ROOT / "assets" / "opening" / "effects")
     audio_directory = ROOT / "assets" / "audio" / "ST0F"
     audio = json.loads((audio_directory / "manifest.json").read_text(encoding="utf-8"))
     title_key = audio["roles"]["title_music"]
     menu_keys = {key for role, key in audio["roles"].items() if role.startswith("menu_")}
-    groups["menu-audio"] = [audio_directory / "manifest.json", audio_directory / audio["music"][title_key]["file"], *[audio_directory / audio["effects"][key]["file"] for key in sorted(menu_keys)]]
+    audio_path = lambda value: ROOT / value.removeprefix("res://") if value.startswith("res://") else audio_directory / value
+    groups["menu-audio"] = [audio_directory / "manifest.json", audio_path(audio["music"][title_key]["file"]), *[audio_path(audio["effects"][key]["file"]) for key in sorted(menu_keys)]]
     config = {}
     for group, directories in groups.items():
         files = {}

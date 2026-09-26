@@ -38,6 +38,14 @@ Occupied cell bit `0x8000` gates drawing (`0x80027CB0–0x80027CB8`), then bit `
 
 Placement cells also draw a terrain underlay only when the signed placement height is negative (`0x80027FEC`). The draw uses placement X/Z bytes 6/7, current cell corner heights/colors, and flags `(cell_flags & 0xF000) | placement_height_low_byte | 0xC000` (`0x80028128–0x80028184`); identical contributions are deduplicated. ST08's selected placements have positive height `0x4000`, so they supply their authored floor meshes rather than this underlay.
 
+## Native routes
+
+The shared route extractor resolves current-area indexed pointer loads written to `0x80078FA4`, and standard actor-list tables passed to `SLES0x8003D3F8`, directly from each overlay's MIPS constants and register flow. It preserves explicit native area IDs, 24-byte route records, original arrival coordinates/headings, lock/transition flags, and one-way routes; it retains specialized mine endpoint metadata. Current primary overlays provide 812 transitions: 87 stages fully bound, ST4F partially bound because area 14 has a null route slot, and ST00–ST03/ST1E unresolved. NPC-region door networks are separate from the initial Flutter exterior network; cross-island flight/story travel is not represented by invented door links.
+
+## Ordinary NPC records
+
+ST19, ST1A, ST1B and ST2A bind standard 20-byte class-0 records to the original skinned actor bank. Their constructors (`0x800E808C`, `0x800E7704`, `0x800E7B40`, `0x800E8288`) call `SLES0x8003DFC8` with `actor+6`, selecting resource flags `0x20 | subtype<<16`, and initialize control 0. Byte 6 is a model subtype, not a dialogue index; private bytes 8–11 remain separate. The exported 17 actor records preserve native positions, headings, hitbox pointers and bounds, source record addresses, and complete original animation controls. ST08 and ST09 initial standard/script lists contain no ordinary NPCs; no residents are synthesized there.
+
 ## Textures and audio
 
 The stage's `STxxT.BIN` contains executable overlay data and type-2/type-3 texture sections. Texture palettes use XY at +0x0C, color/palette counts at +0x10, image XY at +0x14 and word width/height at +0x18. Compressed sections use the u16 bitfield length at +0x24. Palettes and pixels are restored into PSX VRAM coordinates, then each model's CLUT/TPAGE is decoded into an embedded PNG. The [DashGL texture documentation](https://docs.dashgl.com/format/psx/megaman-legends-2/textures) describes the codec and VRAM texture layouts.

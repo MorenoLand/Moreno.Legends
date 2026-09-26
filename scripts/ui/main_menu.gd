@@ -8,8 +8,9 @@ var options_return := "main"
 var settings := ConfigFile.new()
 var title: Control
 var audio: Node
-var custom: PanelContainer
-var custom_return := ""
+var custom: Control
+var status_menu: Control
+var pause_return := ""
 var saves := preload("res://scripts/state/save_store.gd").new()
 var save_menu: Control
 var save_feedback: Label
@@ -18,6 +19,7 @@ var opening: Control
 var opening_loading := false
 var locations: Array = []
 var pending_custom_menu := false
+var menu_transitioning := false
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	session_loading = true
@@ -27,6 +29,10 @@ func _ready() -> void:
 		key.physical_keycode = menu_keys[action]
 		if not InputMap.action_has_event(action, key): InputMap.action_add_event(action, key)
 	settings.load("user://settings.cfg")
+	if not InputMap.has_action("status_menu"): InputMap.add_action("status_menu")
+	var status_key := InputEventKey.new()
+	status_key.physical_keycode = KEY_Z
+	if not InputMap.action_has_event("status_menu", status_key): InputMap.action_add_event("status_menu", status_key)
 	if FileAccess.file_exists("res://assets/locations/manifest.json"):
 		var catalog: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://assets/locations/manifest.json"))
 		if catalog is Dictionary: locations = catalog["locations"]
@@ -50,9 +56,6 @@ func _ready() -> void:
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	background.color = Color.TRANSPARENT
 	overlay.add_child(background)
-	var center := CenterContainer.new()
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	overlay.add_child(center)
 	var pause_menu := preload("res://scripts/ui/pause_menu.gd").new()
 	overlay.add_child(pause_menu)
 	pause_menu.configure()
@@ -74,14 +77,16 @@ func _ready() -> void:
 		_show("pause" if save_menu.save_mode else "main"))
 	pages["saves"] = save_menu
 	custom = preload("res://scripts/ui/custom_menu.gd").new()
-	var custom_theme := Theme.new()
-	custom_theme.default_font = ThemeDB.fallback_font
-	custom_theme.default_font_size = 18
-	custom.theme = custom_theme
-	center.add_child(custom)
+	overlay.add_child(custom)
 	custom.configure(self)
 	custom.closed.connect(_close_custom)
 	pages["custom"] = custom
+	status_menu = preload("res://scripts/ui/status_menu.gd").new()
+	overlay.add_child(status_menu)
+	status_menu.configure(self)
+	status_menu.options_requested.connect(func(): _options("status"))
+	status_menu.closed.connect(_resume)
+	pages["status"] = status_menu
 	title = preload("res://scripts/ui/title_menu.gd").new()
 	overlay.add_child(title)
 	pages["main"] = title
@@ -102,15 +107,19 @@ func _ready() -> void:
 	var pause_page: Control = pages["pause"].get_meta("content")
 	_button(pause_page, "Resume", _resume)
 	_button(pause_page, "Save Game", _save_game)
-	_button(pause_page, "Options", func(): _options("pause"))
-	_button(pause_page, "Main Menu", _main_menu)
+	_button(pause_page, "Options", func(): _open_custom("extra"))
+	_button(pause_page, "Cheats", func(): _open_custom("cheats"))
+	_button(pause_page, "Main Menu", _confirm_main_menu)
+	var confirmation := preload("res://scripts/ui/confirmation_menu.gd").new(); overlay.add_child(confirmation); confirmation.configure("Return to Title Screen?"); confirmation.confirmed.connect(func(): audio.play_ui("menu_confirm"); _main_menu()); confirmation.cancelled.connect(func(): audio.play_ui("menu_cancel"); _show("pause")); confirmation.moved.connect(func(): audio.play_ui("menu_move")); pages["title_confirm"] = confirmation
 	save_feedback = Label.new()
+	save_feedback.hide()
 	save_feedback.add_theme_font_size_override("font_size", 9)
 	save_feedback.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	save_feedback.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	pause_page.add_child(save_feedback)
 	_apply_native_options()
 	get_tree().node_added.connect(_screen_node_added)
+	for page: Control in pages.values(): page.hide()
 	_show("main")
 	title.set_process(false)
 	status.text = "Loading menu audio..."; status.show()
@@ -179,6 +188,11 @@ func _button(parent: Control, text: String, action: Callable) -> void:
 		audio.play_ui("menu_confirm")
 		action.call())
 	parent.add_child(button)
+	var pause_cursor: bool = pages.has("pause") and parent == pages["pause"].content
+	if pause_cursor:
+		button.focus_entered.connect(func(): pages["pause"].select_button(button); audio.play_ui("menu_move"))
+		button.mouse_entered.connect(button.grab_focus)
+		return
 	var cursor := TextureRect.new()
 	cursor.texture = load("res://assets/menu/title_cursor.png") as Texture2D
 	cursor.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -193,12 +207,25 @@ func _button(parent: Control, text: String, action: Callable) -> void:
 	button.focus_exited.connect(cursor.hide)
 	button.mouse_entered.connect(button.grab_focus)
 func _show(name: String) -> void:
+	if menu_transitioning: return
+	menu_transitioning = true
+	var context := "gameplay" if is_instance_valid(gameplay) else "title"
+	for page: Control in pages.values():
+		if page.visible and page != pages[name] and page.has_method("animate_exit"): await page.animate_exit(context)
 	overlay.visible = true
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	for key in pages: pages[key].visible = key == name
+	if pages[name].has_method("animate_enter"): await pages[name].animate_enter(context)
+	menu_transitioning = false
 	if title != null: title.set_process(name == "main")
 	if name == "main": title.focus_first()
 	if name == "saves": save_menu.focus_first()
+	if name == "pause": pages["pause"].call_deferred("focus_first")
+	if name == "pause":
+		for child in pages["pause"].content.get_children():
+			if child is Button and child.text == "Save Game": child.disabled = not is_instance_valid(gameplay)
+	if name == "custom": custom.call_deferred("focus_first")
+	if name == "status": status_menu.refresh()
 	var content: Control = pages[name].get_meta("content", pages[name])
 	for child in content.get_children():
 		if child is Button:
@@ -250,8 +277,10 @@ func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0) ->
 		session_loading = false
 		if pending_custom_menu: pending_custom_menu = false; _toggle_custom_menu()
 		return
+	var weapon_policy: Variant = stage_manifest.get("native_combat_policy", null)
+	var buster_allowed := bool(weapon_policy.get("buster_allowed", true)) if weapon_policy is Dictionary else true
+	var player_path := "res://assets/player/megaman_civilian.glb" if stage in ["ST04", "ST05", "ST06", "ST07"] else ("res://assets/player/megaman.glb" if buster_allowed else "res://assets/player/megaman_normal.glb")
 	var scene: PackedScene = await _threaded_scene("res://scenes/gameplay.tscn")
-	var player_path := "res://assets/player/megaman_civilian.glb" if stage in ["ST04", "ST05", "ST06", "ST07"] else "res://assets/player/megaman.glb"
 	var player_scene: PackedScene = await _threaded_scene(player_path) if scene != null else null
 	if scene == null or player_scene == null:
 		if pages["saves"].visible: save_menu.set_message("The game could not be opened.")
@@ -264,10 +293,20 @@ func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0) ->
 	if is_instance_valid(previous): previous.process_mode = Node.PROCESS_MODE_DISABLED
 	get_tree().paused = false
 	var candidate := scene.instantiate() as Node3D
+	if candidate == null or candidate.get_script() == null or not (candidate.get_script() as GDScript).can_instantiate():
+		if candidate != null: candidate.queue_free()
+		if is_instance_valid(previous): previous.process_mode = Node.PROCESS_MODE_PAUSABLE
+		get_tree().paused = previous_paused; session_loading = false
+		status.text = "The gameplay script could not be loaded."; status.show()
+		push_error("Failed to compile res://scripts/world/gameplay.gd or one of its dependencies")
+		return
 	candidate.manifest_path = stage_path
 	candidate.initial_area = area_index
 	candidate.entry_route = state.get("entry_route", {}).duplicate(true)
 	candidate.parked_location = state.get("parked_location", {}).duplicate(true)
+	candidate.native_context = state.get("native_context", {"native_save_byte14": 0, "native_save_byte16": 0, "native_save_word40": 0, "native_save_byte44": 1, "event_flags": {}}).duplicate(true)
+	candidate.initial_player_state = state.get("player", {}).duplicate(true) if candidate.entry_route.is_empty() else {}
+	candidate.audio_preparing = true
 	candidate.process_mode = Node.PROCESS_MODE_PAUSABLE
 	candidate.hide()
 	candidate.get_node("HUD").hide()
@@ -275,6 +314,7 @@ func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0) ->
 	if candidate.audio != null and candidate.audio.music != null: candidate.audio.music.stream_paused = true
 	var success: bool = candidate.playable if candidate.preparation_finished else await candidate.prepared
 	if success and not state.is_empty(): success = await candidate.restore_state(state)
+	if success: candidate.entry_route = {}; candidate.initial_player_state = {}
 	if not success:
 		remove_child(candidate)
 		candidate.queue_free()
@@ -290,17 +330,22 @@ func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0) ->
 			status.show()
 		if pending_custom_menu: pending_custom_menu = false; _toggle_custom_menu()
 		return
+	if is_instance_valid(previous) and previous.audio != null and candidate.audio != null: candidate.audio.adopt_music(previous.audio.capture_music())
 	if is_instance_valid(previous):
 		remove_child(previous)
 		previous.queue_free()
 	gameplay = candidate
 	gameplay.stage_transition_requested.connect(_stage_transition)
+	gameplay.location_requested.connect(_load_location)
 	gameplay.show()
 	gameplay.get_node("HUD").show()
 	gameplay.player.mouse_sensitivity = float(settings.get_value("controls", "mouse_sensitivity", 0.003))
 	_apply_native_options()
 	custom.apply_player()
+	gameplay.set_location_picker_visible(bool(settings.get_value("interface", "show_location_picker", true)))
+	gameplay.set_minimap_visible(bool(settings.get_value("interface", "show_minimap", true)))
 	gameplay.player.set_physics_process(true)
+	if gameplay.audio != null: gameplay.audio.set_preparing(false)
 	session_loading = false
 	if is_instance_valid(opening): opening._finish(true)
 	_resume(not OS.has_feature("web"))
@@ -335,12 +380,14 @@ func _load_save(id: String) -> void:
 	if session_loading: return
 	if save_menu.save_mode:
 		if not is_instance_valid(gameplay): return
+		var overwriting := not id.is_empty() and FileAccess.file_exists(saves.directory.path_join(id + ".json"))
 		var saved_id: String = saves.write(gameplay.save_state(), id)
 		if saved_id.is_empty():
 			save_menu.set_message(saves.error)
 			return
 		audio.play_ui("menu_confirm")
-		save_feedback.text = "Game saved." if id.is_empty() else "Save overwritten."
+		save_feedback.text = "Save overwritten." if overwriting else "Game saved."
+		save_feedback.show()
 		_show("pause")
 		return
 	var data: Dictionary = saves.read(id)
@@ -351,10 +398,25 @@ func _load_save(id: String) -> void:
 	save_menu.set_message("Loading...")
 	await _start_session(data["state"])
 func _pause() -> void:
+	pause_return = ""
 	save_feedback.text = ""
+	save_feedback.hide()
 	get_tree().paused = true
 	_show("pause")
 func _resume(capture_mouse: bool = true) -> void:
+	if menu_transitioning: return
+	if not is_instance_valid(gameplay):
+		if pause_return == "opening" and is_instance_valid(opening):
+			_show("opening")
+			opening.audio.stream_paused = false
+			opening.set_process(true)
+		else: _show("main")
+		pause_return = ""
+		return
+	pause_return = ""
+	menu_transitioning = true
+	for page: Control in pages.values():
+		if page.visible and page.has_method("animate_exit"): await page.animate_exit("gameplay")
 	audio.music.stop()
 	gameplay.audio.music.stream_paused = false
 	overlay.hide()
@@ -362,7 +424,13 @@ func _resume(capture_mouse: bool = true) -> void:
 	title.set_process(false)
 	get_tree().paused = false
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if capture_mouse else Input.MOUSE_MODE_VISIBLE
+	menu_transitioning = false
+func _confirm_main_menu() -> void:
+	if is_instance_valid(gameplay): _show("title_confirm")
+	else: _main_menu()
 func _main_menu() -> void:
+	if is_instance_valid(opening): opening._finish(true)
+	if not is_instance_valid(gameplay): _show("main"); return
 	get_tree().paused = true
 	gameplay.audio.music.stream_paused = true
 	title.show_press_start()
@@ -380,39 +448,55 @@ func _options(return_page: String) -> void:
 	options_return = return_page
 	_show("options")
 func _input(event: InputEvent) -> void:
+	if menu_transitioning: get_viewport().set_input_as_handled(); return
+	if event.is_action_pressed("status_menu"):
+		if not session_loading and not opening_loading and is_instance_valid(gameplay) and not is_instance_valid(opening):
+			if status_menu.visible or (options.visible and options_return == "status"): _resume()
+			else:
+				get_tree().paused = true
+				status_menu.show_page("status")
+				_show("status")
+				audio.play_ui("menu_confirm")
+		get_viewport().set_input_as_handled()
+		return
 	if not event.is_action_pressed("custom_menu"): return
 	if session_loading or opening_loading: pending_custom_menu = not pending_custom_menu
 	else: _toggle_custom_menu()
 	get_viewport().set_input_as_handled()
 func _toggle_custom_menu() -> void:
+	if menu_transitioning: return
 	if custom.visible: _close_custom(); return
-	custom_return = ""
+	if pages["pause"].visible: _resume(); return
+	pause_return = ""
 	for key in pages:
-		if overlay.visible and pages[key].visible: custom_return = key
+		if overlay.visible and pages[key].visible: pause_return = key
 	if is_instance_valid(opening):
 		opening.set_process(false)
 		opening.audio.stream_paused = true
 	get_tree().paused = is_instance_valid(gameplay)
+	_show("pause")
+func _open_custom(page: String) -> void:
+	custom.open_page(page)
 	_show("custom")
 func _unhandled_input(event: InputEvent) -> void:
-	if session_loading or opening_loading or is_instance_valid(opening): return
+	if menu_transitioning: get_viewport().set_input_as_handled(); return
+	if session_loading or opening_loading: return
+	if is_instance_valid(opening) and not (pages["pause"].visible or custom.visible or pages["options"].visible): return
 	if not event.is_action_pressed("ui_cancel"): return
 	audio.play_ui("menu_cancel")
-	if custom.visible: _close_custom()
+	if pages["title_confirm"].visible: _show("pause")
+	elif custom.visible: _close_custom()
+	elif status_menu.visible: status_menu.back()
 	elif pages["saves"].visible: _show("pause" if save_menu.save_mode else "main")
 	elif pages["options"].visible: _show(options_return)
+	elif pages["pause"].visible: _resume()
 	elif is_instance_valid(gameplay) and not pages["main"].visible:
 		if get_tree().paused: _resume()
 		else: _pause()
 	get_viewport().set_input_as_handled()
 func _close_custom() -> void:
-	if custom_return == "opening" and is_instance_valid(opening):
-		_show("opening")
-		opening.audio.stream_paused = false
-		opening.set_process(true)
-	elif custom_return.is_empty() and is_instance_valid(gameplay): _resume()
-	elif custom_return.is_empty(): _show("main")
-	else: _show(custom_return)
+	if custom.active_page == "locations": custom.open_page("cheats"); custom.focus_first()
+	else: _show("pause")
 func _sensitivity_changed(value: float) -> void:
 	if is_instance_valid(gameplay): gameplay.player.mouse_sensitivity = value
 	settings.set_value("controls", "mouse_sensitivity", value)

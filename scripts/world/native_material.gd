@@ -1,10 +1,23 @@
 @tool
 extends RefCounted
+static var lighting_cache: Dictionary = {}
+static func area_parameters(path: String, area: int) -> Dictionary:
+	if not lighting_cache.has(path):
+		var data: Variant = JSON.parse_string(FileAccess.get_file_as_string(path)) if FileAccess.file_exists(path) else null
+		lighting_cache[path] = data if data is Dictionary else {}
+	for parameters: Dictionary in lighting_cache[path].get("native_color_pipeline", {}).get("depth_cue", {}).get("area_parameters", []):
+		if int(parameters.get("area", -1)) == area: return parameters
+	return {}
 static func apply(root: Node3D, color_scale: float = 255.0) -> void:
+	preload("res://scripts/world/native_coplanar_overlays.gd").apply(root)
 	for node in root.find_children("*", "MeshInstance3D", true, false):
 		var mesh := node as MeshInstance3D
 		if mesh.mesh == null: continue
 		for surface in range(mesh.mesh.get_surface_count()):
+			var active := mesh.get_active_material(surface) as ShaderMaterial
+			if active != null:
+				if active.shader == preload("res://shaders/native_model.gdshader"): active.set_shader_parameter("coplanar_overlay_flags", bool(mesh.mesh.get_meta("coplanar_overlays", active.get_shader_parameter("coplanar_overlay_flags"))))
+				continue
 			var source := mesh.get_active_material(surface) as BaseMaterial3D
 			if source == null: continue
 			var material := ShaderMaterial.new()
@@ -12,6 +25,7 @@ static func apply(root: Node3D, color_scale: float = 255.0) -> void:
 			material.set_shader_parameter("albedo_texture", source.albedo_texture)
 			material.set_shader_parameter("color_scale", color_scale)
 			material.set_shader_parameter("double_sided", source.cull_mode == BaseMaterial3D.CULL_DISABLED)
+			material.set_shader_parameter("coplanar_overlay_flags", bool(mesh.mesh.get_meta("coplanar_overlays", false)))
 			mesh.set_surface_override_material(surface, material)
 static func depth_cue(root: Node3D, parameters: Dictionary) -> void:
 	if not is_instance_valid(root): return

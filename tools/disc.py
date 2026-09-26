@@ -7,12 +7,17 @@ import hashlib
 import json
 import shutil
 import subprocess
+import os
 from collections import Counter
 ROOT = Path(__file__).resolve().parents[1]
 SECTOR_SIZE = 2352
 USER_OFFSET = 24
 USER_SIZE = 2048
 SYNC = b"\x00" + b"\xff" * 10 + b"\x00"
+def write_if_changed(path, data, encoding="utf-8"):
+    path = Path(path); payload = data.replace("\n", os.linesep).encode(encoding) if isinstance(data, str) else bytes(data)
+    if path.is_file() and path.stat().st_size == len(payload) and path.read_bytes() == payload: return False
+    path.parent.mkdir(parents=True, exist_ok=True); temporary = path.with_name(path.name + ".tmp"); temporary.write_bytes(payload); temporary.replace(path); return True
 
 def cue_time(value: str) -> int:
     minute, second, frame = (int(part) for part in value.split(":"))
@@ -286,7 +291,7 @@ def extract_stage(path, output_dir):
 	for decoded, metadata, destination in results:
 		if destination.exists() and destination.read_bytes() != decoded: raise FileExistsError(f"refusing to replace different output: {destination}")
 		destination.parent.mkdir(parents=True, exist_ok=True)
-		destination.write_bytes(decoded)
+		write_if_changed(destination, decoded)
 		metadata["output"] = str(destination)
 		written.append(metadata)
 	return written
@@ -351,7 +356,7 @@ def export_movies(cue):
 			if not ffmpeg: raise RuntimeError("FFmpeg is required to transcode original STR movies")
 			name = f"native_{index:03d}"; raw = WORK / (name + ".str"); destination = OUTPUT / (name + ".ogv"); copy_raw_sectors(reader, group["first_lba"], group["last_lba"] + 1, raw); subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(raw), "-map", "0:v:0", "-map", "0:a:0?", "-c:v", "libtheora", "-q:v", "9", "-c:a", "libvorbis", "-q:a", "6", str(destination)], check=True); movies.append({"file": destination.name, "source": group, "raw_sector_bytes": 2352, "raw_sha256": hashlib.sha256(raw.read_bytes()).hexdigest()})
 	finally: reader.stream.close()
-	manifest = {"movies": movies, "transport_audit": audit, "xa_archives": [entry for entry in files if entry["file"].startswith("XA/")], "native_startup": {"source": "SLES 0x80012D7C..0x80012F28", "logo_resource": "COMMON/LOGO.BIN", "logo_renderer": "0x800132F8", "logo_rect": [48, 192, 544, 96], "logo_fade_step": 4, "logo_fade_max": 128, "logo_hold_counter": 180, "next_scene": {"stage": "ST02", "area": 0, "engine_phase": 4}, "intro_type": "Original engine scene; no standard STR/XA video sectors present on this disc"}, "native_attract": {"source": "DEMO 0x800AD308..0x800AD5FC", "counter_updates": 512, "counter_formula": "(3-titleFrameBufferCount)*256; titleFrameBufferCount=1", "cycle_index_update": "(index+1)&3", "stages": [{"cycle_index": 0, "stage": "ST02", "demo_mode": 0, "source_pc": "0x800AD48C"}, {"cycle_index": 1, "stage": "ST50", "demo_mode": 2, "area_fields": [13, 13], "source_pc": "0x800AD4B4"}, {"cycle_index": 2, "stage": "ST22", "demo_mode": 3, "area_fields": [8, 8], "source_pc": "0x800AD4F8"}, {"cycle_index": 3, "stage": "ST51", "demo_mode": 4, "area_fields": [0, 0], "source_pc": "0x800AD548"}], "mode_consumer": "GAME 0x800C3780 and jump table 0x800AE154 configure native player equipment for modes2/3/4", "recorded_input_stream": "not yet identified; stages are engine scenes rather than STR movie playback"}, "limits": ["No substitute movies are generated for native engine scenes", "Tick counts are verified; PAL wall-clock conversion remains unverified"]}; (OUTPUT / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8"); return manifest
+	manifest = {"movies": movies, "transport_audit": audit, "xa_archives": [entry for entry in files if entry["file"].startswith("XA/")], "native_startup": {"source": "SLES 0x80012D7C..0x80012F28", "logo_resource": "COMMON/LOGO.BIN", "logo_renderer": "0x800132F8", "logo_rect": [48, 192, 544, 96], "logo_fade_step": 4, "logo_fade_max": 128, "logo_hold_counter": 180, "next_scene": {"stage": "ST02", "area": 0, "engine_phase": 4}, "intro_type": "Original engine scene; no standard STR/XA video sectors present on this disc"}, "native_attract": {"source": "DEMO 0x800AD308..0x800AD5FC", "counter_updates": 512, "counter_formula": "(3-titleFrameBufferCount)*256; titleFrameBufferCount=1", "cycle_index_update": "(index+1)&3", "stages": [{"cycle_index": 0, "stage": "ST02", "demo_mode": 0, "source_pc": "0x800AD48C"}, {"cycle_index": 1, "stage": "ST50", "demo_mode": 2, "area_fields": [13, 13], "source_pc": "0x800AD4B4"}, {"cycle_index": 2, "stage": "ST22", "demo_mode": 3, "area_fields": [8, 8], "source_pc": "0x800AD4F8"}, {"cycle_index": 3, "stage": "ST51", "demo_mode": 4, "area_fields": [0, 0], "source_pc": "0x800AD548"}], "mode_consumer": "GAME 0x800C3780 and jump table 0x800AE154 configure native player equipment for modes2/3/4", "recorded_input_stream": "not yet identified; stages are engine scenes rather than STR movie playback"}, "limits": ["No substitute movies are generated for native engine scenes", "Tick counts are verified; PAL wall-clock conversion remains unverified"]}; write_if_changed(OUTPUT / "manifest.json", json.dumps(manifest, indent=2) + "\n", encoding="utf-8"); return manifest
 def movies_cli():
 	parser = argparse.ArgumentParser(); parser.add_argument("--cue", type=Path, required=True); args = parser.parse_args(); manifest = export_movies(args.cue); print(json.dumps({"movies": len(manifest["movies"]), "video_submode_sectors": manifest["transport_audit"]["xa_video_submode_sectors"], "manifest": str(OUTPUT / "manifest.json")}))
 

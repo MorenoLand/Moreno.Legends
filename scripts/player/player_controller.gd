@@ -2,6 +2,7 @@ extends CharacterBody3D
 signal health_changed(value: int, maximum: int)
 signal fired(projectile: Node3D)
 signal interaction_finished(role: String)
+signal scripted_walk_finished(completed: bool)
 signal footstep
 signal jumped
 signal landed
@@ -14,12 +15,15 @@ signal special_sound_requested(sound_id: int)
 @export var fire_interval := 11.0 / 30.0
 @export var max_health := 80
 @export var combat_allowed := true
+@export var buster_allowed := true
 @onready var camera_pivot: Node3D = $CameraPivot
 @onready var camera: Camera3D = $CameraPivot/Camera3D
 @onready var player_model: Node3D = $PlayerModel
 var locked_target: Node3D
 var health := 80
 var zenny := 0
+var inventory: Dictionary = {"items": {}, "key_items": {}, "special_weapons": {"0": 1}, "body_parts": {}, "buster_parts": {}}
+var equipment: Dictionary = {"body_parts": ["", "", ""], "buster_parts": ["", ""]}
 var shot_timer := 0.0
 var shot_pose := 0.0
 var animation_player: AnimationPlayer
@@ -56,6 +60,7 @@ var interaction_duration := 0.0
 var interaction_loop := false
 var interaction_vertical_speed := 0.0
 var interaction_movement_ticks := 0
+var scripted_walk: Dictionary = {}
 var special_actions: Dictionary = {}
 var equipped_special := 0
 var carried_actor: CharacterBody3D
@@ -81,12 +86,13 @@ var look_root_units := 0
 var look_accumulator := 0.0
 var camera_distance := -1.0
 var camera_world_position := Vector3.ZERO
+var camera_world_origin := Vector3.ZERO
 var camera_world_valid := false
 var camera_world_basis := Basis.IDENTITY
 
 func _ready() -> void:
-	if not combat_allowed:
-		var civilian := load("res://assets/player/megaman_civilian.glb") as PackedScene
+	if not combat_allowed or not buster_allowed:
+		var civilian := load("res://assets/player/megaman_civilian.glb" if not combat_allowed else "res://assets/player/megaman_normal.glb") as PackedScene
 		if civilian == null:
 			push_error("Missing civilian player model")
 			return
@@ -97,12 +103,14 @@ func _ready() -> void:
 		add_child(player_model)
 	if not OS.has_feature("web"): Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	camera.current = true
+	camera.reparent(self, true)
+	camera.top_level = true
 	if camera_pivot is SpringArm3D: (camera_pivot as SpringArm3D).add_excluded_object(get_rid())
 	_fit_model()
 	_apply_native_materials()
 	var players := player_model.find_children("*", "AnimationPlayer", true, false)
 	if not players.is_empty(): animation_player = players[0] as AnimationPlayer
-	var metadata: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://assets/player/manifest.json" if combat_allowed else "res://assets/player/manifest_civilian.json"))
+	var metadata: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://assets/player/manifest_civilian.json" if not combat_allowed else ("res://assets/player/manifest.json" if buster_allowed else "res://assets/player/manifest_normal.json")))
 	if metadata is Dictionary:
 		animation_roles = metadata.get("animations", {})
 		interaction_roles = metadata.get("interactionRoleProvenance", {})
@@ -124,7 +132,7 @@ func _process(delta: float) -> void:
 		var allowed := maxf((camera_pivot as SpringArm3D).get_hit_length(), 0.0)
 		var basis := camera_pivot.global_basis
 		var orbit_changed := camera_world_valid and not basis.is_equal_approx(camera_world_basis)
-		if orbit_changed:
+		if orbit_changed or not camera_world_valid:
 			var arm := camera_pivot as SpringArm3D
 			var query := PhysicsShapeQueryParameters3D.new()
 			query.shape = arm.shape
@@ -136,10 +144,14 @@ func _process(delta: float) -> void:
 			var fractions := get_world_3d().direct_space_state.cast_motion(query)
 			if not fractions.is_empty(): allowed = fractions[0] * arm.spring_length
 		var goal := camera_pivot.global_position + camera_pivot.global_basis.z * allowed
-		if not camera_world_valid or orbit_changed: camera_world_position = goal; camera_world_valid = true
+		if not camera_world_valid: camera_world_position = goal; camera_world_valid = true
+		else: camera_world_position = _move_camera(camera_world_position, camera_world_position + camera_pivot.global_position - camera_world_origin)
+		camera_world_origin = camera_pivot.global_position
 		camera_world_basis = basis
-		camera_world_position = _move_camera(camera_world_position, camera_world_position.lerp(goal, minf(delta * 10.0, 1.0)))
+		camera_world_position = _move_camera(camera_world_position, camera_world_position.lerp(goal, 1.0 - exp(-delta * 10.0)))
 		camera.global_position = camera_world_position
+		var focus := camera_pivot.global_position - camera_world_position
+		if focus.length_squared() > 0.000001 and absf(focus.normalized().y) < 0.999: camera.look_at(camera_pivot.global_position, Vector3.UP)
 		camera_distance = (camera_world_position - camera_pivot.global_position).dot(camera_pivot.global_basis.z)
 	if motion_tree == null: return
 	var time := float(motion_tree.get("parameters/Motion/current_position"))
@@ -181,16 +193,18 @@ func _unhandled_input(event: InputEvent) -> void:
 		camera_pivot.rotation.z = 0.0
 
 func _physics_process(delta: float) -> void:
+	if not scripted_walk.is_empty(): _update_scripted_walk(delta); return
 	if not interaction_role.is_empty(): return
 	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and Input.is_action_just_pressed("special"): use_special()
+	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and Input.is_action_just_pressed("kick"): kick()
 	if not special_action.is_empty(): return
 	if locked_target != null and not is_instance_valid(locked_target): locked_target = null
 	shot_timer = maxf(shot_timer - delta, 0.0)
 	shot_pose = maxf(shot_pose - delta, 0.0)
 	hurt_immunity = maxf(hurt_immunity - delta, 0.0)
 	_update_hurt(delta)
-	aiming = combat_allowed and not is_instance_valid(carried_actor) and hurt_phase.is_empty() and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and Input.is_action_pressed("aim")
-	var firing := combat_allowed and not is_instance_valid(carried_actor) and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and Input.is_action_pressed("fire")
+	aiming = combat_allowed and buster_allowed and not is_instance_valid(carried_actor) and hurt_phase.is_empty() and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and Input.is_action_pressed("aim")
+	var firing := combat_allowed and buster_allowed and not is_instance_valid(carried_actor) and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and Input.is_action_pressed("fire")
 	if not hurt_phase.is_empty(): firing = false
 	if firing and Input.is_action_just_pressed("fire"): pending_shot = true
 	if firing or pending_shot:
@@ -215,7 +229,7 @@ func _physics_process(delta: float) -> void:
 		var air_speed := 640.0 * 30.0 / 4096.0 * (0.6 if aiming else 1.0)
 		velocity.x = move_toward(velocity.x, direction.x * air_speed, 16.0 * 900.0 / 4096.0 * delta)
 		velocity.z = move_toward(velocity.z, direction.z * air_speed, 16.0 * 900.0 / 4096.0 * delta)
-	collision_mask = 0 if no_clip else 9
+	collision_mask = 0 if no_clip else 25
 	var grounded := is_on_floor()
 	if free_flight:
 		jump_phase = JumpPhase.GROUNDED
@@ -228,7 +242,7 @@ func _physics_process(delta: float) -> void:
 		_set_jump_phase(JumpPhase.LANDING)
 		landed.emit()
 	_update_camera(delta)
-	if aiming: player_model.rotation.y += clampf(wrapf(camera_pivot.rotation.y - player_model.rotation.y, -PI, PI), -4.5 * delta, 4.5 * delta)
+	if aiming: player_model.rotation.y += clampf(wrapf(camera.global_rotation.y - player_model.rotation.y, -PI, PI), -4.5 * delta, 4.5 * delta)
 	elif direction.length_squared() > 0.001: player_model.rotation.y = lerp_angle(player_model.rotation.y, atan2(-direction.x, -direction.z), minf(delta * 12.0, 1.0))
 	var arm_role := "shoot_alternate_upper" if not grounded or (direction.length_squared() > 0.001 and not slow_walking) else "shoot_upper"
 	var arm_name := str(animation_roles.get(arm_role, animation_roles.get("shoot_upper", "")))
@@ -273,6 +287,14 @@ func lift_anchor(height: float) -> Vector3:
 func use_special() -> bool:
 	if not combat_allowed or not hurt_phase.is_empty() or not interaction_role.is_empty() or not special_action.is_empty() or special_actions.is_empty() or equipped_special != 0 or not is_on_floor(): return false
 	if is_instance_valid(carried_actor): return _start_special_action("lift_throw", float(special_actions["throw"]["start_pose"]) / 30.0)
+	var nearest := get_lift_target()
+	if nearest != null and nearest.begin_lift(self):
+		carried_actor = nearest
+		special_sound_requested.emit(int(special_actions["grab"]["sound"]))
+		return _start_special_action("lift_grab")
+	return false
+func get_lift_target() -> CharacterBody3D:
+	if not combat_allowed or special_actions.is_empty() or equipped_special != 0 or is_instance_valid(carried_actor): return null
 	var nearest: CharacterBody3D
 	var score := INF
 	var forward := -player_model.global_basis.z
@@ -285,11 +307,7 @@ func use_special() -> bool:
 		if angle >= float(special_actions["grab"]["cone_units"]) * TAU / 4096.0: continue
 		var candidate := horizontal + angle * 4096.0 / TAU / 4.0 / 256.0
 		if candidate < score: nearest = actor; score = candidate
-	if nearest != null and nearest.begin_lift(self):
-		carried_actor = nearest
-		special_sound_requested.emit(int(special_actions["grab"]["sound"]))
-		return _start_special_action("lift_grab")
-	return kick()
+	return nearest
 func kick() -> bool:
 	if not combat_allowed or not hurt_phase.is_empty() or not interaction_role.is_empty() or not special_action.is_empty() or special_actions.is_empty() or is_instance_valid(carried_actor) or not is_on_floor(): return false
 	return _start_special_action("kick")
@@ -347,7 +365,7 @@ func _kick_contact() -> void:
 			actor.receive_hit(int(special_actions["kick"]["damage"]), int(special_actions["kick"]["source_flags"]), -player_model.global_basis.z)
 func _update_look(delta: float) -> void:
 	if upper_modifier == null: return
-	var relative := wrapf(camera_pivot.rotation.y - player_model.rotation.y, -PI, PI)
+	var relative := wrapf(camera.global_rotation.y - player_model.rotation.y, -PI, PI)
 	if is_instance_valid(locked_target):
 		var offset := locked_target.global_position - global_position
 		relative = wrapf(atan2(-offset.x, -offset.z) - player_model.rotation.y, -PI, PI)
@@ -450,7 +468,7 @@ func _toggle_lock_target() -> void:
 		rotation.y = atan2(-facing.x, -facing.z)
 
 func _fire() -> void:
-	if not combat_allowed or not is_zero_approx(shot_timer): return
+	if not combat_allowed or not buster_allowed or not is_zero_approx(shot_timer): return
 	shot_timer = fire_interval
 	shot_pose = maxf(animation_player.get_animation(upper_body.animation).length - gun_pose_time, 0.2) if motion_tree != null else 0.2
 	var aim := _aim_point()
@@ -574,6 +592,21 @@ func begin_interaction(role: String = "door_open") -> Dictionary:
 	_play_animation(role)
 	motion_tree.advance(0.0)
 	return {"duration": interaction_duration, "vertical_speed": interaction_vertical_speed} if interaction_loop else {"duration": animation_player.get_animation(name).length, "open_at": float(source["open_tick"]) / 30.0, "close_at": float(source["close_tick"]) / 30.0, "walk_at": float(source["walk_handoff_tick"]) / 30.0}
+func begin_scripted_walk(source: Dictionary, yaw: float) -> bool:
+	var clip := str(animation_roles.get("run", "")); var step: Array = source.get("local_step_raw", []); var rate := float(source.get("tick_rate", 0)); var ticks := int(source.get("ticks", 0))
+	if motion_tree == null or animation_player == null or not animation_player.has_animation(clip) or int(source.get("control", -1)) != 1 or step.size() != 3 or rate <= 0.0 or ticks <= 0: return false
+	if is_instance_valid(carried_actor): carried_actor.release_lift(-player_model.global_basis.z, -256, -896)
+	carried_actor = null; special_action = ""; interaction_role = ""; _set_carry_filter(false); aiming = false; locked_target = null; gun_pose_active = false; pending_shot = false; shot_pose = 0.0; arm_blend = 0.0; velocity = Vector3.ZERO; jump_phase = JumpPhase.GROUNDED; jump_velocity = 0
+	if upper_modifier != null: upper_modifier.active = true; upper_modifier.track_target = false; upper_modifier.set_source_aim_angles(0, 0)
+	motion_tree.set("parameters/UpperBody/blend_amount", 0.0); motion_tree.set("parameters/MotionSpeed/scale", rate / 30.0); player_model.rotation.y = yaw; scripted_walk = {"elapsed": 0.0, "duration": float(ticks) / rate, "velocity": Basis(Vector3.UP, yaw) * Vector3(-float(step[0]), -float(step[1]), float(step[2])) * rate / 4096.0}; motion_role = ""; _play_animation("run"); motion_tree.advance(0.0)
+	return true
+func _update_scripted_walk(delta: float) -> void:
+	var elapsed := float(scripted_walk["elapsed"]); var duration := float(scripted_walk["duration"]); var advance := minf(delta, duration - elapsed)
+	velocity = (scripted_walk["velocity"] as Vector3) * advance / delta; move_and_slide(); apply_floor_snap(); _update_camera(delta); scripted_walk["elapsed"] = elapsed + advance
+	if elapsed + advance >= duration: scripted_walk.clear(); velocity = Vector3.ZERO; motion_tree.set("parameters/MotionSpeed/scale", 1.0); _play_animation("idle"); scripted_walk_finished.emit(true)
+func cancel_scripted_walk() -> void:
+	if scripted_walk.is_empty(): return
+	scripted_walk.clear(); velocity = Vector3.ZERO; motion_tree.set("parameters/MotionSpeed/scale", 1.0); _play_animation("idle"); scripted_walk_finished.emit(false)
 func _configure_animation_tree(metadata: Dictionary) -> void:
 	if animation_player == null or not animation_roles.has("idle"): return
 	var idle := str(animation_roles["idle"])
@@ -595,11 +628,13 @@ func _configure_animation_tree(metadata: Dictionary) -> void:
 		var path := clip.track_get_path(track)
 		if path.get_subname_count() > 0 and str(path.get_subname(0)) in ["Bone_00", "Bone_01", "Bone_05", "Bone_06", "Bone_07"] and clip.track_get_type(track) == Animation.TYPE_ROTATION_3D: blend.set_filter_path(path, true)
 	blend_tree.add_node("Motion", locomotion)
+	blend_tree.add_node("MotionSpeed", AnimationNodeTimeScale.new())
 	blend_tree.add_node("MotionSeek", AnimationNodeTimeSeek.new())
 	blend_tree.add_node("Arm", upper_body)
 	blend_tree.add_node("ArmSeek", AnimationNodeTimeSeek.new())
 	blend_tree.add_node("UpperBody", blend)
-	blend_tree.connect_node("MotionSeek", 0, "Motion")
+	blend_tree.connect_node("MotionSpeed", 0, "Motion")
+	blend_tree.connect_node("MotionSeek", 0, "MotionSpeed")
 	blend_tree.connect_node("ArmSeek", 0, "Arm")
 	blend_tree.connect_node("UpperBody", 0, "MotionSeek")
 	blend_tree.connect_node("UpperBody", 1, "ArmSeek")
@@ -608,6 +643,7 @@ func _configure_animation_tree(metadata: Dictionary) -> void:
 	motion_tree.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_PHYSICS
 	animation_player.get_parent().add_child(motion_tree)
 	motion_tree.tree_root = blend_tree
+	motion_tree.set("parameters/MotionSpeed/scale", 1.0)
 	motion_tree.anim_player = motion_tree.get_path_to(animation_player)
 	motion_tree.root_node = animation_player.root_node
 	motion_tree.active = true
@@ -640,6 +676,7 @@ func _apply_native_materials() -> void:
 			material.set_shader_parameter("albedo_texture", source.albedo_texture)
 			mesh.set_surface_override_material(surface, material)
 func reset_at(position: Vector3) -> void:
+	cancel_scripted_walk()
 	interaction_role = ""
 	if is_instance_valid(carried_actor): carried_actor.release_lift(-player_model.global_basis.z, -768, -64)
 	carried_actor = null

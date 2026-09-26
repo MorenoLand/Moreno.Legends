@@ -1,5 +1,6 @@
 extends RefCounted
 var directory := "user://saves"
+const SLOT_COUNT := 5
 var error := ""
 func entries() -> Array:
 	error = ""
@@ -7,22 +8,25 @@ func entries() -> Array:
 	var folder := DirAccess.open(directory)
 	if folder == null:
 		if DirAccess.dir_exists_absolute(directory): error = "Saved games could not be read."
+		else:
+			for slot in range(1, SLOT_COUNT + 1): result.append({"id": str(slot), "slot": slot, "empty": true, "name": "No save data", "play_time_seconds": 0.0})
 		return result
-	for filename in folder.get_files():
-		if not filename.ends_with(".json") or not filename.get_basename().is_valid_int(): continue
-		var id := filename.get_basename()
+	for slot in range(1, SLOT_COUNT + 1):
+		var id := str(slot)
+		if not folder.file_exists(id + ".json"):
+			result.append({"id": id, "slot": slot, "empty": true, "name": "No save data", "play_time_seconds": 0.0})
+			continue
 		var data := read(id)
 		if data.is_empty():
-			result.append({"id": id, "name": "Unreadable save", "saved_at": 0, "stage": "", "area": -1, "health": 0, "max_health": 0, "error": error})
+			result.append({"id": id, "slot": slot, "empty": false, "name": "Unreadable save", "play_time_seconds": 0.0, "saved_at": 0, "stage": "", "area": -1, "health": 0, "max_health": 0, "error": error})
 			continue
 		var state: Dictionary = data["state"]
-		result.append({"id": id, "name": str(data["name"]), "saved_at": int(data["saved_at"]), "stage": str(state["stage"]), "area": int(state["area"]), "health": int(state["player"]["health"]), "max_health": int(state["player"]["max_health"])})
-	result.sort_custom(func(a: Dictionary, b: Dictionary): return int(a["saved_at"]) > int(b["saved_at"]) if a["saved_at"] != b["saved_at"] else int(a["id"]) > int(b["id"]))
+		result.append({"id": id, "slot": slot, "empty": false, "name": str(data["name"]), "play_time_seconds": float(state.get("play_time_seconds", 0.0)), "saved_at": int(data["saved_at"]), "stage": str(state["stage"]), "area": int(state["area"]), "health": int(state["player"]["health"]), "max_health": int(state["player"]["max_health"])})
 	error = ""
 	return result
 func read(id: String) -> Dictionary:
 	error = ""
-	if not id.is_valid_int():
+	if not id.is_valid_int() or int(id) < 1 or int(id) > SLOT_COUNT or id != str(int(id)):
 		error = "Invalid save selection."
 		return {}
 	var file := FileAccess.open(directory.path_join(id + ".json"), FileAccess.READ)
@@ -45,8 +49,8 @@ func write(state: Dictionary, id: String = "") -> String:
 	if OS.has_feature("web") and not OS.is_userfs_persistent():
 		error = "Browser storage is unavailable for saved games."
 		return ""
-	if not id.is_empty() and (not id.is_valid_int() or not FileAccess.file_exists(directory.path_join(id + ".json"))):
-		error = "The selected save no longer exists."
+	if not id.is_empty() and (not id.is_valid_int() or int(id) < 1 or int(id) > SLOT_COUNT or id != str(int(id))):
+		error = "Invalid save slot."
 		return ""
 	var code := DirAccess.make_dir_recursive_absolute(directory)
 	if code != OK:
@@ -54,15 +58,15 @@ func write(state: Dictionary, id: String = "") -> String:
 		return ""
 	var timestamp := Time.get_unix_time_from_system()
 	if id.is_empty():
-		var number := int(timestamp * 1000000.0)
-		while FileAccess.file_exists(directory.path_join(str(number) + ".json")) or FileAccess.file_exists(directory.path_join(str(number) + ".json.tmp")): number += 1
-		id = str(number)
+		for slot in range(1, SLOT_COUNT + 1):
+			if not FileAccess.file_exists(directory.path_join(str(slot) + ".json")): id = str(slot); break
+		if id.is_empty(): error = "All five save slots are occupied."; return ""
 	var temporary := id + ".json.tmp"
 	var file := FileAccess.open(directory.path_join(temporary), FileAccess.WRITE)
 	if file == null:
 		error = "The save file could not be created."
 		return ""
-	file.store_string(JSON.stringify({"version": 1, "name": "Area %02d" % int(state["area"]), "saved_at": int(timestamp), "state": state}, "\t", true, true))
+	file.store_string(JSON.stringify({"version": 1, "name": str(state.get("location_name", state["stage"])), "saved_at": int(timestamp), "state": state}, "\t", true, true))
 	file.flush()
 	code = file.get_error()
 	file.close()
@@ -86,10 +90,31 @@ func valid_state(value: Variant) -> bool:
 	if not value is Dictionary or not value.get("stage") is String or not _integer(value.get("area")) or int(value["area"]) < 0: return false
 	var stage: String = value["stage"]
 	if stage.length() != 4 or not stage.begins_with("ST") or not stage.substr(2).is_valid_hex_number(): return false
+	if value.has("location_name") and (not value["location_name"] is String or value["location_name"].is_empty()): return false
 	var player: Variant = value.get("player")
 	if not player is Dictionary or not _vector(player.get("position")) or not _vector(player.get("camera_rotation")) or not _number(player.get("yaw")): return false
 	if not _integer(player.get("health")) or not _integer(player.get("max_health")) or int(player["max_health"]) <= 0 or int(player["health"]) < 0 or int(player["health"]) > int(player["max_health"]): return false
 	if player.has("zenny") and (not _integer(player["zenny"]) or int(player["zenny"]) < 0 or int(player["zenny"]) > 9999999): return false
+	if value.has("play_time_seconds") and (not _number(value["play_time_seconds"]) or float(value["play_time_seconds"]) < 0): return false
+	if player.has("inventory"):
+		if not player["inventory"] is Dictionary: return false
+		for category in ["items", "key_items", "special_weapons", "body_parts", "buster_parts"]:
+			if not player["inventory"].get(category) is Dictionary: return false
+			for item in player["inventory"][category]:
+				if not item is String or item.is_empty() or not _integer(player["inventory"][category][item]) or int(player["inventory"][category][item]) <= 0: return false
+	if player.has("equipment"):
+		if not player["equipment"] is Dictionary: return false
+		for category in ["body_parts", "buster_parts"]:
+			var slots: Variant = player["equipment"].get(category)
+			if not slots is Array or slots.size() != (3 if category == "body_parts" else 2): return false
+			for item in slots:
+				if not item is String or not item.is_empty() and (not player.has("inventory") or not player["inventory"][category].has(item)): return false
+	if player.has("equipped_special") and (not _integer(player["equipped_special"]) or int(player["equipped_special"]) < 0 or not player.get("inventory", {}).get("special_weapons", {}).has(str(int(player["equipped_special"])))): return false
+	if value.has("native_context"):
+		var context: Variant = value["native_context"]
+		if not context is Dictionary or not _integer(context.get("native_save_byte14")) or int(context["native_save_byte14"]) < 0 or int(context["native_save_byte14"]) > 255 or not context.get("event_flags") is Dictionary: return false
+		for flag in context["event_flags"]:
+			if not str(flag).is_valid_int() or int(flag) < 0 or int(flag) > 65535 or not context["event_flags"][flag] is bool: return false
 	if value.has("parked_location"):
 		var parked: Variant = value["parked_location"]
 		if not parked is Dictionary: return false

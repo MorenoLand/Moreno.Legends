@@ -10,7 +10,12 @@ assets/player/
 assets/hud/
 assets/minimap/
 assets/audio/
-assets/menu/
+assets/menu/*
+!assets/menu/title_font/
+assets/menu/title_font/*
+!assets/menu/title_font/alphabet.png
+!assets/menu/title_font/alphabet.fnt
+!assets/menu/title_font/alphabet.json
 assets/effects/
 assets/video/
 assets/opening/
@@ -19,4 +24,5 @@ assets/stage_props/
 assets/flutter/
 assets/library/
 assets/dialogue/
+assets/weather/
 *.tmp

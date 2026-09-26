@@ -5,6 +5,7 @@
 [ext_resource type="Script" uid="uid://cfpk5e0pa8ubk" path="res://scripts/ui/game_hud.gd" id="4"]
 
 [sub_resource type="Environment" id="Environment"]
+resource_local_to_scene = true
 background_mode = 1
 background_color = Color(0.08, 0.1, 0.14, 1)
 ambient_light_source = 2

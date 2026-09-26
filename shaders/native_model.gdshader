@@ -1,10 +1,12 @@
 shader_type spatial;
 render_mode unshaded, cull_disabled;
 uniform sampler2D albedo_texture : source_color, filter_nearest, repeat_disable;
+uniform vec4 roof_texture_region = vec4(0.0);
 uniform vec3 light_rgb = vec3(128.0);
 uniform float color_scale = 255.0;
 uniform bool double_sided = true;
 uniform bool part_visible = true;
+uniform bool coplanar_overlay_flags = false;
 uniform int uv_word = 0;
 uniform bool native_depth_cue_enabled = false;
 uniform int native_depth_cue_shift = 0;
@@ -23,7 +25,7 @@ void vertex() {
 	portal_world_position = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	native_vertex_rgb = clamp(COLOR.rgb * color_scale + light_rgb - 128.0, vec3(0.0), vec3(255.0));
 	if (native_depth_cue_enabled) {
-		int sz = clamp(int(floor(max(-(VIEW_MATRIX * vec4(portal_world_position, 1.0)).z, 0.0) * 256.0)), 0, 65535);
+		int sz = clamp(int(floor(max(-(VIEW_MATRIX * vec4(portal_world_position, 1.0)).z, 0.0) * 256.0 * float(1 << native_depth_cue_shift))), 0, 65535);
 		int ir0 = sz >> native_depth_cue_shift;
 		ivec3 active = ivec3(round(native_vertex_rgb));
 		ivec3 far_rgb = ivec3(native_far_color);
@@ -33,6 +35,9 @@ void vertex() {
 		ivec2 pixel = ivec2(floor(UV * 256.0));
 		int packed = (pixel.x + (pixel.y << 8) + (uv_word & 65535)) & 65535;
 		UV = (vec2(float(packed & 255), float((packed >> 8) & 255)) + vec2(0.5)) / 256.0;
+	}
+	if (coplanar_overlay_flags && COLOR.a < 0.5) {
+		VERTEX += (inverse(MODELVIEW_MATRIX) * vec4(0.0, 0.0, 1.0 / 256.0, 0.0)).xyz;
 	}
 }
 void fragment() {
@@ -49,7 +54,8 @@ void fragment() {
 		}
 	}
 	if (!part_visible || (!double_sided && !FRONT_FACING)) { discard; }
-	vec4 pixel = texture(albedo_texture, UV);
+	vec2 sample_uv = roof_texture_region.z > 0.0 ? roof_texture_region.xy + fract(portal_world_position.xz) * roof_texture_region.zw : UV;
+	vec4 pixel = texture(albedo_texture, sample_uv);
 	ALBEDO = pixel.rgb * native_vertex_rgb / 128.0;
 	ALPHA = pixel.a;
 	ALPHA_SCISSOR_THRESHOLD = 0.5;

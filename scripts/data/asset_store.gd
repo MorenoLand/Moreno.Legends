@@ -17,6 +17,13 @@ func ensure_stage(stage: String) -> bool:
 	if not await ensure_menu(): return false
 	if not await ensure_group("shared"): return false
 	if not await ensure_group("audio-ST0F"): return false
+	if stage != "ST0F" and not await ensure_group("audio-" + stage): return false
+	var audio_path := "res://assets/audio/" + stage + "/manifest.json"
+	if FileAccess.file_exists(audio_path):
+		var audio: Variant = JSON.parse_string(FileAccess.get_file_as_string(audio_path))
+		if audio is Dictionary:
+			for owner: String in audio.get("audio_dependencies", []):
+				if not await ensure_group("audio-" + owner): return false
 	return await ensure_group("stage-" + stage)
 func ensure_menu() -> bool:
 	return await ensure_group("menu-audio")

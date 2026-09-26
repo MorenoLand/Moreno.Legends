@@ -11,6 +11,11 @@ var special_capacity := 0
 var special_segment := 1
 var special_power := 0
 var special_power_max := 0
+var lifter_carrying := false
+var lifter_grabbing := false
+var lifter_target_valid := false
+var lifter_target_disabled := false
+var lifter_activate_held := false
 var minimap: Control
 var reticle: Label
 var interaction_position := Vector2.ZERO
@@ -26,11 +31,11 @@ func _ready() -> void:
 		push_error("Missing extracted HUD manifest")
 		return
 	var sprites: Dictionary = manifest.get("sprites", {})
-	for key in ["life_warning_eye", "life_pupil_frames", "life_tube_piece_a", "life_tube_piece_b", "life_tube_stretch", "lifter_piece_a", "lifter_piece_b", "lifter_piece_c", "special_piece_a", "special_piece_b", "special_piece_c", "special_tube_stretch"]:
+	for key in ["life_warning_eye", "life_pupil_frames", "life_tube_piece_a", "life_tube_piece_b", "life_tube_stretch", "special_piece_a", "special_piece_b", "special_piece_c", "special_tube_stretch"]:
 		var entry: Variant = sprites.get(key)
 		if entry is Dictionary: textures[key] = load("res://assets/hud/" + str(entry["file"])) as Texture2D
 	for key in sprites:
-		if str(key).ends_with("_alert"): textures[key] = load("res://assets/hud/" + str(sprites[key]["file"])) as Texture2D
+		if str(key).ends_with("_alert") or str(key).begins_with("lifter_"): textures[key] = load("res://assets/hud/" + str(sprites[key]["file"])) as Texture2D
 	reticle = Label.new()
 	reticle.text = "+"
 	reticle.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
@@ -70,7 +75,7 @@ func _process(delta: float) -> void:
 	clock += delta
 	damage_timer = maxf(damage_timer - delta, 0)
 	if damage_timer <= 0: trail_height = move_toward(trail_height, _life_height(), delta * 15.0)
-	if previous_trail != trail_height or pupil_frame != int(clock * pupil_rate) % 6 or (_life_height() == 0 and warning_phase != int(clock * 30) % 32): queue_redraw()
+	if previous_trail != trail_height or pupil_frame != int(clock * pupil_rate) % 6 or (_life_height() == 0 and warning_phase != int(clock * 30) % 32) or ((lifter_target_valid or lifter_activate_held) and (int((clock - delta) * 30) & 4) != (int(clock * 30) & 4)): queue_redraw()
 func _draw() -> void:
 	var factor := size.y / 240.0
 	if factor <= 0: return
@@ -78,10 +83,7 @@ func _draw() -> void:
 	_draw_life()
 	var right := size.x / factor - 320.0
 	if special_capacity > 0 and special_power_max > 0: _draw_special(right)
-	else:
-		_texture("lifter_piece_a", Rect2(right + 282, 198, 16, 16))
-		_texture("lifter_piece_b", Rect2(right + 282, 182, 16, 16))
-		_texture("lifter_piece_c", Rect2(right + 274, 158, 32, 24))
+	else: _draw_lifter(right)
 	if not interaction_text.is_empty() and interaction_font != null and not interaction_layout.is_empty():
 		var key_width := interaction_font.get_string_size(interaction_key, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x + 8.0 if not interaction_key.is_empty() else 0.0
 		var width := interaction_font.get_string_size(interaction_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x + 14.0 + (key_width + 4.0 if key_width > 0.0 else 0.0)
@@ -91,10 +93,22 @@ func _draw() -> void:
 		preload("res://scripts/ui/native_menu_frame.gd").draw(self, interaction_layout, "header", Rect2(position, Vector2(width, height)))
 		var text_position := position + Vector2(7, 4 + interaction_font.get_ascent(12))
 		if key_width > 0.0:
-			preload("res://scripts/ui/native_menu_frame.gd").draw(self, interaction_layout, "header", Rect2(position + Vector2(5, 2), Vector2(key_width, height - 4)))
+			var key_edge := position + Vector2(7, height - 5); draw_polyline(PackedVector2Array([key_edge + Vector2(0, -2), key_edge, key_edge + Vector2(key_width - 4, 0), key_edge + Vector2(key_width - 4, -2)]), Color8(185, 190, 208), 1.0)
 			draw_string(interaction_font, text_position + Vector2(2, 0), interaction_key, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color8(255, 222, 99))
 			text_position.x += key_width + 4.0
 		draw_string(interaction_font, text_position, interaction_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
+func set_lifter_state(carrying: bool, grabbing: bool, target_valid: bool, target_disabled: bool, activate_held: bool) -> void:
+	if lifter_carrying == carrying and lifter_grabbing == grabbing and lifter_target_valid == target_valid and lifter_target_disabled == target_disabled and lifter_activate_held == activate_held: return
+	lifter_carrying = carrying; lifter_grabbing = grabbing; lifter_target_valid = target_valid; lifter_target_disabled = target_disabled; lifter_activate_held = activate_held; queue_redraw()
+func _draw_lifter(right: float) -> void:
+	var closed := lifter_carrying or lifter_grabbing
+	var blink := (int(clock * 30.0) & 4) != 0
+	var palette := "_ready" if not closed and lifter_target_valid and not lifter_target_disabled else ""
+	var bottom := "lifter_piece_a_closed" if closed or lifter_target_valid and blink else "lifter_piece_a"
+	var claw := "lifter_piece_c_closed" if closed else "lifter_piece_c_active" if lifter_activate_held and blink else "lifter_piece_c"
+	_texture(bottom + palette, Rect2(right + 282, 198, 16, 16))
+	_texture("lifter_piece_b" + palette, Rect2(right + 282, 182, 16, 16))
+	_texture(claw + palette, Rect2(right + (278 if closed else 274), 158, 32, 24))
 func _draw_life() -> void:
 	var maximum := maxi((max_health * 5) / 16 - 1, 1)
 	var body := maxi(maximum - 18, 0)

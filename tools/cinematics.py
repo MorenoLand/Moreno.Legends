@@ -75,7 +75,7 @@ def record_source(path, archive, index, payload=None):
 	for mesh in document.get("meshes", []): mesh["name"] = name
 	for node in document.get("nodes", []):
 		if "mesh" in node: node["name"] = name
-	encoded = json.dumps(document, separators=(",", ":")).encode(); encoded += b" " * (-len(encoded) % 4); tail = data[20 + size:]; path.write_bytes(struct.pack("<3I", 0x46546C67, 2, 20 + len(encoded) + len(tail)) + struct.pack("<2I", len(encoded), 0x4E4F534A) + encoded + tail)
+	encoded = json.dumps(document, separators=(",", ":")).encode(); encoded += b" " * (-len(encoded) % 4); tail = data[20 + size:]; write_if_changed(path, struct.pack("<3I", 0x46546C67, 2, 20 + len(encoded) + len(tail)) + struct.pack("<2I", len(encoded), 0x4E4F534A) + encoded + tail)
 	return document["extras"].get("source_surfaces", [])
 def opening_timeline(overlay):
 	start = 0x30 + 0x800F2374 - 0x800E7000; result = []
@@ -213,13 +213,13 @@ def export_opening(dat_dir=None, output_dir=None):
 	for bank in ("ST02", "ST0201", "ST0202", "ST0203"):
 		path = dat_dir / (bank + ".BIN"); source = path.read_bytes(); archive_path = path; section = None
 		if bank == "ST02":
-			payload, section = decompress_section(source, 0x7800); header = bytearray(48); struct.pack_into("<3I", header, 0, 10, len(payload), section["section_count"]); archive_path = work / "ST02_models.bin"; archive_path.write_bytes(header + payload)
-		archive, payload = actor_archive(archive_path); vram = native_texture_uploads(source, bytearray(stage_vram)); normalized = work / (bank + "_vram.bin"); header = bytearray(48); struct.pack_into("<3I", header, 0, 2, len(vram), 1); struct.pack_into("<8H", header, 12, 0, 0, 0, 0, 0, 0, 1024, 512); normalized.write_bytes(header + vram); directory = output_dir / bank; directory.mkdir(parents=True, exist_ok=True); models = []
+			payload, section = decompress_section(source, 0x7800); header = bytearray(48); struct.pack_into("<3I", header, 0, 10, len(payload), section["section_count"]); archive_path = work / "ST02_models.bin"; write_if_changed(archive_path, header + payload)
+		archive, payload = actor_archive(archive_path); vram = native_texture_uploads(source, bytearray(stage_vram)); normalized = work / (bank + "_vram.bin"); header = bytearray(48); struct.pack_into("<3I", header, 0, 2, len(vram), 1); struct.pack_into("<8H", header, 12, 0, 0, 0, 0, 0, 0, 1024, 512); write_if_changed(normalized, header + vram); directory = output_dir / bank; directory.mkdir(parents=True, exist_ok=True); models = []
 		for model in archive["models"]:
 			if not model.get("mesh_offset"): continue
 			index = model["index"]; destination = directory / ("model_%02d.glb" % index); metadata = export_actor_model(payload, index, normalized, destination) if model["mesh"]["bone_count"] else export_static_actor(payload, index, normalized, destination); metadata["source_surfaces"] = record_source(destination, path.name, index, payload); metadata["source_archive"] = path.name; metadata["model_file"] = destination.relative_to(output_dir).as_posix(); models.append({**model, "export": metadata})
 		banks.append({"archive": "DAT/" + path.name, "sha256": hashlib.sha256(source).hexdigest(), "decoded_section": section, "models": models})
-	manifest = {"stage": "ST02", "source": {"overlay": "DAT/ST02T.BIN", "sha256": hashlib.sha256(overlay).hexdigest(), "stage_initializer": "0x800E712C", "area_initializer": "0x800E7228", "startup_driver": "0x800EF1E4", "startup_helper": "GAME0x800C0C5C", "command_stream": "RAM0x800F1B28", "timeline": "RAM0x800F2374", "seed": "0x873CA9E6", "command_interpreter": "GAME0x800C1204", "timeline_update": "GAME0x800C0D70", "timeline_callback_dispatch": "ST02T0x800EF2AC"}, "commands": opening_commands(overlay), "timeline": opening_timeline(overlay), "levels": "levels/ST02/manifest.json", "actor_banks": banks}; callbacks, records = opening_callbacks(overlay); manifest.update(callbacks=callbacks, callback_records=records, xa=opening_xa(overlay), native_floor_shapes=export_floor_shapes(dat_dir / "ST02.BIN"), **opening_actor_timelines(overlay)); target = output_dir / "manifest.json"; temporary = target.with_suffix(".json.tmp"); temporary.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8"); temporary.replace(target); return manifest
+	manifest = {"stage": "ST02", "source": {"overlay": "DAT/ST02T.BIN", "sha256": hashlib.sha256(overlay).hexdigest(), "stage_initializer": "0x800E712C", "area_initializer": "0x800E7228", "startup_driver": "0x800EF1E4", "startup_helper": "GAME0x800C0C5C", "command_stream": "RAM0x800F1B28", "timeline": "RAM0x800F2374", "seed": "0x873CA9E6", "command_interpreter": "GAME0x800C1204", "timeline_update": "GAME0x800C0D70", "timeline_callback_dispatch": "ST02T0x800EF2AC"}, "commands": opening_commands(overlay), "timeline": opening_timeline(overlay), "levels": "levels/ST02/manifest.json", "actor_banks": banks}; callbacks, records = opening_callbacks(overlay); manifest.update(callbacks=callbacks, callback_records=records, xa=opening_xa(overlay), native_floor_shapes=export_floor_shapes(dat_dir / "ST02.BIN"), **opening_actor_timelines(overlay)); target = output_dir / "manifest.json"; write_if_changed(target, json.dumps(manifest, indent=2) + "\n", encoding="utf-8"); return manifest
 def opening_cli():
 	parser = argparse.ArgumentParser(); parser.add_argument("--dat-dir", type=Path); parser.add_argument("--output-dir", type=Path); args = parser.parse_args(); manifest = export_opening(args.dat_dir, args.output_dir); print(json.dumps({"actor_models": sum(len(bank["models"]) for bank in manifest["actor_banks"]), "stage": manifest["stage"]}))
 
@@ -228,7 +228,7 @@ def decode_effect_tables():
 	for index in range(7):
 		x, y, primary_x, primary_y, alternate_x, alternate_y = struct.unpack_from("<6H", source, 0x30 + 0x800F15B4 - 0x800E7000 + index * 12); tpage = (x >> 6) | ((y & 256) >> 4) | ((y & 512) << 2); item = {"index": index, "tpage": tpage}
 		for role, px, py in (("primary", primary_x, primary_y), ("alternate", alternate_x, alternate_y)):
-			clut = (py << 6) | (px >> 4); filename = "atmosphere_%d_%s.png" % (index, role); (output / filename).write_bytes(texture_page(vram, clut, tpage)); item[role] = {"texture": "res://assets/opening/effects/" + filename, "clut": clut}
+			clut = (py << 6) | (px >> 4); filename = "atmosphere_%d_%s.png" % (index, role); write_if_changed(output / filename, texture_page(vram, clut, tpage)); item[role] = {"texture": "res://assets/opening/effects/" + filename, "clut": clut}
 		descriptors.append(item)
 	trig = [struct.unpack_from("<2h", executable, 0x800 + 0x80073E4C - 0x80010000 + phase * 64 * 4) for phase in range(64)]; manifest = {"source": {"overlay": "DAT/ST02T.BIN", "sha256": hashlib.sha256(source).hexdigest(), "atmosphere_dispatch": "0x800EAB80", "opening_atmosphere": "0x800ECC24", "texture_table": "0x800F15B4", "lightning_dispatch": "0x800EE430", "lightning_init": "0x800EE46C", "lightning_flash": "0x800EEC58", "lightning_colors": "0x800EF164", "trig_init": "SLES0x800112BC", "rng_xor": "0x873CA9E5"}, "textures": descriptors, "atmosphere": {"variant": 5, "parameter": 16777217, "initial_phases": [index * 512 for index in range(8)], "background_uv_rows": list(source[0x30 + 0x800F1700 - 0x800E7000:0x30 + 0x800F1700 - 0x800E7000 + 10]), "background_columns": 20, "background_rows": 10, "background_uv_y": 224, "background_tile_size": 16, "strip_columns": 11, "strip_size": [32, 80], "strip_y": 160, "phase_limit": 4096, "phase_shift": 4, "camera_yaw_multiplier": 8}, "lightning": {"segments": 16, "colors": [[((value * 8160) >> 8)] * 3 for value in range(7, 0, -1)], "view_center": [0, 0, 192], "radius_depth_numerator": 5, "radius_depth_denominator": 6, "blend": "add", "radial_pattern": list(source[0x30 + 0x800F1794 - 0x800E7000:0x30 + 0x800F1794 - 0x800E7000 + 16])}, "trig64": trig}; return manifest
 def export_opening_effects():
@@ -238,22 +238,22 @@ def export_opening_effects():
 		for entry in manifest["textures"]:
 			item = {"index": entry["index"], "tpage": entry["tpage"]}
 			for role in ("primary", "alternate"):
-				filename = "atmosphere_%d_%s.png" % (item["index"], role); (directory / filename).write_bytes(texture_page(vram, entry[role]["clut"], entry["tpage"])); item[role] = {"texture": "res://assets/opening/effects/" + bank + "/" + filename, "clut": entry[role]["clut"]}
+				filename = "atmosphere_%d_%s.png" % (item["index"], role); write_if_changed(directory / filename, texture_page(vram, entry[role]["clut"], entry["tpage"])); item[role] = {"texture": "res://assets/opening/effects/" + bank + "/" + filename, "clut": entry[role]["clut"]}
 			descriptors.append(item)
 		cloud_palettes = {}
 		for offset in (0, 1, 2, 3, 4, 8, 9, 10, 11, 12):
-			filename = "cloud_%02d.png" % offset; (directory / filename).write_bytes(texture_page(vram, 0x7DC0 + offset, 28)); cloud_palettes[str(offset)] = "res://assets/opening/effects/" + bank + "/" + filename
+			filename = "cloud_%02d.png" % offset; write_if_changed(directory / filename, texture_page(vram, 0x7DC0 + offset, 28)); cloud_palettes[str(offset)] = "res://assets/opening/effects/" + bank + "/" + filename
 		banks[bank] = {"textures": descriptors, "cloud_palettes": cloud_palettes}
 	def table(address, count, fmt): return list(struct.unpack_from("<" + fmt * count, source, 0x30 + address - 0x800E7000))
 	manifest["texture_banks"] = banks; manifest["trig4096"] = [list(struct.unpack_from("<2h", executable, 0x800 + 0x80073E4C - 0x80010000 + phase * 4)) for phase in range(4096)]; manifest["clouds"] = {"variant0": {"height": table(0x800F1638, 9, "h"), "radius": table(0x800F164C, 9, "h"), "half_size": table(0x800F1660, 9, "h"), "clut_offset": table(0x800F167C, 9, "b"), "uv_x": table(0x800F1674, 8, "B")}, "variant2": {"height": table(0x800F16C0, 4, "h"), "radius": table(0x800F16CC, 4, "h"), "half_size": table(0x800F16D8, 4, "h"), "clut_offset": table(0x800F16EC, 4, "b"), "uv_x": table(0x800F16E4, 8, "B")}}; manifest["screen_atmosphere"] = {"variant3_rows": table(0x800F16F4, 5, "B"), "variant4_rows": table(0x800F16FC, 6, "B"), "variant5_rows": table(0x800F1700, 10, "B")}; manifest["variant6_vertices"] = [table(0x800F170C + index * 8, 3, "h") for index in range(4)]; manifest["supported_variants"] = {"class18": [0, 2, 3, 4, 5, 6], "class14": [1, 2]}; manifest["renderer_adapters"] = ["Screen atmosphere backgrounds use CanvasLayer -1; native ordering-table interleaving with scene geometry is not reproduced.", "World cloud billboards use depth-tested Godot meshes; native GTE saturation and PSX affine texture sampling are not reproduced."]
 	manifest["clouds"]["variant1"] = {"height": table(0x800F1688, 4, "h"), "radius": table(0x800F1698, 4, "h"), "half_size": table(0x800F16A8, 4, "h"), "radius_jitter": table(0x800F16A8, 8, "h"), "clut_offset": table(0x800F16B8, 4, "b"), "uv_x": [0, 64, 128, 0, 64, 128, 0, 64]}; manifest["supported_variants"]["class18"].append(1); manifest["source"]["companion_constructor"] = "0x800EABF4..0x800EAC54"
-	destination = output / "manifest.json"; pending = output / "manifest.json.next"; pending.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8"); pending.replace(destination); return manifest
+	destination = output / "manifest.json"; write_if_changed(destination, json.dumps(manifest, indent=2) + "\n", encoding="utf-8"); return manifest
 from models import actor_archive
 from models import export_actor_model
 from world import export_maps
 from world import textures
 from models import export_static_actor
-from disc import decompress_section
+from disc import decompress_section, write_if_changed
 from world import export_floor_shapes
 from world import texture_page
 if __name__ == '__main__':

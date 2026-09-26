@@ -2,6 +2,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 import re
+from disc import write_if_changed
 
 ROOT = Path(__file__).resolve().parents[1]
 VIEWER = ROOT / "build" / "mml2-mesh-viewer"
@@ -30,14 +31,9 @@ class Handler(SimpleHTTPRequestHandler):
             return
         OUTPUT.mkdir(parents=True, exist_ok=True)
         target = OUTPUT / name
-        try:
-            with target.open("xb") as stream:
-                stream.write(data)
-        except FileExistsError:
-            self.send_error(409, "Asset already exists")
-            return
-        body = f"Saved {target.relative_to(ROOT).as_posix()}".encode()
-        self.send_response(201)
+        changed = write_if_changed(target, data)
+        body = f"{'Saved' if changed else 'Unchanged'} {target.relative_to(ROOT).as_posix()}".encode()
+        self.send_response(201 if changed else 200)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()

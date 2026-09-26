@@ -1,5 +1,6 @@
 extends Node3D
 signal room_activated(stage: String, area: int)
+signal native_context_changed(stage: String, area: int)
 signal door_sound(sound_id: int)
 var rooms: Dictionary = {}
 var room_info: Dictionary = {}
@@ -10,6 +11,8 @@ var opened_portals: Dictionary = {}
 var opened_from: Dictionary = {}
 var opened_origin_distance: Dictionary = {}
 var portal_leaves: Dictionary = {}
+var transition_doors: Dictionary = {}
+var portal_depth_views: Dictionary = {}
 var closing_portals: Dictionary = {}
 var portal_camera_sides: Dictionary = {}
 var mesh_nodes: Dictionary = {}
@@ -24,6 +27,11 @@ var visible_neighbor_keys: Dictionary = {}
 var body_radius := 0.12
 var props: Dictionary = {}
 var props_loaded := false
+var native_context: Dictionary = {}
+var camera_space_position := Vector3.ZERO
+var has_camera_space_position := false
+var camera_collision_rooms: Dictionary = {}
+var camera_shape_cache: Dictionary = {}
 var parked_exterior: Node3D
 var exterior_request := 0
 var external_routes: Array = []
@@ -70,7 +78,7 @@ func set_parked_exterior(stage: String, area: int) -> bool:
 	for collider: CollisionObject3D in exterior.find_children("*", "CollisionObject3D", true, false): collider.collision_layer = 0; collider.collision_mask = 0; collider.queue_free()
 	add_child(exterior)
 	preload("res://scripts/world/native_material.gd").apply(exterior)
-	await _load_room_props(exterior, stage, area)
+	await _load_room_props(exterior, stage, area, ["player_vehicle"])
 	if request != exterior_request:
 		exterior.queue_free()
 		return false
@@ -114,7 +122,12 @@ func _ensure_room_loaded(stage: String, area: int) -> bool:
 		var mesh_node := item as MeshInstance3D
 		if mesh_node.mesh == null: continue
 		nodes[mesh_node.name] = mesh_node; source_meshes[_mesh_key(key, mesh_node.name)] = mesh_node.mesh; _add_collision(mesh_node, mesh_node.mesh)
+	var stage_manifest_path := "res://assets/levels/%s/manifest.json" % stage; var stage_manifest: Variant = JSON.parse_string(FileAccess.get_file_as_string(stage_manifest_path)) if FileAccess.file_exists(stage_manifest_path) else null
+	if stage_manifest is Dictionary: preload("res://scripts/world/native_floor.gd").apply(room, stage_manifest.get("native_floor_collision", {}), area, native_context)
 	await _load_room_props(room, stage, area)
+	preload("res://scripts/world/area_roof.gd").apply(room, stage, area)
+	for generated_roof: MeshInstance3D in room.find_children("*", "MeshInstance3D", true, false):
+		if generated_roof.has_meta("generated_roof_mesh"): nodes[generated_roof.name] = generated_roof; source_meshes[_mesh_key(key, generated_roof.name)] = generated_roof.mesh
 	preload("res://scripts/world/window_view.gd").apply(room, stage, area)
 	loading_rooms.erase(key)
 	var opened_nodes := {}
@@ -125,26 +138,16 @@ func _ensure_room_loaded(stage: String, area: int) -> bool:
 	for node_name in opened_nodes: _refresh_open_meshes(key, str(node_name))
 	_refresh_room_state()
 	return true
-func _load_room_props(room: Node3D, stage: String, area: int) -> void:
-	var source: Dictionary = props.get(stage, {})
-	for entry: Dictionary in source.get("instances", []):
-		if int(entry["area"]) != area: continue
-		var packed: PackedScene = await _threaded_scene("res://assets/stage_props/" + str(entry["model_file"]))
-		if packed == null: continue
-		var prop := packed.instantiate() as Node3D
-		room.add_child(prop)
-		var position: Array = entry["position"]
-		prop.position = Vector3(float(position[0]), float(position[1]), float(position[2]))
-		prop.rotation.y = float(entry["yaw_turns"]) * TAU
-		for model: Dictionary in source.get("models", []):
-			if int(model["model_index"]) != int(entry["model_index"]): continue
-			var scale: Array = model.get("native_scale_raw", [512, 512, 512])
-			prop.scale = Vector3(float(scale[0]), float(scale[1]), float(scale[2])) / 512.0
-			var animation := prop.find_child("AnimationPlayer", true, false) as AnimationPlayer
-			if animation != null:
-				for clip: Dictionary in model.get("animations", []):
-					if int(clip["slot"]) == int(entry["control"]): animation.play(str(clip["name"])); animation.advance(0)
-		preload("res://scripts/world/native_material.gd").apply(prop, 128.0)
+func _apply_room_lighting(room: Node3D, stage: String, area: int) -> void:
+	var material := preload("res://scripts/world/native_material.gd"); var parameters: Dictionary = material.area_parameters("res://assets/levels/%s/lighting.json" % stage, area)
+	material.depth_cue(room, parameters)
+func _load_room_props(room: Node3D, stage: String, area: int, excluded_roles: Array[String] = []) -> void:
+	var loader := preload("res://scripts/world/native_props.gd"); var previous_flags: Variant = native_context.get("event_flags", {}); var flags_before: Dictionary = previous_flags.duplicate(true) if previous_flags is Dictionary else {}
+	if excluded_roles.is_empty() and _room_key(stage, area) == active_room_key: await loader.initialize_into(room, stage, area, native_context)
+	else: await loader.load_into(room, stage, area, native_context, excluded_roles)
+	var current_flags: Variant = native_context.get("event_flags", {}); var flags_after: Dictionary = current_flags if current_flags is Dictionary else {}
+	if flags_before != flags_after and _room_key(stage, area) == active_room_key: native_context_changed.emit(stage, area)
+	if is_instance_valid(room): _apply_room_lighting(room, stage, area)
 func _threaded_scene(path: String) -> PackedScene:
 	var status := ResourceLoader.load_threaded_get_status(path)
 	if status == ResourceLoader.THREAD_LOAD_INVALID_RESOURCE:
@@ -167,6 +170,8 @@ func select_room(stage: String, area: int) -> bool:
 	var key := _room_key(stage, area)
 	if active_room_key != key: previous_room_key = active_room_key
 	active_room_key = key
+	var active_room: Node3D = rooms.get(key) as Node3D
+	if is_instance_valid(active_room): await _load_room_props(active_room, stage, area)
 	requested_room_key = ""
 	_refresh_room_state()
 	room_activated.emit(stage, area)
@@ -193,6 +198,43 @@ func open_route(stage: String, area: int, route: Dictionary, player_position: Ve
 		_evict_unused()
 		return true
 	return false
+func prepare_transition_door(stage: String, route: Dictionary) -> bool:
+	for model: Dictionary in props.get(stage, {}).get("native_doors", []):
+		if int(model["variant"]) != int(route["door_slot"]): continue
+		var scene: PackedScene = await _threaded_scene("res://assets/stage_props/" + str(model["model_file"]))
+		return scene != null
+	return false
+func open_transition_door(stage: String, area: int, route: Dictionary) -> bool:
+	if not route.get("source_panel", null) is Dictionary or is_ladder_route(stage, area, route): return false
+	var source: Dictionary = route["source_panel"]
+	var offset := offset_for(stage, area)
+	var center := _as_vector3(source["center"]) + offset
+	var bounds: Dictionary = source["bounds"]
+	var lateral := 2 if int(source["axis"]) == 0 else 0
+	var portal := {"source": {"stage": stage, "area": area}, "destination": {"stage": str(route["destination_stage"]), "area": int(route["destination_area"])}, "source_panel": source, "source_slot": int(route["door_slot"]), "source_contact_raw": route["source_transform_raw"], "source_yaw_raw": int(route["source_transform_raw"][3]), "normal_axis": "x" if int(source["axis"]) == 0 else "z", "world_center": [center.x, center.y, center.z], "shared_panel_size": [float(bounds["max"][lateral]) - float(bounds["min"][lateral]), float(bounds["max"][1]) - float(bounds["min"][1])]}
+	var key := _portal_key(portal)
+	if transition_doors.has(key): return true
+	transition_doors[key] = portal
+	_refresh_open_meshes(_room_key(stage, area), str(source["node"]))
+	_refresh_camera_layers()
+	if await _open_leaf(portal, true): return true
+	transition_doors.erase(key)
+	_refresh_open_meshes(_room_key(stage, area), str(source["node"]))
+	_refresh_camera_layers()
+	return false
+func close_transition_door(stage: String, area: int, route: Dictionary) -> void:
+	var key := _portal_key({"source": {"stage": stage, "area": area}, "destination": {"stage": str(route["destination_stage"]), "area": int(route["destination_area"])}})
+	if not transition_doors.has(key): return
+	var portal: Dictionary = transition_doors[key]
+	if portal_leaves.has(key):
+		var leaf: Node3D = portal_leaves[key]
+		await create_tween().tween_property(leaf, "rotation:y", float(leaf.get_meta("closed_yaw")), 0.25).finished
+		door_sound.emit(0xB9)
+		portal_leaves.erase(key); leaf.queue_free()
+	if portal_depth_views.has(key): portal_depth_views[key].queue_free(); portal_depth_views.erase(key)
+	transition_doors.erase(key)
+	_refresh_open_meshes(_room_key(stage, area), str(portal["source_panel"]["node"]))
+	_refresh_camera_layers()
 func is_ladder_route(stage: String, area: int, route: Dictionary) -> bool:
 	var destination_stage := str(route.get("destination_stage", stage)); var destination_area := int(route["destination_area"])
 	for transition: Dictionary in ladder_transitions:
@@ -201,6 +243,9 @@ func is_ladder_route(stage: String, area: int, route: Dictionary) -> bool:
 		if forward or reverse: return true
 	return false
 func close_cleared_portals(player_position: Vector3, camera_position: Vector3, radius: float) -> void:
+	camera_space_position = camera_position
+	has_camera_space_position = true
+	_refresh_camera_layers()
 	var close: Array[String] = []
 	var render_changed := false
 	for key in opened_portals:
@@ -221,10 +266,13 @@ func close_cleared_portals(player_position: Vector3, camera_position: Vector3, r
 			var body_side_a := absf((player_position[axis] - plane) * _outward_sign(portal, true)); var body_side_b := absf((player_position[axis] - plane) * _outward_sign(portal, false)); var camera_side_a := absf((camera_position[axis] - plane) * _outward_sign(portal, true)); var camera_side_b := absf((camera_position[axis] - plane) * _outward_sign(portal, false)); should_close = minf(body_side_a, body_side_b) > radius * 1.5 and minf(camera_side_a, camera_side_b) > radius * 1.5
 		var lateral := 2 if axis == 0 else 0; var lateral_clear := absf(player_position[lateral] - float(portal["world_center"][lateral])) > float(portal["shared_panel_size"][0]) * 0.5 + radius
 		if lateral_clear and not _in_door_sweep(player_position, portal, radius) and not _in_door_sweep(camera_position, portal, radius): should_close = true
+		if (player_position[axis] - plane) * (camera_position[axis] - plane) <= 0.0: should_close = false
 		if should_close: close.append(str(key))
 	for key in close: _close_portal(key)
 	if render_changed: _refresh_camera_masks()
 func _in_door_sweep(point: Vector3, portal: Dictionary, radius: float) -> bool:
+	var leaf: Node3D = portal_leaves.get(_portal_key(portal))
+	if is_instance_valid(leaf) and leaf.has_meta("sweep_bounds"): return (leaf.get_meta("sweep_bounds") as AABB).grow(radius).has_point(point)
 	var axis := 0 if str(portal["normal_axis"]) == "x" else 2; var lateral := 2 if axis == 0 else 0; var center: Array = portal["world_center"]; var width := float(portal["shared_panel_size"][0]); var height := float(portal["shared_panel_size"][1]); var distance := (point[axis] - float(center[axis])) * _outward_sign(portal, true)
 	return distance >= -radius and distance <= width + radius and absf(point[lateral] - float(center[lateral])) <= width * 0.5 + radius and absf(point.y - float(center[1])) <= height * 0.5 + radius
 func _refresh_camera_masks() -> void:
@@ -250,21 +298,141 @@ func _close_portal(key: String) -> void:
 		await create_tween().tween_property(leaf, "rotation:y", float(leaf.get_meta("closed_yaw")), 0.25).finished
 		door_sound.emit(0xB9)
 		portal_leaves.erase(key); closing_portals.erase(key); leaf.queue_free()
+	if portal_depth_views.has(key): portal_depth_views[key].queue_free(); portal_depth_views.erase(key)
 	opened_portals.erase(key); opened_from.erase(key); opened_origin_distance.erase(key); portal_camera_sides.erase(key)
 	var source_key := _room_key(str(portal["source"]["stage"]), int(portal["source"]["area"])); var destination_key := _room_key(str(portal["destination"]["stage"]), int(portal["destination"]["area"]))
 	_refresh_open_meshes(source_key, str(portal["source_panel"]["node"])); _refresh_open_meshes(destination_key, str(portal["destination_panel"]["node"])); _refresh_room_state(); _evict_unused()
 func _open_leaf(portal: Dictionary, source_side: bool) -> bool:
-	var room: Dictionary = portal["source"]; var stage := str(room["stage"]); var room_key := _room_key(stage, int(room["area"])); var variant := int(portal["source_slot"]); var model: Dictionary = {}
+	var room: Dictionary = portal["source"] if source_side else portal["destination"]; var stage := str(room["stage"]); var room_key := _room_key(stage, int(room["area"])); var variant := int(portal["source_slot"] if source_side else portal["reverse_source_slot"]); var model: Dictionary = {}
 	for candidate: Dictionary in props.get(stage, {}).get("native_doors", []):
-		if int(candidate["variant"]) == variant: model = candidate; break
+		if int(candidate.get("controller_class", 1)) == 1 and int(candidate["variant"]) == variant: model = candidate; break
 	if model.is_empty(): push_error("Missing native door resource %s variant %d" % [stage, variant]); return false
 	var scene: PackedScene = await _threaded_scene("res://assets/stage_props/" + str(model["model_file"]))
 	if scene == null: return false
-	var raw: Array = portal["source_contact_raw"]; var yaw := int(raw[3]); var quadrant := (yaw & 4095) >> 10; var directions := [-1, 0, 1, 0, -1]; var a := int(directions[quadrant]); var b := int(directions[quadrant + 1]); var hinge: Vector3 = Vector3(-float(raw[0] + a * 80 + b * 64), -float(raw[1]), float(raw[2] + b * 80 - a * 64)) / 256.0 + room_offsets[room_key]; var closed_yaw := -float((yaw + 0x800) & 4095) * TAU / 4096.0
+	var raw: Array = portal["source_contact_raw"] if source_side else portal["reverse_source_contact_raw"]; var yaw := int(raw[3]); var quadrant := (yaw & 4095) >> 10; var directions := [-1, 0, 1, 0, -1]; var a := int(directions[quadrant]); var b := int(directions[quadrant + 1]); var hinge: Vector3 = Vector3(-float(raw[0] + a * 80 + b * 64), -float(raw[1]), float(raw[2] + b * 80 - a * 64)) / 256.0 + room_offsets[room_key]; var closed_yaw := -float((yaw + 0x800) & 4095) * TAU / 4096.0
 	var pivot := Node3D.new(); pivot.name = "OpenDoor_" + room_key.replace(":", "_"); add_child(pivot); pivot.global_position = hinge; pivot.rotation.y = closed_yaw; pivot.set_meta("closed_yaw", closed_yaw); var panel := scene.instantiate() as Node3D; pivot.add_child(panel); var scale: Array = model["native_scale_raw"]; panel.scale = Vector3(float(scale[0]), float(scale[1]), float(scale[2])) / 512.0; preload("res://scripts/world/native_material.gd").apply(panel, 128.0)
+	if portal.has("destination_panel") and not _compose_leaf_faces(portal, panel): pivot.queue_free(); return false
 	for node: MeshInstance3D in panel.find_children("*", "MeshInstance3D", true, false): _add_collision(node, node.mesh)
-	portal_leaves[_portal_key(portal)] = pivot; door_sound.emit(0xB8); create_tween().tween_property(pivot, "rotation:y", closed_yaw - 0x3C0 * TAU / 4096.0, 0.25)
+	_create_doorway_depth(portal, panel)
+	var open_yaw := closed_yaw + 0x3C0 * TAU / 4096.0
+	pivot.set_meta("sweep_bounds", _door_sweep_bounds(pivot, panel, closed_yaw, open_yaw))
+	portal_leaves[_portal_key(portal)] = pivot; door_sound.emit(0xB8); create_tween().tween_property(pivot, "rotation:y", open_yaw, 0.25)
 	return true
+func _compose_leaf_faces(portal: Dictionary, leaf: Node3D) -> bool:
+	var axis := 0 if str(portal["normal_axis"]) == "x" else 2; var minimum := INF; var maximum := -INF; var native_nodes := leaf.find_children("*", "MeshInstance3D", true, false)
+	for node: MeshInstance3D in native_nodes:
+		var bounds := node.mesh.get_aabb()
+		for corner in 8:
+			var point := node.to_global(bounds.position + Vector3(bounds.size.x if corner & 1 else 0.0, bounds.size.y if corner & 2 else 0.0, bounds.size.z if corner & 4 else 0.0)); minimum = minf(minimum, point[axis]); maximum = maxf(maximum, point[axis])
+	if maximum - minimum <= 0.00001: return false
+	var composed := ArrayMesh.new()
+	for source_side in [true, false]:
+		var room: Dictionary = portal["source"] if source_side else portal["destination"]; var side: Dictionary = portal["source_panel"] if source_side else portal["destination_panel"]; var key := _room_key(str(room["stage"]), int(room["area"])); var node: MeshInstance3D = mesh_nodes[key][str(side["node"])]; var original: Mesh = source_meshes[_mesh_key(key, str(side["node"]))]; var wanted := {}; var added := false
+		for quad: Dictionary in side["quads"]:
+			var surface := int(quad.get("primitive_index", side["primitive_index"])); var signatures: Dictionary = wanted.get(surface, {})
+			for triangle: Array in quad["triangles_local"]: signatures[_triangle_key(triangle[0], triangle[1], triangle[2])] = true
+			wanted[surface] = signatures
+		for surface: int in wanted:
+			var arrays := original.surface_get_arrays(surface); var points: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]; var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]; var uvs: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV]; var colors: PackedColorArray = arrays[Mesh.ARRAY_COLOR]; var vertices := PackedVector3Array(); var texture_uvs := PackedVector2Array(); var vertex_colors := PackedColorArray(); var count := indices.size() if not indices.is_empty() else points.size()
+			for triangle in range(0, count, 3):
+				var ids := [indices[triangle] if not indices.is_empty() else triangle, indices[triangle + 1] if not indices.is_empty() else triangle + 1, indices[triangle + 2] if not indices.is_empty() else triangle + 2]
+				if not wanted[surface].has(_triangle_key(points[ids[0]], points[ids[1]], points[ids[2]])): continue
+				for id: int in ids:
+					var point := node.to_global(points[id]); point[axis] = minimum if _outward_sign(portal, source_side) > 0.0 else maximum; vertices.append(leaf.to_local(point)); texture_uvs.append(uvs[id]); vertex_colors.append(colors[id])
+			if vertices.is_empty(): continue
+			var output: Array = []; output.resize(Mesh.ARRAY_MAX); output[Mesh.ARRAY_VERTEX] = vertices; output[Mesh.ARRAY_TEX_UV] = texture_uvs; output[Mesh.ARRAY_COLOR] = vertex_colors; composed.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, output)
+			var material := node.get_active_material(surface).duplicate() as ShaderMaterial
+			if material == null: return false
+			material.set_shader_parameter("double_sided", false); material.set_shader_parameter("room_clip_count", 0); material.set_shader_parameter("portal_clip_enabled", false); material.set_shader_parameter("portal_floor_clip_count", 0); composed.surface_set_material(composed.get_surface_count() - 1, material); added = true
+		if not added: return false
+	for node: MeshInstance3D in native_nodes:
+		var removed := {}
+		for surface in node.mesh.get_surface_count():
+			var arrays: Array = node.mesh.surface_get_arrays(surface); var points: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]; var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]; var count := indices.size() if not indices.is_empty() else points.size(); var faces: Array = []
+			for triangle in range(0, count, 3):
+				var ids := [indices[triangle] if not indices.is_empty() else triangle, indices[triangle + 1] if not indices.is_empty() else triangle + 1, indices[triangle + 2] if not indices.is_empty() else triangle + 2]; var front := true; var back := true
+				for id: int in ids: front = front and absf(node.to_global(points[id])[axis] - minimum) < 0.00001; back = back and absf(node.to_global(points[id])[axis] - maximum) < 0.00001
+				if front or back: faces.append([points[ids[0]], points[ids[1]], points[ids[2]]])
+			removed[surface] = faces
+		node.mesh = _mesh_without_faces(node.mesh, removed)
+	var view := MeshInstance3D.new(); view.name = "PairedDoorFaces"; view.mesh = composed; leaf.add_child(view)
+	return true
+func _door_sweep_bounds(pivot: Node3D, panel: Node3D, closed_yaw: float, open_yaw: float) -> AABB:
+	var points := PackedVector3Array()
+	var parent := pivot.get_parent() as Node3D
+	for node: MeshInstance3D in panel.find_children("*", "MeshInstance3D", true, false):
+		var bounds := node.mesh.get_aabb()
+		for corner in 8:
+			var point := pivot.to_local(node.to_global(bounds.position + Vector3(bounds.size.x if corner & 1 else 0.0, bounds.size.y if corner & 2 else 0.0, bounds.size.z if corner & 4 else 0.0)))
+			var extremum := atan2(point.z, point.x)
+			for angle in [closed_yaw, open_yaw, closed_yaw + fposmod(extremum - closed_yaw, PI), closed_yaw + fposmod(extremum + PI * 0.5 - closed_yaw, PI)]:
+				if float(angle) > open_yaw: continue
+				points.append(pivot.global_position + parent.global_basis * (Basis(Vector3.UP, float(angle)) * point))
+	if points.is_empty(): return AABB(pivot.global_position, Vector3.ZERO)
+	var result := AABB(points[0], Vector3.ZERO)
+	for point in points: result = result.expand(point)
+	return result
+func _create_doorway_depth(portal: Dictionary, leaf: Node3D) -> void:
+	var key := _portal_key(portal)
+	if portal_depth_views.has(key): return
+	var axis := 0 if str(portal["normal_axis"]) == "x" else 2
+	var lateral := 2 if axis == 0 else 0
+	var center: Array = portal["world_center"]
+	var width := float(portal["shared_panel_size"][0]) * 0.5
+	var height := float(portal["shared_panel_size"][1]) * 0.5
+	var minimum := float(center[axis])
+	var maximum := minimum
+	for side: String in ["source", "destination"]:
+		if not portal.has("source_panel" if side == "source" else "destination_panel"): continue
+		var room: Dictionary = portal[side]
+		var room_key := _room_key(str(room["stage"]), int(room["area"]))
+		var panel: Dictionary = portal["source_panel" if side == "source" else "destination_panel"]
+		var plane := float(panel["center"][axis]) + float(room_offsets[room_key][axis])
+		minimum = minf(minimum, plane); maximum = maxf(maximum, plane)
+	for node: MeshInstance3D in leaf.find_children("*", "MeshInstance3D", true, false):
+		var bounds := node.mesh.get_aabb()
+		for corner in 8:
+			var point := bounds.position + Vector3(bounds.size.x if corner & 1 else 0.0, bounds.size.y if corner & 2 else 0.0, bounds.size.z if corner & 4 else 0.0)
+			var world := node.to_global(point)
+			minimum = minf(minimum, world[axis]); maximum = maxf(maximum, world[axis])
+	if maximum - minimum <= 0.00001: return
+	var room: Dictionary = portal["source"]
+	var room_key := _room_key(str(room["stage"]), int(room["area"]))
+	var node: MeshInstance3D = mesh_nodes[room_key][str(portal["source_panel"]["node"])]
+	var mesh := ArrayMesh.new()
+	var seen := {}
+	var inverse := global_transform.affine_inverse()
+	for surface in node.mesh.get_surface_count():
+		var original: Array = node.mesh.surface_get_arrays(surface)
+		var points: PackedVector3Array = original[Mesh.ARRAY_VERTEX]
+		var indices: PackedInt32Array = original[Mesh.ARRAY_INDEX]
+		var uvs: PackedVector2Array = original[Mesh.ARRAY_TEX_UV]
+		var colors: PackedColorArray = original[Mesh.ARRAY_COLOR]
+		var vertices := PackedVector3Array(); var texture_uvs := PackedVector2Array(); var vertex_colors := PackedColorArray()
+		var count := indices.size() if not indices.is_empty() else points.size()
+		for triangle in range(0, count, 3):
+			for edge in 3:
+				var ia := indices[triangle + edge] if not indices.is_empty() else triangle + edge
+				var ib := indices[triangle + (edge + 1) % 3] if not indices.is_empty() else triangle + (edge + 1) % 3
+				var a := node.to_global(points[ia]); var b := node.to_global(points[ib])
+				if absf(a[axis] - float(center[axis])) > 1.0 / 256.0 or absf(b[axis] - float(center[axis])) > 1.0 / 256.0: continue
+				var vertical := absf(a[lateral] - b[lateral]) < 0.00001 and absf(absf(a[lateral] - float(center[lateral])) - width) < 1.0 / 256.0 and minf(a.y, b.y) >= float(center[1]) - height - 0.00001 and maxf(a.y, b.y) <= float(center[1]) + height + 0.00001
+				var ceiling := absf(a.y - float(center[1]) - height) < 0.00001 and absf(b.y - a.y) < 0.00001 and minf(a[lateral], b[lateral]) >= float(center[lateral]) - width - 0.00001 and maxf(a[lateral], b[lateral]) <= float(center[lateral]) + width + 0.00001
+				if not vertical and not ceiling: continue
+				var edge_key := _triangle_key(a, b, (a + b) * 0.5)
+				if seen.has(edge_key): continue
+				seen[edge_key] = true
+				var far_a := a; var far_b := b; a[axis] = minimum; b[axis] = minimum; far_a[axis] = maximum; far_b[axis] = maximum
+				for corner in [0, 1, 2, 1, 3, 2]:
+					vertices.append(inverse * [a, b, far_a, far_b][corner]); texture_uvs.append(uvs[ia if corner % 2 == 0 else ib]); vertex_colors.append(colors[ia if corner % 2 == 0 else ib])
+		if vertices.is_empty(): continue
+		var arrays: Array = []; arrays.resize(Mesh.ARRAY_MAX); arrays[Mesh.ARRAY_VERTEX] = vertices; arrays[Mesh.ARRAY_TEX_UV] = texture_uvs; arrays[Mesh.ARRAY_COLOR] = vertex_colors
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		var material := node.get_active_material(surface).duplicate() as ShaderMaterial
+		material.set_shader_parameter("double_sided", true); material.set_shader_parameter("room_clip_count", 0); material.set_shader_parameter("portal_clip_enabled", false); material.set_shader_parameter("portal_floor_clip_count", 0)
+		mesh.surface_set_material(mesh.get_surface_count() - 1, material)
+	if mesh.get_surface_count() == 0: return
+	var depth := MeshInstance3D.new(); depth.name = "DoorwayDepth"; depth.mesh = mesh; depth.set_meta("pc_doorway_depth", maximum - minimum); add_child(depth); portal_depth_views[key] = depth
 func _portal_by_key(key: String) -> Dictionary:
 	for portal: Dictionary in portal_layout:
 		if _portal_key(portal) == key: return portal
@@ -299,9 +467,12 @@ func _refresh_open_meshes(room_key: String, node_name: String) -> void:
 	var key := _mesh_key(room_key, node_name); var mesh_node: MeshInstance3D = mesh_nodes.get(room_key, {}).get(node_name)
 	if not is_instance_valid(mesh_node): return
 	var original: Mesh = source_meshes.get(key, mesh_node.mesh); var faces_by_surface := {}
-	for portal: Dictionary in portal_layout:
-		if not opened_portals.has(_portal_key(portal)): continue
-		for side in [[portal["source"], portal["source_panel"]], [portal["destination"], portal["destination_panel"]]]:
+	var candidates: Array = portal_layout.duplicate(); candidates.append_array(transition_doors.values())
+	for portal: Dictionary in candidates:
+		if not opened_portals.has(_portal_key(portal)) and not transition_doors.has(_portal_key(portal)): continue
+		var sides: Array = [[portal["source"], portal["source_panel"]]]
+		if portal.has("destination_panel"): sides.append([portal["destination"], portal["destination_panel"]])
+		for side in sides:
 			if _room_key(str(side[0]["stage"]), int(side[0]["area"])) != room_key or str(side[1]["node"]) != node_name: continue
 			for quad: Dictionary in side[1]["quads"]:
 				var surface := int(quad.get("primitive_index", side[1]["primitive_index"])); var triangles: Array = faces_by_surface.get(surface, []); triangles.append_array(quad["triangles_local"]); faces_by_surface[surface] = triangles
@@ -309,7 +480,7 @@ func _refresh_open_meshes(room_key: String, node_name: String) -> void:
 	_refresh_collision(mesh_node, mesh_node.mesh)
 	var entry: Dictionary = room_info[room_key]
 	preload("res://scripts/world/window_view.gd").apply(rooms[room_key], str(entry["stage"]), int(entry["area"]))
-func _mesh_without_faces(source: Mesh, faces_by_surface: Dictionary) -> Mesh:
+static func _mesh_without_faces(source: Mesh, faces_by_surface: Dictionary) -> Mesh:
 	if not source is ArrayMesh: return source
 	var result := ArrayMesh.new()
 	for surface in source.get_surface_count():
@@ -332,7 +503,7 @@ func _mesh_without_faces(source: Mesh, faces_by_surface: Dictionary) -> Mesh:
 		if material != null: result.surface_set_material(new_surface, material)
 		result.surface_set_name(new_surface, source.surface_get_name(surface))
 	return result
-func _remove_unindexed(arrays: Array, vertices: PackedVector3Array, wanted: Dictionary) -> Array:
+static func _remove_unindexed(arrays: Array, vertices: PackedVector3Array, wanted: Dictionary) -> Array:
 	var kept := PackedInt32Array()
 	for i in range(0, vertices.size(), 3):
 		if wanted.has(_triangle_key(vertices[i], vertices[i + 1], vertices[i + 2])): continue
@@ -346,7 +517,7 @@ func _remove_unindexed(arrays: Array, vertices: PackedVector3Array, wanted: Dict
 		if slot == Mesh.ARRAY_INDEX or arrays[slot] == null: continue
 		arrays[slot] = _filter_attribute(arrays[slot], kept, vertices.size())
 	return arrays
-func _filter_attribute(values: Variant, vertices: PackedInt32Array, vertex_count: int) -> Variant:
+static func _filter_attribute(values: Variant, vertices: PackedInt32Array, vertex_count: int) -> Variant:
 	if values is PackedVector2Array:
 		var vector2_result := PackedVector2Array(); for index in vertices: vector2_result.append(values[index]); return vector2_result
 	if values is PackedVector3Array:
@@ -361,7 +532,7 @@ func _filter_attribute(values: Variant, vertices: PackedInt32Array, vertex_count
 			for component in stride: packed_result.append(values[index * stride + component])
 		return packed_result
 	return values
-func _degenerate_attribute(values: Variant, old_vertex_count: int) -> Variant:
+static func _degenerate_attribute(values: Variant, old_vertex_count: int) -> Variant:
 	if values is PackedVector2Array: return PackedVector2Array([Vector2.ZERO, Vector2.ZERO, Vector2.ZERO])
 	if values is PackedVector3Array: return PackedVector3Array([Vector3.UP, Vector3.UP, Vector3.UP])
 	if values is PackedVector4Array: return PackedVector4Array([Vector4.ZERO, Vector4.ZERO, Vector4.ZERO])
@@ -371,11 +542,11 @@ func _degenerate_attribute(values: Variant, old_vertex_count: int) -> Variant:
 		for component in stride * 3: packed_result.append(0)
 		return packed_result
 	return values
-func _triangle_key(a: Variant, b: Variant, c: Variant) -> String:
+static func _triangle_key(a: Variant, b: Variant, c: Variant) -> String:
 	var points := [_as_vector3(a), _as_vector3(b), _as_vector3(c)]; var keys: Array[String] = []
 	for point: Vector3 in points: keys.append("%d,%d,%d" % [roundi(point.x * 65536.0), roundi(point.y * 65536.0), roundi(point.z * 65536.0)])
 	keys.sort(); return "%s|%s|%s" % [keys[0], keys[1], keys[2]]
-func _as_vector3(value: Variant) -> Vector3: return value if value is Vector3 else Vector3(float(value[0]), float(value[1]), float(value[2]))
+static func _as_vector3(value: Variant) -> Vector3: return value if value is Vector3 else Vector3(float(value[0]), float(value[1]), float(value[2]))
 func _add_collision(mesh_node: MeshInstance3D, mesh: Mesh) -> void:
 	var geometry := mesh.create_trimesh_shape()
 	if geometry == null: return
@@ -430,12 +601,67 @@ func _refresh_room_state() -> void:
 					material.set_shader_parameter("portal_clip_enabled", false); material.set_shader_parameter("room_clip_count", room_count); material.set_shader_parameter("room_clip_planes", room_planes); material.set_shader_parameter("room_clip_limits", room_limits); material.set_shader_parameter("portal_floor_clip_count", floor_count); material.set_shader_parameter("portal_floor_clip_planes", floor_planes); material.set_shader_parameter("portal_floor_clip_bounds", floor_bounds)
 			for body in node.get_children():
 				if not body is StaticBody3D: continue
-				body.collision_layer = (1 if body.name == "RoomCollision_1" else 4) if room_key == active_room_key else 0
+				if body.name == "RoomCollision_1": body.collision_layer = 1 if room_key == active_room_key and not bool(body.get_meta("native_floor_replaced", false)) else 0
+				if body.name == "GeneratedRoofPlayerCollision": body.collision_layer = 16 if room_key == active_room_key else 0
+		for body: StaticBody3D in rooms[room_key].find_children("NativePlacementFloor_*", "StaticBody3D", true, false): body.collision_layer = 1 if room_key == active_room_key else 0
 	for portal: Dictionary in portal_layout:
 		if not opened_portals.has(_portal_key(portal)): continue
 		var source_key := _room_key(str(portal["source"]["stage"]), int(portal["source"]["area"])); var destination_key := _room_key(str(portal["destination"]["stage"]), int(portal["destination"]["area"]))
 		if source_key == active_room_key and rooms.has(destination_key): _add_floor_support(destination_key, portal, false)
 		elif destination_key == active_room_key and rooms.has(source_key): _add_floor_support(source_key, portal, true)
+	_refresh_camera_layers()
+func _refresh_camera_layers() -> void:
+	camera_collision_rooms.clear()
+	for room_key in rooms:
+		var keep: bool = room_key == active_room_key or rooms[room_key].visible or _camera_inside_room(str(room_key))
+		if keep: camera_collision_rooms[room_key] = true
+		for node: MeshInstance3D in mesh_nodes[room_key].values():
+			var body := node.get_node_or_null("RoomCollision_4") as StaticBody3D
+			if body == null: continue
+			if keep:
+				var geometry := _camera_room_shape(str(room_key), node)
+				for child in body.get_children():
+					if child is CollisionShape3D and child.shape != geometry: child.shape = geometry
+			if body.collision_layer != (4 if keep else 0): body.collision_layer = 4 if keep else 0
+func _camera_inside_room(room_key: String) -> bool:
+	if not has_camera_space_position or not room_bounds[room_key].grow(body_radius).has_point(camera_space_position): return false
+	for portal: Dictionary in portal_layout:
+		var source_side := _room_key(str(portal["source"]["stage"]), int(portal["source"]["area"])) == room_key
+		if not source_side and _room_key(str(portal["destination"]["stage"]), int(portal["destination"]["area"])) != room_key: continue
+		var axis := 0 if str(portal["normal_axis"]) == "x" else 2
+		if (camera_space_position[axis] - float(portal["world_center"][axis])) * _outward_sign(portal, source_side) > body_radius: return false
+	return true
+func _camera_room_shape(room_key: String, node: MeshInstance3D) -> ConcavePolygonShape3D:
+	var clip_keys: Array[String] = []
+	var clips: Array[Dictionary] = []
+	for portal: Dictionary in portal_layout:
+		var portal_key := _portal_key(portal)
+		if not opened_portals.has(portal_key): continue
+		var source_side := _room_key(str(portal["source"]["stage"]), int(portal["source"]["area"])) == room_key
+		if not source_side and _room_key(str(portal["destination"]["stage"]), int(portal["destination"]["area"])) != room_key: continue
+		clip_keys.append(portal_key)
+		clips.append({"axis": 0 if str(portal["normal_axis"]) == "x" else 2, "plane": portal["world_center"][0 if str(portal["normal_axis"]) == "x" else 2], "outward": _outward_sign(portal, source_side)})
+	clip_keys.sort()
+	var signature := ",".join(PackedStringArray(clip_keys))
+	var cache_key := _mesh_key(room_key, str(node.name))
+	var cached: Dictionary = camera_shape_cache.get(cache_key, {})
+	if cached.get("mesh_id", -1) == node.mesh.get_instance_id() and cached.get("signature", "") == signature: return cached["shape"]
+	var geometry: ConcavePolygonShape3D
+	if clips.is_empty(): geometry = node.mesh.create_trimesh_shape() as ConcavePolygonShape3D
+	else:
+		var faces := node.mesh.get_faces()
+		var vertices := PackedVector3Array()
+		var inverse := node.global_transform.affine_inverse()
+		for index in range(0, faces.size(), 3):
+			var polygon: Array[Vector3] = [node.to_global(faces[index]), node.to_global(faces[index + 1]), node.to_global(faces[index + 2])]
+			for clip: Dictionary in clips:
+				if polygon.is_empty(): break
+				polygon = _clip_floor_triangle(polygon, int(clip["axis"]), float(clip["plane"]), float(clip["outward"]), 0.0)
+			for vertex in range(1, polygon.size() - 1): vertices.append(inverse * polygon[0]); vertices.append(inverse * polygon[vertex]); vertices.append(inverse * polygon[vertex + 1])
+		if not vertices.is_empty(): geometry = ConcavePolygonShape3D.new(); geometry.set_faces(vertices)
+	if geometry != null: geometry.backface_collision = true
+	camera_shape_cache[cache_key] = {"mesh_id": node.mesh.get_instance_id(), "signature": signature, "shape": geometry}
+	return geometry
 func _add_floor_support(room_key: String, portal: Dictionary, neighbor_is_source: bool) -> void:
 	var vertices := PackedVector3Array(); var axis := 0 if str(portal["normal_axis"]) == "x" else 2; var center: Array = portal["world_center"]; var plane := float(center[axis]); var outward := _outward_sign(portal, neighbor_is_source); var inverse := global_transform.affine_inverse()
 	for mesh_node: MeshInstance3D in mesh_nodes[room_key].values():
@@ -467,10 +693,12 @@ func _evict_unused() -> void:
 	for key in [active_room_key, previous_room_key, requested_room_key]:
 		if not str(key).is_empty(): keep[str(key)] = true
 	for key in visible_neighbor_keys: keep[str(key)] = true
+	for key in camera_collision_rooms: keep[str(key)] = true
 	for key in rooms.keys():
 		if keep.has(str(key)): continue
 		var room: Node = rooms[key]; rooms.erase(key); mesh_nodes.erase(key); var prefix := str(key) + ":"
 		for mesh_key in source_meshes.keys(): if str(mesh_key).begins_with(prefix): source_meshes.erase(mesh_key)
+		for mesh_key in camera_shape_cache.keys(): if str(mesh_key).begins_with(prefix): camera_shape_cache.erase(mesh_key)
 		room.queue_free()
 func _refresh_collision(mesh_node: MeshInstance3D, mesh: Mesh) -> void:
 	for child in mesh_node.get_children():
@@ -478,7 +706,7 @@ func _refresh_collision(mesh_node: MeshInstance3D, mesh: Mesh) -> void:
 		for item in child.get_children():
 			if item is not CollisionShape3D: continue
 			item.shape = mesh.create_trimesh_shape()
-			if child.collision_layer == 4 and item.shape is ConcavePolygonShape3D: (item.shape as ConcavePolygonShape3D).backface_collision = true
+			if child.name == "RoomCollision_4" and item.shape is ConcavePolygonShape3D: (item.shape as ConcavePolygonShape3D).backface_collision = true
 func _room_key(stage: String, area: int) -> String: return "%s:%d" % [stage, area]
 func _mesh_key(room_key: String, node_name: String) -> String: return room_key + ":" + node_name
 func _portal_key(portal: Dictionary) -> String:

@@ -6,6 +6,14 @@ const dat = path.join(root, "build", "disc-assets", "DAT");
 const inputDir = process.env.MML2_ASSET_DIR || dat;
 const mode = process.argv[2] || "--list";
 const wanted = process.argv[3] || "";
+function writeIfChanged(file, bytes) {
+    if (fs.existsSync(file) && fs.statSync(file).size === bytes.length && fs.readFileSync(file).equals(bytes)) return false;
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const temporary = file + ".tmp";
+    fs.writeFileSync(temporary, bytes);
+    fs.renameSync(temporary, file);
+    return true;
+}
 
 async function main() {
     const files = fs.readdirSync(inputDir).filter(name => name.toUpperCase().endsWith(".BIN")).sort().map(name => path.join(inputDir, name));
@@ -46,11 +54,9 @@ async function main() {
                 await page.locator("#model_list li").nth(modelIndex).click();
                 if (mode === "--preview") {
                     const previewDir = path.join(root, "build", "model-previews");
-                    fs.mkdirSync(previewDir, { recursive: true });
-                    await page.locator("#main").screenshot({ path: path.join(previewDir, `${name}.png`) });
+                    writeIfChanged(path.join(previewDir, `${name}.png`), await page.locator("#main").screenshot());
                     continue;
                 }
-                if (fs.existsSync(path.join(root, "assets", "converted", `${name}.glb`))) continue;
                 await page.locator("#export_name").fill(name);
                 const upload = page.waitForResponse(r => r.url().includes("/upload/") && r.request().method() === "POST", { timeout: 30000 });
                 await page.locator("#export_model").click();

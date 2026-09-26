@@ -10,7 +10,7 @@ func configure(view_camera: Camera3D, view_environment: Environment) -> bool:
 	if not is_instance_valid(view_camera) or environment == null: return false
 	set_meta("sky_profile", "flight_cloud_layer")
 	var path := "res://assets/opening/effects/ST02/atmosphere_1_primary.png"
-	if not FileAccess.file_exists(path): return false
+	if not ResourceLoader.exists(path, "Texture2D"): push_error("Missing flight cloud texture: " + path); return false
 	previous_background = environment.background_mode; previous_sky = environment.sky
 	material = ShaderMaterial.new(); material.shader = preload("res://shaders/environment_sky.gdshader"); material.set_shader_parameter("sky_zenith", Vector3(157.0 / 255.0, 166.0 / 255.0, 198.0 / 255.0)); material.set_shader_parameter("sky_mid", Vector3(160.0 / 255.0, 173.0 / 255.0, 199.0 / 255.0)); material.set_shader_parameter("sky_horizon", Vector3(160.0 / 255.0, 173.0 / 255.0, 193.0 / 255.0))
 	material.set_shader_parameter("cloud_texture", load(path))
@@ -21,4 +21,18 @@ func set_flying(value: bool) -> void:
 	if environment == null or sky == null: return
 	environment.background_mode = Environment.BG_SKY if flying else previous_background; environment.sky = sky if flying else previous_sky
 func _exit_tree() -> void:
-	if environment != null: environment.background_mode = previous_background; environment.sky = previous_sky
+	if environment != null and environment.sky == sky: environment.background_mode = previous_background; environment.sky = previous_sky
+func set_fog(enabled: bool) -> void:
+	if environment == null: return
+	environment.fog_enabled = enabled
+	if not enabled: return
+	environment.fog_mode = Environment.FOG_MODE_DEPTH
+	environment.fog_depth_begin = 12.0
+	environment.fog_depth_end = 28.0
+	environment.fog_depth_curve = 1.0
+	environment.fog_density = 1.0
+	environment.fog_light_color = Color(160.0 / 255.0, 173.0 / 255.0, 193.0 / 255.0)
+	environment.fog_light_energy = 1.0
+	environment.fog_sky_affect = 0.0
+	environment.fog_height_density = 0.0
+	environment.fog_sun_scatter = 0.0

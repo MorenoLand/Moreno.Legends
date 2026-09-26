@@ -5,6 +5,7 @@ var area: Dictionary = {}
 var explored: Dictionary = {}
 var position_in_area := Vector3.ZERO
 var heading := 0.0
+var display_enabled := true
 var scroll := Vector2.ZERO
 var arrow := PackedVector2Array()
 var arrow_colors := PackedColorArray([Color8(63, 255, 255), Color8(0, 63, 255), Color8(0, 63, 255)])
@@ -29,7 +30,10 @@ func configure(stage: String) -> void:
 		return
 	areas = manifest["areas"]
 	atlas = load(path.get_base_dir().path_join(str(manifest["atlas"]))) as Texture2D
-	show()
+	visible = display_enabled
+func set_display_enabled(value: bool) -> void:
+	display_enabled = value
+	visible = value and atlas != null and not areas.is_empty()
 func set_area(index: int) -> void:
 	for entry: Dictionary in areas:
 		if int(entry["index"]) == index:

@@ -1,0 +1,195 @@
+{
+  "image": "alphabet.png",
+  "font": "alphabet.fnt",
+  "dimensions": [
+    2172,
+    724
+  ],
+  "characters": " ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+  "artwork": "User-approved generated alphabet based on original title lettering; custom artwork, not an original ISO font.",
+  "glyphs": [
+    {
+      "character": "A",
+      "x": 28,
+      "y": 156,
+      "width": 154,
+      "height": 167
+    },
+    {
+      "character": "B",
+      "x": 211,
+      "y": 161,
+      "width": 131,
+      "height": 154
+    },
+    {
+      "character": "C",
+      "x": 374,
+      "y": 156,
+      "width": 144,
+      "height": 166
+    },
+    {
+      "character": "D",
+      "x": 537,
+      "y": 161,
+      "width": 135,
+      "height": 154
+    },
+    {
+      "character": "E",
+      "x": 701,
+      "y": 163,
+      "width": 125,
+      "height": 152
+    },
+    {
+      "character": "F",
+      "x": 860,
+      "y": 163,
+      "width": 132,
+      "height": 153
+    },
+    {
+      "character": "G",
+      "x": 1025,
+      "y": 156,
+      "width": 136,
+      "height": 170
+    },
+    {
+      "character": "H",
+      "x": 1189,
+      "y": 162,
+      "width": 146,
+      "height": 154
+    },
+    {
+      "character": "I",
+      "x": 1377,
+      "y": 161,
+      "width": 87,
+      "height": 154
+    },
+    {
+      "character": "J",
+      "x": 1464,
+      "y": 162,
+      "width": 136,
+      "height": 162
+    },
+    {
+      "character": "K",
+      "x": 1632,
+      "y": 163,
+      "width": 142,
+      "height": 156
+    },
+    {
+      "character": "L",
+      "x": 1810,
+      "y": 162,
+      "width": 137,
+      "height": 154
+    },
+    {
+      "character": "M",
+      "x": 1976,
+      "y": 157,
+      "width": 166,
+      "height": 168
+    },
+    {
+      "character": "N",
+      "x": 29,
+      "y": 399,
+      "width": 142,
+      "height": 164
+    },
+    {
+      "character": "O",
+      "x": 193,
+      "y": 400,
+      "width": 141,
+      "height": 164
+    },
+    {
+      "character": "P",
+      "x": 355,
+      "y": 404,
+      "width": 135,
+      "height": 152
+    },
+    {
+      "character": "Q",
+      "x": 504,
+      "y": 400,
+      "width": 140,
+      "height": 189
+    },
+    {
+      "character": "R",
+      "x": 669,
+      "y": 403,
+      "width": 147,
+      "height": 156
+    },
+    {
+      "character": "S",
+      "x": 837,
+      "y": 406,
+      "width": 135,
+      "height": 152
+    },
+    {
+      "character": "T",
+      "x": 999,
+      "y": 406,
+      "width": 136,
+      "height": 152
+    },
+    {
+      "character": "U",
+      "x": 1163,
+      "y": 405,
+      "width": 137,
+      "height": 160
+    },
+    {
+      "character": "V",
+      "x": 1317,
+      "y": 403,
+      "width": 148,
+      "height": 162
+    },
+    {
+      "character": "W",
+      "x": 1479,
+      "y": 405,
+      "width": 161,
+      "height": 160
+    },
+    {
+      "character": "X",
+      "x": 1657,
+      "y": 404,
+      "width": 156,
+      "height": 155
+    },
+    {
+      "character": "Y",
+      "x": 1825,
+      "y": 404,
+      "width": 161,
+      "height": 154
+    },
+    {
+      "character": "Z",
+      "x": 1986,
+      "y": 405,
+      "width": 156,
+      "height": 153
+    }
+  ],
+  "usage": "Load res://assets/menu/title_font/alphabet.fnt as Font, assign to a Label or Button font override, use uppercase text and nearest texture filtering."
+}
