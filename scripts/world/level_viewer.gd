@@ -27,7 +27,9 @@ func _select_area(index: int) -> void:
 	level.queue_free()
 	level = scene.instantiate() as Node3D
 	level.name = "Level"
+	level.set_meta("native_map_face_flags", bool(areas[index].get("native_map_face_flags_in_alpha", false)))
 	add_child(level)
+	preload("res://scripts/world/native_material.gd").apply(level)
 	await get_tree().process_frame
 	_frame_level()
 func _frame_level() -> void:

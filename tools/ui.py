@@ -359,7 +359,7 @@ def native_message_handler(opcode):
 def native_message_commands(data, payload_offset, payload_size, message_offset, raw):
 	return native_program_trace(data, payload_offset, payload_size, message_offset, [])['commands']
 def native_program_trace(data, payload_offset, payload_size, message_offset, entry_offsets):
-	lengths = {0x05: 4, 0x06: 8, 0x08: 4, 0x09: 3, 0x0E: 3, 0x0F: 3, 0x11: 3, 0x15: 13, 0x16: 6, 0x18: 2, 0x21: 3, 0x24: 2, 0x26: 4, 0x27: 4, 0x28: 6, 0x2A: 7, 0x2B: 2, 0x2C: 3, 0x30: 3, 0x31: 2, 0x33: 3, 0x38: 3, 0x39: 3, 0x3E: 4, 0x3F: 5}; cursor = message_offset + 2; text_mode = False; runs = []; commands = []; unresolved = []; status = "bank_end"
+	lengths = {0x05: 4, 0x06: 8, 0x08: 4, 0x09: 3, 0x0E: 3, 0x0F: 3, 0x11: 3, 0x15: 13, 0x16: 6, 0x18: 2, 0x19: 4, 0x1D: 2, 0x21: 3, 0x24: 2, 0x26: 4, 0x27: 4, 0x28: 6, 0x29: 3, 0x2A: 7, 0x2B: 2, 0x2C: 3, 0x30: 3, 0x31: 2, 0x33: 3, 0x37: 7, 0x38: 3, 0x39: 3, 0x3E: 4, 0x3F: 5}; cursor = message_offset + 2; text_mode = False; runs = []; commands = []; unresolved = []; status = "bank_end"
 	for _ in range(2048):
 		if cursor >= payload_size: break
 		value = data[payload_offset + cursor]
@@ -397,6 +397,15 @@ def native_program_trace(data, payload_offset, payload_size, message_offset, ent
 		elif opcode in (0x18, 0x24): command.update(effect="page_advance_wait", continuation_arrow=opcode == 0x18, native_wait="Cross pressed or Triangle previously held advances the existing page; no branch argument", source="SLES4D060 sets flag10;4DB84 also sets200000 which suppresses arrow at4B7C0..4B7D4")
 		elif opcode in (0x26, 0x27): command.update(effect="event_flag_set" if opcode == 0x26 else "event_flag_clear", flag_id=(args[0] << 8) | args[1])
 		elif opcode == 0x2C: command.update(effect="player_flags_bit2", enabled=bool(args[0]), source_player="0x8008C0A0 byte0 bit0x02", source_consumer="SLES0x80023110 gates231C8; mesh-visibility semantic is not yet established")
+		elif opcode == 0x29: command.update(effect="message_context_flags", set_mask=0x20000 if args[0] == 0 else 0, clear_mask=0 if args[0] == 0 else 0x20000, predicate="argument==0 sets bit0x20000; nonzero clears", source="SLES0x8004DDC8..4DE14")
+		elif opcode == 0x1D: command.update(effect="message_context_flags", set_mask=0, clear_mask=0x10000, source="SLES0x8004D23C..4D260")
+		elif opcode == 0x19: command.update(effect="native_sound_cue", sound_id=(args[0] << 8) | args[1], source="SLES0x8004D0D8..4D118 calls0x80020160")
+		elif opcode == 0x31: command.update(effect="native_noop", source="SLES0x80048288..4829C advances2 and returns0x101")
+		elif opcode == 0x08: command.update(effect="native_delay_wait", delay_ticks=(args[0] << 8) | args[1], wait_updates=((args[0] << 8) | args[1]) + 1, tick_rate=25, source="SLES0x8004C568..4C5E0 sets context+4 then decrements until signed16=-1")
+		elif opcode == 0x37:
+			mode = args[0]; delta = int.from_bytes(args[1:5], "big", signed=True); command.update(effect="native_saved_u16_add" if mode in (1, 2) else "native_wallet_add", mode=mode, delta=delta, value_address=hex(0x8009C7E8 + (0x78 if mode == 1 else 0x7A)) if mode in (1, 2) else "0x8009C810", source="SLES0x8004E2E8..4E394")
+			if mode in (1, 2): command.update(wrapping_bits=16)
+			else: command.update(maximum=0x98967F, minimum_predicate="old_wallet>=-delta", insufficient_effect="Leave wallet unchanged; helper returns-1", helper="SLES0x80043E78..43EBC")
 		elif opcode == 0x3E:
 			delta = (args[0] << 8) | args[1]; command.update(effect="native_saved_stat_add", delta=delta - 65536 if delta & 32768 else delta, value_address="0x8009C828", classification_address="0x8009C82C", saturation=[-32767, 32767], helper="SLES0x80043EC0", classification_rules={"class0_to_1_if_value_below": 12288, "class2_to_1_if_value_at_least": -12287, "force_class0_if_value_above": 16384, "force_class2_if_value_below": -16384})
 		elif opcode == 0x15:

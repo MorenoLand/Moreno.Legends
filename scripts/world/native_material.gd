@@ -25,6 +25,7 @@ static func apply(root: Node3D, color_scale: float = 255.0) -> void:
 			material.set_shader_parameter("albedo_texture", source.albedo_texture)
 			material.set_shader_parameter("color_scale", color_scale)
 			material.set_shader_parameter("double_sided", source.cull_mode == BaseMaterial3D.CULL_DISABLED)
+			material.set_shader_parameter("part_visible", not source.resource_name.ends_with("_default_hidden"))
 			material.set_shader_parameter("coplanar_overlay_flags", bool(mesh.mesh.get_meta("coplanar_overlays", false)))
 			mesh.set_surface_override_material(surface, material)
 static func depth_cue(root: Node3D, parameters: Dictionary) -> void:

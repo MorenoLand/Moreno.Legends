@@ -10,11 +10,11 @@ static func apply(level: Node3D, source: Dictionary, area: int, native_context: 
 		if int(record["kind"]) >> 8 == 15 and (int(record["mask"]) & 0x8000) == 0: automatic[placement] = true
 		if int(record["kind"]) < 0x100 and int(record["mask"]) != 0: groups[placement].append(record)
 	for placement: int in groups:
-		var records: Array = groups[placement]; var ramp := false; var volume := false; var unported := false
+		var records: Array = groups[placement]; var ramp := false; var unported := false
 		for record: Dictionary in records:
-			var kind := int(record["kind"]); ramp = ramp or SIMPLE_RAMP_ORIENTATION.has(kind) or DIAGONAL_ORIENTATION.has(kind); volume = volume or kind == 0x1C or kind in TRIANGULAR_PRISM
+			var kind := int(record["kind"]); ramp = ramp or (SIMPLE_RAMP_ORIENTATION.has(kind) and kind not in [0x04, 0x05, 0x06, 0x07]) or DIAGONAL_ORIENTATION.has(kind)
 			if kind not in [0, 0x1C] and kind not in TRIANGULAR_PRISM and not SIMPLE_RAMP_ORIENTATION.has(kind) and not DIAGONAL_ORIENTATION.has(kind): unported = true
-		if not ramp and not volume and not automatic.has(placement): continue
+		if not ramp and not automatic.has(placement): continue
 		var meshes := level.find_children("placement_%03d_model_*" % placement, "MeshInstance3D", true, false)
 		if meshes.is_empty(): continue
 		var body := StaticBody3D.new(); body.name = "NativePlacementFloor_%03d" % placement; body.collision_layer = 1; body.collision_mask = 0
@@ -48,7 +48,7 @@ static func apply(level: Node3D, source: Dictionary, area: int, native_context: 
 			if not unported:
 				for mesh: MeshInstance3D in meshes:
 					for child in mesh.get_children():
-						if child is StaticBody3D and child.collision_layer == 1: child.collision_layer = 0; child.set_meta("native_floor_replaced", true)
+						if child is StaticBody3D and (child.collision_layer == 1 or child.name == "RoomCollision_1"): child.collision_layer = 0; child.set_meta("native_floor_replaced", true)
 			level.add_child(body); count += 1
 		else: body.free()
 	return count

@@ -13,7 +13,8 @@ func _ready() -> void:
 	modulate.a = 0.0
 func announce(main_area: String, subarea: String) -> void:
 	if fade != null and fade.is_valid(): fade.kill()
-	text = main_area + ("\n" + subarea if not subarea.is_empty() and not subarea.begins_with("Area ") else "")
+	var repeats := subarea.strip_edges().to_lower() == main_area.strip_edges().to_lower()
+	text = main_area + ("\n" + subarea if not subarea.is_empty() and not subarea.begins_with("Area ") and not repeats else "")
 	add_theme_font_size_override("font_size", maxi(12, roundi(get_viewport_rect().size.y / 240.0 * 10.0)))
 	modulate.a = 0.0
 	fade = create_tween()

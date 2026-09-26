@@ -41,7 +41,7 @@ class Stage:
 		self.data, _ = decompress_section(source, 0); b = self.data; self.base = read_u32(b, 0) * 4; self.placement_base = read_u32(b, 4) * 4; count = read_u32(b, 8)
 		if not 3 <= count <= 256 or not count * 4 <= self.base < self.placement_base <= len(b): raise ValueError("invalid stage section table")
 		self.grids = [count * 4] + [read_u32(b, i * 4) * 4 for i in range(3, count)]; self.directories = [struct.unpack_from("<3I", b, self.base + 4 + i * 12) for i in range(read_u32(b, self.base))]
-		self.placement_count, self.scripted_count = struct.unpack_from("<2H", b, self.placement_base); self.placements = [struct.unpack_from("<HBBHBB", b, self.placement_base + 4 + i * 8) for i in range(self.placement_count)]; self.cache = {}
+		self.placement_count, self.scripted_count = struct.unpack_from("<2H", b, self.placement_base); self.placements = [struct.unpack_from("<HBBHBB", b, self.placement_base + 4 + i * 8) for i in range(self.placement_count)]; self.cache = {}; self.face_metadata = {}
 	def area(self, index):
 		b = self.data; start = self.grids[index]; x, z, end_x, end_z = b[start:start + 4]
 		if max(x, z, end_x, end_z) >= 128 or x > end_x or z > end_z: return None
@@ -55,7 +55,7 @@ class Stage:
 		if pointer in self.cache: return self.cache[pointer]
 		b = self.data; start = self.base + pointer * 4; sub_count, material_count, shift, extra = struct.unpack_from("<4B", b, start)
 		if not sub_count or not material_count or shift > 12 or extra: raise ValueError(f"unsupported map model header {pointer:#x}")
-		materials = [struct.unpack_from("<2H", b, start + 4 + i * 4) for i in range(material_count)]; groups = defaultdict(list)
+		materials = [struct.unpack_from("<2H", b, start + 4 + i * 4) for i in range(material_count)]; groups = defaultdict(list); metadata = defaultdict(list); order = 0
 		for s in range(sub_count):
 			vertex, count, uv, color = struct.unpack_from("<4H", b, start + 4 + material_count * 4 + s * 8); cursor = self.base + vertex * 4; uv_base = self.base + uv * 4; color_base = self.base + color * 4; remaining = 0; previous = None
 			for face in range(count):
@@ -66,9 +66,9 @@ class Stage:
 				material = new[1][3] & 63
 				if material >= material_count: raise ValueError(f"model {pointer:#x} face {face} selects missing material {material}")
 				coordinates = [(-(p[0] << shift) * UNIT, -(p[1] << shift) * UNIT, (p[2] << shift) * UNIT) for p in points]; texcoords = struct.unpack_from("<8B", b, uv_base + face * 8); brightness = struct.unpack_from("<4B", b, color_base + face * 4); flag = new[0][3]
-				groups[(materials[material], bool(flag & 32), flag & 3)].append((coordinates, [(texcoords[i * 2] + 0.5, texcoords[i * 2 + 1] + 0.5) for i in range(4)], brightness)); previous = points
+				key = (materials[material], bool(flag & 32), flag & 3); groups[key].append((coordinates, [(texcoords[i * 2] + 0.5, texcoords[i * 2 + 1] + 0.5) for i in range(4)], brightness)); metadata[key].append({"flags": flag, "order": order, "stream": s, "face": face}); order += 1; previous = points
 			if remaining: raise ValueError(f"model {pointer:#x} ends inside a quad strip")
-		self.cache[pointer] = groups
+		self.cache[pointer] = groups; self.face_metadata[pointer] = metadata
 		return groups
 def terrain_binding(path, area):
 	return map_config_info(path.read_bytes(), area, path.name)
@@ -144,18 +144,23 @@ class Glb:
 			image = len(self.document["images"]); self.document["images"].append({"bufferView": self.buffer(self.texture_cache[page]), "mimeType": "image/png"}); texture = len(self.document["textures"]); self.document["textures"].append({"sampler": 0, "source": image}); self.pages[page] = texture
 		index = len(self.document["materials"]); self.document["materials"].append({"name": f"clut_{page[0]:04x}_page_{page[1]:04x}", "pbrMetallicRoughness": {"baseColorTexture": {"index": self.pages[page]}, "metallicFactor": 0, "roughnessFactor": 1}, "alphaMode": "MASK", "alphaCutoff": 0.01, "doubleSided": two_sided, "extensions": {"KHR_materials_unlit": {}}, "extras": {"psx_blend": blend}}); self.materials[key] = index
 		return index
-	def mesh(self, pointer, groups):
+	def mesh(self, pointer, groups, face_metadata=None):
 		if pointer in self.meshes: return self.meshes[pointer]
 		primitives = []
 		for key, faces in groups.items():
-			positions = []; uvs = []; colors = []
-			for coordinates, texcoords, brightness in faces:
-				for i in (0, 2, 1, 1, 2, 3): positions.extend(coordinates[i]); uvs.extend(v / 256 for v in texcoords[i]); colors.extend([brightness[i] / 255] * 3 + [1])
-			primitives.append({"attributes": {"POSITION": self.accessor(positions, 3, True), "TEXCOORD_0": self.accessor(uvs, 2), "COLOR_0": self.accessor(colors, 4)}, "material": self.material(key), "mode": 4})
+			positions = []; uvs = []; colors = []; native_faces = []
+			for face, (coordinates, texcoords, brightness) in enumerate(faces):
+				metadata = face_metadata[key][face] if face_metadata else None
+				for i in (0, 2, 1, 1, 2, 3):
+					positions.extend(coordinates[i]); uvs.extend(v / 256 for v in texcoords[i]); colors.extend([brightness[i] / 255] * 3 + [metadata["flags"] / 255 if metadata else 1])
+					if metadata: native_faces.extend((metadata["order"], metadata["flags"]))
+			attributes = {"POSITION": self.accessor(positions, 3, True), "TEXCOORD_0": self.accessor(uvs, 2), "COLOR_0": self.accessor(colors, 4)}
+			if face_metadata: attributes["TEXCOORD_1"] = self.accessor(native_faces, 2)
+			primitives.append({"attributes": attributes, "material": self.material(key), "mode": 4})
 		index = len(self.document["meshes"]); self.document["meshes"].append({"name": f"map_mesh_{pointer:04x}", "primitives": primitives}); self.meshes[pointer] = index
 		return index
-	def instance(self, name, pointer, groups, translation):
-		mesh = self.mesh(pointer, groups); index = len(self.document["nodes"]); self.document["nodes"].append({"name": name, "mesh": mesh, "translation": translation}); self.document["scenes"][0]["nodes"].append(index)
+	def instance(self, name, pointer, groups, translation, face_metadata=None):
+		mesh = self.mesh(pointer, groups, face_metadata); index = len(self.document["nodes"]); self.document["nodes"].append({"name": name, "mesh": mesh, "translation": translation}); self.document["scenes"][0]["nodes"].append(index)
 		for faces in groups.values():
 			for points, _, _ in faces: self.bounds.extend(tuple(p[k] + translation[k] for k in range(3)) for p in points)
 	def save(self, path):
@@ -174,8 +179,8 @@ def export_maps(stage_name, input_dir, output_dir):
 		for placement_id in ids:
 			state, model_id, flags, height, x, z = stage.placements[placement_id]; a, h, directory = stage.directories[model_id]; variant = flags & 3; variants = ((h >> 24) & 1) + 1
 			if variant >= variants: raise ValueError(f"placement {placement_id} selects invalid variant {variant}")
-			pointer = read_u16(stage.data, stage.base + (directory & 65535) * 4 + variant * 12); groups = stage.model(pointer); tile = tiles[(x, z)]; oy = 0x400 - tile[6] * 16 - ((height & 0x7f00) >> 4); translation = [-((x << 9) - (0x7e00 if h & 0x10000000 else 0x7f00)) * UNIT, -oy * UNIT, ((z << 9) - (0x7e00 if h & 0x20000000 else 0x7f00)) * UNIT]; glb.instance(f"placement_{placement_id:03d}_model_{model_id:03d}", pointer, groups, translation); quads += sum(len(f) for f in groups.values())
-		name = f"area_{index:02d}.glb"; bounds = glb.save(destination / name); areas.append({"index": index, "file": name, "placements": len(ids), "models": len(glb.meshes), "quads": quads, "bounds": bounds}); print(f"{stage_name}/{name}: {len(ids)} placements, {quads} quads, {len(glb.pages)} texture pages")
+			pointer = read_u16(stage.data, stage.base + (directory & 65535) * 4 + variant * 12); groups = stage.model(pointer); tile = tiles[(x, z)]; oy = 0x400 - tile[6] * 16 - ((height & 0x7f00) >> 4); translation = [-((x << 9) - (0x7e00 if h & 0x10000000 else 0x7f00)) * UNIT, -oy * UNIT, ((z << 9) - (0x7e00 if h & 0x20000000 else 0x7f00)) * UNIT]; glb.instance(f"placement_{placement_id:03d}_model_{model_id:03d}", pointer, groups, translation, stage.face_metadata[pointer]); quads += sum(len(f) for f in groups.values())
+		name = f"area_{index:02d}.glb"; bounds = glb.save(destination / name); areas.append({"index": index, "file": name, "placements": len(ids), "models": len(glb.meshes), "quads": quads, "bounds": bounds, "native_map_face_flags_in_alpha": True}); print(f"{stage_name}/{name}: {len(ids)} placements, {quads} quads, {len(glb.pages)} texture pages")
 	manifest = {"stage": stage_name, "coordinate_basis": COORDINATE_BASIS, "source_sha256": hashlib.sha256(source).hexdigest(), "textures_sha256": hashlib.sha256(texture_path.read_bytes()).hexdigest(), "texture_sections": texture_count, "areas": areas}; write_if_changed(destination / "manifest.json", json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 	return manifest
 def maps_cli():
@@ -393,24 +398,40 @@ def floor_collision_manifest(path):
 def bind_route_contacts(routes, floors):
 	for route in routes:
 		matches = [box for box in floors.get(str(route["source_area"]), {}).get("boxes", []) if box["kind"] >= 0x100 and box["contact_raw"] == route["source_transform_raw"][:3]]
-		route["native_contacts"] = [{**box, "type": box["kind"] >> 8, "automatic": box["kind"] == 0xF00, "probe_forward_raw": -64 if box["mask"] & 0x8000 else 0, "source_consumer": "GAME0x800B8588;type15:0x800B8134->0x800B8460"} for box in matches]
+		route["native_contacts"] = []
+		for box in matches:
+			contact = {**box, "type": box["kind"] >> 8, "automatic": box["kind"] == 0xF00, "probe_forward_raw": -64 if box["mask"] & 0x8000 else 0, "source_consumer": "GAME0x800B8588;type15:0x800B8134->0x800B8460"}
+			if contact["type"] == 2: contact["native_probe"] = {"source": "GAME0x800B8588..0x800B8750; SLES0x8005FE44/0x8005F4D4", "player_position_fields": ["+0x12 X", "+0x16 Y", "+0x1A Z"], "position_scale": "signed16 native units at 1/256 map unit", "sweep_local_raw": [0, 0, -64], "sweep_yaw_source": "player+0x2A through SLES0x8005FE44", "vertical_test": "player+0x16 remains unchanged across the forward sweep; no vertical capsule half-height expansion in this probe"}
+			route["native_contacts"].append(contact)
 	return routes
 
-NATIVE_SCRIPTED_INTERACTIONS = {"ST04": {(1, 0): (0x800E8190, 0x800E84C4, 2, False), (96, 0): (0x800E9DB0, 0x800EA15C, 0, False)}, "ST08": {(0, 0): (0x800E78CC, 0x800E7D4C, 0, False), (0, 1): (0x800E93EC, 0x800E9A1C, 0, True), (0, 2): (0x800EBFFC, 0x800EC58C, 0, True), (1, 0): (0x800EA4F4, 0x800EA828, 2, False)}, "ST09": {(0, 0): (0x800E81EC, 0x800E866C, 0, False)}}
-def bind_scripted_interactions(stage, records, overlay):
+NATIVE_SCRIPTED_INTERACTIONS = {"ST04": {(1, 0): (0x800E8190, 0x800E84C4, 2, False), (96, 0): (0x800E9DB0, 0x800EA15C, 0, False)}, "ST08": {(0, 0): (0x800E78CC, 0x800E7D4C, 0, False), (0, 1): (0x800E93EC, 0x800E9A1C, 0, True), (0, 2): (0x800EBFFC, 0x800EC58C, 0, True), (1, 0): (0x800EA4F4, 0x800EA828, 2, False)}, "ST09": {(0, 0): (0x800E81EC, 0x800E866C, 0, False)}, "ST0A": {(0, 0): (0x800E8920, 0x800E8DA0, 0, False)}, "ST0C": {(0, 0): (0x800E752C, 0x800E79AC, 0, False)}, "ST47": {(0, 0): (0x800E8600, 0x800E8A80, 0, False)}}
+NATIVE_INTERACTION_TARGETS = {"ST08": {(0, 0): (0x800F2928, 0x800F2934), (0, 1): (0x800F2C50, 0x800F2C50), (1, 0): (0x800F32A4, 0x800F32A4)}, "ST09": {(0, 0): (0x800F2750, 0x800F275C)}, "ST0A": {(0, 0): (0x800EFA8C, 0x800EFA98)}, "ST0C": {(0, 0): (0x800EAED8, 0x800EAEE4)}, "ST47": {(0, 0): (0x800ED074, 0x800ED080)}}
+def bind_scripted_interactions(stage, records, overlay, source_key="source_bytes_hex", address_key="source_record_ram"):
 	base = read_u32(overlay, 12)
 	for record in records:
-		raw = bytes.fromhex(record["source_bytes_hex"]); profile = NATIVE_SCRIPTED_INTERACTIONS.get(stage, {}).get((raw[4], raw[5])) if len(raw) == 20 and raw[2] == 0x20 else None
+		raw = bytes.fromhex(record[source_key]); profile = NATIVE_SCRIPTED_INTERACTIONS.get(stage, {}).get((raw[4], raw[5])) if len(raw) == 20 and raw[2] == 0x20 else None
 		if profile is None: continue
+		targets = NATIVE_INTERACTION_TARGETS.get(stage, {}).get((raw[4], raw[5]))
+		if targets and targets[0] != targets[1] and raw[11] == 255: record.pop("native_interaction", None); continue
 		actor_callback, request, kind, signed = profile; offset = 48 + request - base
 		if not 48 <= offset <= len(overlay) - 8 or read_u32(overlay, offset) != 0x0C02F8B8: raise ValueError(f"{stage} scripted interaction source call differs at {request:#x}")
 		if not any(read_u32(overlay, at) >> 26 == (0x20 if signed else 0x24) and read_u32(overlay, at) & 65535 == 0x0F for at in range(offset - 20, offset, 4)): raise ValueError(f"{stage} scripted interaction index load differs at {request:#x}")
-		record["native_private_raw"] = list(raw[8:12]); record["native_interaction"] = {"stage": stage, "actor_class": raw[4], "actor_state": raw[5], "actor_callback": hex(actor_callback), "request_call": hex(request), "request_api": "0x800BE2E0", "request_kind": kind | ((raw[9] >> 2) & 0x10) if not signed else kind, "message_call": "0x800BDCF8", "message_index": raw[11] - 256 if signed and raw[11] & 128 else raw[11], "index_source": ("signed" if signed else "unsigned") + " actor+0x0F copied from record byte0x0B", "window": 0, "selected_actor_gate": "GAME0x800D0154 requires player+1D0 low24bits equal actor and bit24 set", "bank_id": "0x8010C000", "source_record_ram": record["source_record_ram"]}
+		record["native_private_raw"] = list(raw[8:12]); record["native_interaction"] = {"stage": stage, "actor_class": raw[4], "actor_state": raw[5], "actor_callback": hex(actor_callback), "request_call": hex(request), "request_api": "0x800BE2E0", "request_kind": kind | ((raw[9] >> 2) & 0x10) if not signed else kind, "message_call": "0x800BDCF8", "message_index": raw[11] - 256 if signed and raw[11] & 128 else raw[11], "index_source": ("signed" if signed else "unsigned") + " actor+0x0F copied from record byte0x0B", "window": 0, "selected_actor_gate": "GAME0x800D0154 requires player+1D0 low24bits equal actor and bit24 set", "bank_id": "0x8010C000", "source_record_ram": record[address_key]}
+		if targets:
+			pointer = targets[bool(raw[9] & 8)]; descriptor = list(struct.unpack_from("<6h", overlay, 48 + pointer - base)); record["native_interaction"].update(target_descriptor_raw=descriptor, target_descriptor_source=hex(pointer), target_flags60=1, target_selector_source="GAME0x800CC2F0/0x800CC5B4", target_criteria={"range_extra_raw": 192, "yaw_half_cone_raw": 512, "strict_bounds": True, "descriptor_xyz_rotated": False, "score": "integer3Ddistance+(absYawDelta>>2)", "line_of_sight": False})
 	return records
 
-REFERENCE = "https://dwn009.fandom.com/wiki/Mega_Man_Legends_2/Locations"
 STAGE_NAMES = {"ST00": "Debug area", "ST01": "World map", "ST02": "Sulphur-Bottom opening", "ST03": "Flutter opening", **dict.fromkeys(["ST04", "ST05", "ST06", "ST07"], "Flutter"), **dict.fromkeys(["ST08", "ST09", "ST0A", "ST0B", "ST0C", "ST47"], "Yosyonke City"), **dict.fromkeys(["ST0D", "ST0E"], "Calinca Tundra"), "ST0F": "Abandoned Mine", **dict.fromkeys(["ST10", "ST11", "ST1D"], "Forbidden Island"), **dict.fromkeys(["ST12", "ST13", "ST14"], "Manda Ruins"), **dict.fromkeys(["ST15", "ST16", "ST18", "ST19"], "Nino Island"), "ST17": "King Glydon", **dict.fromkeys(["ST1A", "ST1B"], "Ruminoa City"), "ST1C": "Forbidden Island / Sulphur-Bottom scenes", "ST1E": "Flutter fire", **dict.fromkeys(["ST1F", "ST30", "ST31"], "Glyde's Base"), "ST20": "Kito Village", **dict.fromkeys(["ST21", "ST22", "ST23"], "Calbania Plains"), "ST24": "Pokte Plains", "ST25": "Pokte Village", **dict.fromkeys(["ST26", "ST27", "ST28", "ST33", "ST34"], "Saul Kada Ruins"), **dict.fromkeys(["ST29", "ST2A", "ST2B", "ST2C", "ST3B", "ST3C"], "Kimotoma City"), **dict.fromkeys(["ST2D", "ST2E", "ST2F"], "Calinca Ruins"), "ST32": "Pokte Mayor's Home", **dict.fromkeys(["ST35", "ST36", "ST37", "ST38"], "Nino Ruins"), "ST39": "Flutter new-game scene", "ST3A": "Sulphur-Bottom / Forbidden Island scenes", **dict.fromkeys(["ST3D", "ST3E", "ST3F", "ST4B"], "Sulphur-Bottom"), "ST40": "Elysium", **dict.fromkeys(["ST41", "ST42"], "Defense Area"), **dict.fromkeys(["ST43", "ST44", "ST45", "ST4C", "ST58", "ST5C"], "Mother Zone"), "ST46": "Nino Island / Flutter scenes", "ST48": "Saul Kada Desert", "ST49": "Flutter / Dropship scenes", "ST4A": "Tutorial", "ST4D": "Guild Ruins", **dict.fromkeys(["ST4E", "ST51"], "Pokte Caverns"), "ST4F": "Kito Caverns", "ST50": "Kimotoma Caverns", "ST52": "Sera / Master scenes", "ST53": "Calinca Tundra scenes", "ST54": "Rocket launch ending", "ST55": "License Test Ruins", "ST56": "Master's Room", "ST57": "Game credits", "ST59": "Manda Circuit", "ST5A": "Calinca Circuit", "ST5B": "Saul Kada Circuit"}
 LOCATIONS = (("ST04", 0, "Flutter Bridge"), ("ST04", 1, "Flutter Deck 1"), ("ST04", 2, "Flutter Lab"), ("ST05", 0, "Flutter MegaMan's Room"), ("ST05", 1, "Flutter Roll's Room"), ("ST05", 2, "Flutter Barrell's Room"), ("ST06", 0, "Flutter Deck 2"), ("ST06", 1, "Flutter Toilet"), ("ST06", 2, "Flutter Storage"), ("ST06", 3, "Flutter Living Room"), ("ST06", 4, "Flutter Kitchen"), ("ST06", 5, "Flutter Bathroom"), ("ST07", 0, "Flutter Deck 3"), ("ST07", 1, "Flutter Hangar"), ("ST07", 2, "Flutter Engine Room"))
+def location_name(stage, area):
+	names = json.loads((Path(__file__).with_name("location_names.json")).read_text(encoding="utf-8"))["areas"] if (Path(__file__).with_name("location_names.json")).is_file() else {}
+	name = names.get(stage, {}).get(str(area))
+	if not name: return None
+	common = 0; words = name.split(); stage_words = STAGE_NAMES.get(stage, "").split()
+	while common < min(len(words), len(stage_words)) and words[common] == stage_words[common]: common += 1
+	remainder = " ".join(words[common:])
+	return remainder if common and remainder and not remainder.isdigit() else name
 STAGE_BINDINGS = {"ST04": {"name": "Flutter", "area_count": 3, "routes": 0x800EFB94, "actors": 0x800EFA48, "actor_caller": "0x800E7570", "actor_section": 0x6800, "roles": {71: "bridge_steering_wheel"}, "controllers": {71: "ST04T0x800E9C98 reads actor+C/D and continues3F768; callback-to-class47 binding still unresolved"}}, "ST05": {"name": "Flutter", "area_count": 3, "routes": 0x800E9B04, "actors": 0x800E9A30, "actor_caller": "0x800E71E4", "actor_section": 0x6800}, "ST06": {"name": "Flutter", "area_count": 6, "routes": 0x800E8D10, "actors": 0x800E8B04, "actor_caller": "0x800E71B4", "actor_section": 0x6800}, "ST07": {"name": "Flutter", "area_count": 3, "routes": 0x800E88CC, "actors": 0x800E87B0, "actor_caller": "0x800E71B4", "actor_section": 0x6800}}
 STAGE_BINDINGS["ST08"] = {"area_count": 2, "routes": 0x800F200C, "actors": 0x800F1F20, "actor_caller": "0x800E74BC", "actor_section": 0x8800}
 BASE = 0x800E7000
@@ -563,7 +584,7 @@ def export_geometry(input_dir, output_dir, stages):
 		root_path = input_dir / f"{stage_name}.BIN"; texture_path = input_dir / f"{stage_name}T.BIN"; root_bytes = root_path.read_bytes(); texture_bytes = texture_path.read_bytes(); stage = Stage(root_bytes); vram, texture_count = textures(texture_path); stage_dir = output_dir / stage_name; stage_dir.mkdir(parents=True, exist_ok=True); areas = []
 		texture_cache = {}
 		for area_index in range(len(stage.grids)):
-			display_name = next((item[2] for item in LOCATIONS if item[0] == stage_name and item[1] == area_index), None); family = STAGE_BINDINGS.get(stage_name, {}).get("name")
+			display_name = next((item[2] for item in LOCATIONS if item[0] == stage_name and item[1] == area_index), None) or location_name(stage_name, area_index); family = STAGE_BINDINGS.get(stage_name, {}).get("name")
 			if area_index >= len(stage.grids): raise ValueError(f"{stage_name} has no native area {area_index:02d}")
 			area = stage.area(area_index)
 			if area is None: continue
@@ -575,15 +596,15 @@ def export_geometry(input_dir, output_dir, stages):
 			for placement_id in placement_ids:
 				_, model_id, flags, height, x, z = stage.placements[placement_id]; _, header, directory = stage.directories[model_id]; variant = flags & 3; variant_count = ((header >> 24) & 1) + 1
 				if variant >= variant_count: raise ValueError(f"{stage_name} area {area_index:02d} placement {placement_id} selects invalid variant {variant}")
-				pointer = read_u16(stage.data, stage.base + (directory & 0xffff) * 4 + variant * 12); groups = stage.model(pointer); tile = tiles[(x, z)]; oy = 0x400 - tile[6] * 16 - ((height & 0x7f00) >> 4); translation = [-((x << 9) - (0x7e00 if header & 0x10000000 else 0x7f00)) * UNIT, -oy * UNIT, ((z << 9) - (0x7e00 if header & 0x20000000 else 0x7f00)) * UNIT]; glb.instance(f"placement_{placement_id:03d}_model_{model_id:03d}", pointer, groups, translation); quads += sum(len(faces) for faces in groups.values())
-			file_name = f"area_{area_index:02d}.glb"; bounds = glb.save(stage_dir / file_name); area_manifest = {"index": area_index, "name": display_name.removeprefix(family + " ") if display_name and family else display_name or "Area %02d" % area_index, "file": file_name, "placements": len(placement_ids), "models": len(glb.meshes), "quads": quads, "bounds": bounds, "native_map_code": {"stage": int(stage_name[2:], 16), "area": area_index}, "terrain_source": ground_binding}
+				pointer = read_u16(stage.data, stage.base + (directory & 0xffff) * 4 + variant * 12); groups = stage.model(pointer); tile = tiles[(x, z)]; oy = 0x400 - tile[6] * 16 - ((height & 0x7f00) >> 4); translation = [-((x << 9) - (0x7e00 if header & 0x10000000 else 0x7f00)) * UNIT, -oy * UNIT, ((z << 9) - (0x7e00 if header & 0x20000000 else 0x7f00)) * UNIT]; glb.instance(f"placement_{placement_id:03d}_model_{model_id:03d}", pointer, groups, translation, stage.face_metadata[pointer]); quads += sum(len(faces) for faces in groups.values())
+			file_name = f"area_{area_index:02d}.glb"; bounds = glb.save(stage_dir / file_name); area_manifest = {"index": area_index, "name": display_name.removeprefix(family + " ") if display_name and family else display_name or "Area %02d" % area_index, "file": file_name, "placements": len(placement_ids), "models": len(glb.meshes), "quads": quads, "bounds": bounds, "native_map_code": {"stage": int(stage_name[2:], 16), "area": area_index}, "terrain_source": ground_binding, "native_map_face_flags_in_alpha": True}
 			if area_banks: area_manifest["texture_state"] = {"source_order": [{"file": f"DAT/{texture_path.name}", "file_id": 254, "sha256": digest(texture_bytes), "source": "GAME0x800BA600 default ST3A root/T loader"}, *[{"file": f"DAT/{bank['file']}", "file_id": bank["file_id"], "sha256": item["sha256"], "source": bank["source"]} for bank, item in zip(area_banks, loaded_banks[1:])]], "applied_in_vram_order": True}
 			areas.append(area_manifest); print(f"{stage_name}_{area_index:02d}: {len(placement_ids)} placements, {quads} quads")
-		stage_manifest = {"stage": stage_name, "name": STAGE_NAMES.get(stage_name, stage_name), "source_reference": {"description": "native stage/substage values XX/YY and room labels", "url": REFERENCE} if stage_name in STAGE_BINDINGS else None, "coordinate_unit": "1/256 map unit", "coordinate_basis": COORDINATE_BASIS, "source": {"root_file": f"DAT/{stage_name}.BIN", "textures_file": f"DAT/{stage_name}T.BIN", "root_sha256": digest(root_bytes), "textures_sha256": digest(texture_bytes), "texture_sections": texture_count}, "areas": areas, "native_floor_collision": floor_collision_manifest(root_path), "native_combat_policy": native_combat_policy(texture_bytes)}; write_if_changed(stage_dir / "manifest.json", json.dumps(stage_manifest, indent=2) + "\n", encoding="utf-8"); catalog.append({"stage": stage_name, "name": stage_manifest["name"], "manifest": "res://" + (stage_dir / "manifest.json").resolve().relative_to(ROOT).as_posix(), "area_names": [area["name"] for area in areas]})
+		stage_manifest = {"stage": stage_name, "name": STAGE_NAMES.get(stage_name, stage_name), "source_reference": {"description": "native stage/substage values XX/YY and room labels"} if stage_name in STAGE_BINDINGS else None, "coordinate_unit": "1/256 map unit", "coordinate_basis": COORDINATE_BASIS, "source": {"root_file": f"DAT/{stage_name}.BIN", "textures_file": f"DAT/{stage_name}T.BIN", "root_sha256": digest(root_bytes), "textures_sha256": digest(texture_bytes), "texture_sections": texture_count}, "areas": areas, "native_floor_collision": floor_collision_manifest(root_path), "native_combat_policy": native_combat_policy(texture_bytes)}; write_if_changed(stage_dir / "manifest.json", json.dumps(stage_manifest, indent=2) + "\n", encoding="utf-8"); catalog.append({"stage": stage_name, "name": stage_manifest["name"], "manifest": "res://" + (stage_dir / "manifest.json").resolve().relative_to(ROOT).as_posix(), "area_names": [area["name"] for area in areas]})
 	catalog_path = output_dir.parent / "locations" / "manifest.json"; catalog_path.parent.mkdir(parents=True, exist_ok=True); existing = json.loads(catalog_path.read_text()).get("locations", []) if catalog_path.exists() else []; entries = {item["stage"]: item for item in existing}; entries.update({item["stage"]: item for item in catalog})
 	for entry in entries.values():
 		manifest = json.loads((ROOT / entry["manifest"].removeprefix("res://")).read_text()); entry["areas"] = [{"index": int(area["index"]), "name": str(area.get("name", "Area %02d" % area["index"]))} for area in manifest["areas"]]; entry.pop("area_names", None)
-	catalog_manifest = {"locations": [entries[key] for key in sorted(entries)], "source_reference": REFERENCE}; write_if_changed(catalog_path, json.dumps(catalog_manifest, indent=2) + "\n", encoding="utf-8"); return catalog_manifest
+	catalog_manifest = {"locations": [entries[key] for key in sorted(entries)]}; write_if_changed(catalog_path, json.dumps(catalog_manifest, indent=2) + "\n", encoding="utf-8"); return catalog_manifest
 
 def export_routes(dat_dir, output_dir, stages):
 	result = {}; manifests = {}
@@ -693,6 +714,12 @@ def actor_archive_for_records(stage, source, records, work, dat_dir, fallback_of
 	candidates.sort(key=lambda value: (-value[0], -value[1], 0 if value[2] == fallback_offset else 1 if value[2] is not None else 2, value[2] or 0)); best = candidates[0]
 	if len(candidates) > 1 and (candidates[1][0], candidates[1][1]) == (best[0], best[1]) and fallback_offset not in (best[2], candidates[1][2]): return None
 	return {"archive": best[3], "payload": best[4], "section": best[5], "offset": best[2], "archive_file": best[6]}
+def kickable_profile(stage, raw):
+	if stage != "ST09" or raw[2] != 0x60 or raw[4] not in (0x4A, 0x4B): return None
+	can = raw[4] == 0x4A
+	result = {"kind": "can" if can else "duck", "bounds_raw": [-16, 16, -8, 8, -16, 16] if can else [-32, 32, -160, 0, -32, 32], "resource_variant": 0, "native_tick_hz": 25, "velocity_world_divisor": 4096, "source": {"callback": "0x800edb9c" if can else "0x800ee3a4", "constructor": "0x800edc04" if can else "0x800ee574", "resource_loader": "SLES0x8003DFA4", "body_bounds": "0x800f2c7c" if can else "0x800f2c94", "target_bounds": "0x800f2c88" if can else "0x800f2ca0", "hit_handler": "0x800ee24c" if can else "0x800eee98"}, "sound_ids": [0x297, 0x298, 0x299, 0x29A] if can else [0x29B], "kick_flags": 0x80000}
+	if can and raw[6] == 1: result["minimum_save_byte14"] = 2
+	return result
 def export_props(dat_dir, output_dir, stages):
 	output_dir.mkdir(parents=True, exist_ok=True); work = ROOT / "build/stages"; work.mkdir(parents=True, exist_ok=True); target = output_dir / "manifest.json"; manifest = json.loads(target.read_text()) if target.exists() else {"stages": {}}
 	for stage in stages:
@@ -713,18 +740,20 @@ def export_props(dat_dir, output_dir, stages):
 				area = item["area"]; record = item["record"]; pointer = item["pointer"]; offset = item["offset"]; raw = item["raw"]
 				if raw[2] == 0x60 and raw[4] == 2 and raw[5] == 0: continue
 				if raw[2] not in (0x20, 0x60, 0x61): continue
-				resource_flags = raw[2] | (raw[4] << 8) | (raw[6] << 16); matches = [model for model in archive["models"] if model["flags"] & 0xFFFFFF == resource_flags]
+				kickable = kickable_profile(stage, raw); resource_variant = kickable["resource_variant"] if kickable else raw[6]; resource_flags = raw[2] | (raw[4] << 8) | (resource_variant << 16); matches = [model for model in archive["models"] if model["flags"] & 0xFFFFFF == resource_flags]
 				if len(matches) != 1: unresolved.append({"area": area, "source_file_offset": hex(offset), "source_bytes": raw.hex(), "resource_flags": hex(resource_flags), "reason": "no unique PBD model match"}); continue
 				model = matches[0]; index = model["index"]
 				if index not in models:
 					path = output_dir / stage / f"model_{index:02d}.glb"; path.parent.mkdir(parents=True, exist_ok=True); metadata = export_actor_model(payload, index, texture_path, path, archive_source) if model["mesh"]["bone_count"] else export_static_actor(payload, index, texture_path, path, archive_source); metadata["source_surfaces"] = record_source(path, archive_source, index, payload); metadata["model_file"] = path.relative_to(output_dir).as_posix(); metadata["native_scale_raw"] = list(struct.unpack_from("<3h", payload, model["mesh_offset"] + 0x30)); models[index] = metadata
 				x, y, z, yaw = struct.unpack_from("<3hH", raw, 12); instances.append({"area": area, "source_ram": hex(pointer + record * 20), "source_file_offset": hex(offset), "source_file_offset_value": offset, "source_bytes": raw.hex(), "class": raw[4], "variant": raw[6], "model_index": index, "model_file": models[index]["model_file"], "position_raw": [x, y, z], "position": [-x / 256, -y / 256, z / 256], "yaw_raw": yaw, "yaw_turns": -yaw / 4096, "control": raw[8], "frame": raw[9], "role": manual.get("roles", {}).get(raw[4], "source_prop"), "native_control_source": "Native record bytes8/9; original PBD control table", "controller_candidate": manual.get("controllers", {}).get(raw[4])})
+				if kickable: instances[-1]["native_kickable"] = kickable; instances[-1]["native_animation_startup"] = {"control": 0, "start_record": 0}; instances[-1]["role"] = "source_kickable_" + kickable["kind"]
 			for model in archive["models"]:
 				if model["flags"] & 0xFFFF not in (0x161, 0x361): continue
 				index = model["index"]
 				if index not in models:
 					path = output_dir / stage / f"model_{index:02d}.glb"; path.parent.mkdir(parents=True, exist_ok=True); metadata = export_static_actor(payload, index, texture_path, path, archive_source); metadata["model_file"] = path.relative_to(output_dir).as_posix(); metadata["native_scale_raw"] = list(struct.unpack_from("<3h", payload, model["mesh_offset"] + 0x30)); models[index] = metadata
 				native_doors.append({"variant": (model["flags"] >> 16) & 255, "controller_class": (model["flags"] >> 8) & 255, "model_index": index, "model_file": models[index]["model_file"], "native_scale_raw": models[index]["native_scale_raw"], "source_flags": hex(model["flags"]), "resource_loader": "SLES0x8003DFC8", "constructor": "GAME0x800D1F1C" if model["flags"] & 0xFFFF == 0x361 else "GAME0x800D1768"})
+		bind_scripted_interactions(stage, instances, overlay, source_key="source_bytes", address_key="source_ram")
 		for index, metadata in models.items(): metadata["model_index"] = index
 		status = "bound" if actor_pointer_table is not None and (archive_info is not None or not mesh_records) else "partial" if actor_pointer_table is not None else "unbound"; manifest["stages"][stage] = {"binding_status": status, "source": {"archive": stage + ".BIN", "actor_archive": archive_info["archive_file"] if archive_info else None, "overlay": stage + "T.BIN", "sha256": digest(source), "decoded_section": section, "actor_pointer_table": hex(actor_pointer_table) if actor_pointer_table else None, "actor_list_area_count": len(detected["pointers"]) if detected else table_area_count if actor_pointer_table is not None else None, "caller": actor_caller, "consumer": "SLES0x8003D3F8; 20-byte object records", "actor_archive_section": archive_info["offset"] if archive_info else None, "texture_uploads": uploads, "coordinate_basis": "(-nativeX,-nativeY,+nativeZ)/256; room stream offset is separate"}, "models": list(models.values()), "native_doors": native_doors, "instances": instances, "procedural_records": weather_records, "unresolved_instances": unresolved}
 	manifest["exterior"] = {"asset_source": "Original ST02 atmosphere assets", "effects_manifest": "res://assets/opening/effects/manifest.json", "native_effect_class": 18, "native_effect_variant": 3, "bank": "ST02", "parameter": 0x01000001, "source_renderer": "ST02T0x800EC0A4", "stage_native_selection": "Unbound; original atmosphere reuse is selected by the runtime"}; manifest["map_blending"] = {"source": "SLES0x8002FA14-0x8002FA44", "packed_status": "first vertex flag&3", "semi_enabled": "status!=0", "tpage": "baseTPAGE|((status-1)<<5) when semi enabled"}; write_if_changed(target, json.dumps(manifest, indent=2) + "\n", encoding="utf-8"); return manifest

@@ -10,6 +10,7 @@ import area_roofs
 import cinematics
 import disc
 import models
+import native_fades
 import ui
 import world
 ROOT = Path(__file__).resolve().parent.parent
@@ -85,6 +86,7 @@ def prepare(cue, source, stages, only, report_path=None):
 	if "models" in only: export_models(source, stages, report); task("player", models.export_player); task("player_library", lambda: models.export_player_library(ROOT / "assets/library/players"))
 	if "ui" in only:
 		for name, function in [("hud", ui.hud_cli), ("projectile", ui.export_projectile), ("menu", ui.export_menu), ("dialogue", ui.export_dialogue)]: task(name, function)
+		task("fades", lambda: native_fades.export(source, ROOT / "assets/fades"))
 	if "audio" in only: task("audio", lambda: audio.export_audio(cue)); task("audio_library", lambda: audio.export_library(source, ROOT / "assets/library/audio")); task("zone_audio", lambda: audio.export_zone_audio(source))
 	if "cinematics" in only: task("opening", cinematics.export_opening); task("opening_effects", cinematics.export_opening_effects)
 	if "media" in only:
@@ -95,7 +97,7 @@ def prepare(cue, source, stages, only, report_path=None):
 		for npc_stage in ["ST0F", *models.NPC_STAGE_BINDINGS]:
 			if not stages or npc_stage in stages: task("npcs_" + npc_stage, lambda npc_stage=npc_stage: models.export_npcs(source / "DAT", ROOT / "assets/levels" / npc_stage, npc_stage))
 	if "world" in only:
-		for scripted_stage in ["ST04", "ST08"]:
+		for scripted_stage in ["ST04", "ST08", *models.INTERIOR_SCRIPT_BINDINGS]:
 			if not stages or scripted_stage in stages: task("scripted_actors_" + scripted_stage, lambda scripted_stage=scripted_stage: models.export_stage_scripted_actors(source / "DAT", ROOT / "assets/levels" / scripted_stage, scripted_stage))
 	if "world" in only: task("lighting", world.lighting_cli); task("depth_cue", lambda: world.export_depth_cue(source / "DAT", ROOT / "assets/levels")); task("weather", lambda: world.export_weather(source / "DAT", ROOT / "assets/weather"))
 	if "world" in only: task("area_roofs", lambda: area_roofs.export(source / "DAT", ROOT / "assets/levels"))

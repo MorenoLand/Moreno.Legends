@@ -37,7 +37,12 @@ void vertex() {
 		UV = (vec2(float(packed & 255), float((packed >> 8) & 255)) + vec2(0.5)) / 256.0;
 	}
 	if (coplanar_overlay_flags && COLOR.a < 0.5) {
-		VERTEX += (inverse(MODELVIEW_MATRIX) * vec4(0.0, 0.0, 1.0 / 256.0, 0.0)).xyz;
+		float layer = max(1.0, round(COLOR.a * 255.0));
+		mat4 inverse_view = inverse(MODELVIEW_MATRIX);
+		vec3 view_normal = normalize((transpose(inverse_view) * vec4(NORMAL, 0.0)).xyz);
+		vec3 view_position = (MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
+		float facing = dot(view_normal, -view_position) >= 0.0 ? 1.0 : -1.0;
+		VERTEX += (inverse_view * vec4(view_normal * facing * layer / 256.0, 0.0)).xyz;
 	}
 }
 void fragment() {

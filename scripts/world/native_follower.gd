@@ -29,7 +29,7 @@ func configure(owner: Node3D, entry: Dictionary, context: Dictionary) -> bool:
 		if not parsed is Dictionary or not parsed.has("trig4096"): return false
 		trig = parsed["trig4096"]
 	if trig.size() != 4096: return false
-	animation_clock.automatic = false; previous_player = player.global_position; waypoint = actor.global_position; heading = int(entry.get("transform_raw", [0, 0, 0, 0])[3]) & 4095
+	animation_clock.automatic = false; previous_player = player.global_position; waypoint = actor.global_position; heading = roundi(-actor.rotation.y * 4096.0 / TAU) & 4095
 	actor.set_meta("native_behavior_source", "ST08T E93EC/E9740/E98F0; states E9AC8/E9B2C/E9C70")
 	actor.set_meta("native_ray_adapter", "Godot map visibility ray and body/floor queries replace primitive7 asynchronous ray and native map collision")
 	return true
@@ -62,7 +62,7 @@ func native_tick() -> void:
 			var moved: Dictionary = Motion.move_actor(actor, _motion(), BOUNDS)
 			if bool(moved["blocked"]): avoidance_heading = heading; avoidance_timer = 32
 			elif not bool(moved["floor"]): _state(5)
-			elif not ray_blocked: _state(2)
+			if not ray_blocked and mode == 3: _state(2)
 		5:
 			entered = true
 			var moved: Dictionary = Motion.move_actor(actor, _motion(), BOUNDS)
@@ -71,6 +71,10 @@ func native_tick() -> void:
 	if control != animation_clock.current_control: animation_clock.play_control(control)
 	else: animation_clock.native_tick()
 	_update_waypoint()
+func begin_talk() -> void:
+	_state(4); animation_clock.play_control(0)
+func end_talk() -> void:
+	_state(0)
 func _state(value: int) -> void: mode = value; entered = false; actor.set_meta("native_actor_state", mode)
 func _turn(desired: int, maximum: int) -> void:
 	var difference: int = ((desired - heading + 2048) & 4095) - 2048; heading = (heading + clampi(difference, -maximum, maximum)) & 4095; actor.rotation.y = -float(heading) * TAU / 4096.0

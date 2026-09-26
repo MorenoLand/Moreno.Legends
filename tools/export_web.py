@@ -65,6 +65,7 @@ def main():
     build.mkdir(parents=True, exist_ok=True)
     packs.mkdir(parents=True, exist_ok=True)
     run(args.engine, "--editor", "--import")
+    core_paths = {path for name in ("menu", "fades") for path in group_files(ROOT / "assets" / name)}
     groups = {"stage-" + path.name: [path] for path in sorted((ROOT / "assets" / "levels").iterdir()) if path.is_dir()}
     groups.update({"audio-" + path.name: [path] for path in sorted((ROOT / "assets" / "audio").iterdir()) if path.is_dir()})
     library = ROOT / "assets" / "library"
@@ -84,6 +85,7 @@ def main():
         files = {}
         for directory in directories:
             files.update(group_files(directory))
+        files = {path: source for path, source in files.items() if path not in core_paths}
         config[group] = {"output": str(build / (group + ".pck")), "files": sorted(files.items())}
     menu_paths = {entry[0] for entry in config["menu-audio"]["files"]}
     config["audio-ST0F"]["files"] = [entry for entry in config["audio-ST0F"]["files"] if entry[0] not in menu_paths]

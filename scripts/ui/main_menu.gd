@@ -303,6 +303,7 @@ func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0) ->
 	candidate.manifest_path = stage_path
 	candidate.initial_area = area_index
 	candidate.entry_route = state.get("entry_route", {}).duplicate(true)
+	var entry_fade_code := int(candidate.entry_route.get("native_entry_fade", 0x02))
 	candidate.parked_location = state.get("parked_location", {}).duplicate(true)
 	candidate.native_context = state.get("native_context", {"native_save_byte14": 0, "native_save_byte16": 0, "native_save_word40": 0, "native_save_byte44": 1, "event_flags": {}}).duplicate(true)
 	candidate.initial_player_state = state.get("player", {}).duplicate(true) if candidate.entry_route.is_empty() else {}
@@ -331,6 +332,7 @@ func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0) ->
 		if pending_custom_menu: pending_custom_menu = false; _toggle_custom_menu()
 		return
 	if is_instance_valid(previous) and previous.audio != null and candidate.audio != null: candidate.audio.adopt_music(previous.audio.capture_music())
+	if entry_fade_code != 0xFF: candidate.transition_overlay.hold(entry_fade_code in [0x09, 0x0A, 0x0B, 0x0C])
 	if is_instance_valid(previous):
 		remove_child(previous)
 		previous.queue_free()
@@ -344,11 +346,12 @@ func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0) ->
 	custom.apply_player()
 	gameplay.set_location_picker_visible(bool(settings.get_value("interface", "show_location_picker", true)))
 	gameplay.set_minimap_visible(bool(settings.get_value("interface", "show_minimap", true)))
-	gameplay.player.set_physics_process(true)
+	gameplay.player.set_physics_process(false)
 	if gameplay.audio != null: gameplay.audio.set_preparing(false)
-	session_loading = false
 	if is_instance_valid(opening): opening._finish(true)
-	_resume(not OS.has_feature("web"))
+	await _resume(not OS.has_feature("web"))
+	await gameplay.transition_overlay.request(entry_fade_code)
+	gameplay.player.set_physics_process(true); session_loading = false
 	if pending_custom_menu: pending_custom_menu = false; _toggle_custom_menu()
 func _load_location(stage: String, area: int) -> void:
 	await _start_session({}, stage, area)
@@ -366,7 +369,7 @@ func _stage_transition(route: Dictionary) -> void:
 	state["minimap"] = state.get("explored_stages", {}).get(stage, []).duplicate(true)
 	state["entry_route"] = route.duplicate(true)
 	await _start_session(state)
-	if is_instance_valid(previous) and gameplay == previous: previous.cancel_stage_transition()
+	if is_instance_valid(previous) and gameplay == previous: await previous.transition_overlay.request(int(route.get("native_entry_fade", 0xFF))); previous.cancel_stage_transition()
 func _save_game() -> void:
 	if session_loading or not is_instance_valid(gameplay): return
 	save_menu.refresh(saves.entries(), true)

@@ -168,9 +168,10 @@ func _process(delta: float) -> void:
 			var ticks := mini(floori(interaction_elapsed * 30.0 + 0.000001), roundi(interaction_duration * 30.0))
 			global_position.y += float(ticks - interaction_movement_ticks) * interaction_vertical_speed / 30.0
 			interaction_movement_ticks = ticks
-	if not interaction_role.is_empty() and (interaction_elapsed >= interaction_duration if interaction_loop else time >= animation_player.get_animation(locomotion.animation).length):
+	if not interaction_role.is_empty() and interaction_elapsed >= interaction_duration:
 		var finished_role := interaction_role
 		interaction_role = ""
+		motion_tree.set("parameters/MotionSpeed/scale", 1.0)
 		_play_animation("idle")
 		interaction_finished.emit(finished_role)
 
@@ -236,6 +237,7 @@ func _physics_process(delta: float) -> void:
 		jump_velocity = 0
 		velocity.y = (float(Input.is_action_pressed("jump")) - float(Input.is_action_pressed("fly_down"))) * speed
 	else: _update_jump(delta, grounded, direction)
+	if grounded and not free_flight and not no_clip and velocity.y <= 0.0 and hurt_phase.is_empty(): _step_over_seam(Vector3(velocity.x, 0.0, velocity.z) * delta)
 	move_and_slide()
 	if not free_flight and is_on_floor() and jump_phase in [JumpPhase.RISING, JumpPhase.RELEASED, JumpPhase.FALLING]:
 		jump_velocity = 0
@@ -523,6 +525,24 @@ func _update_camera(delta: float) -> void:
 	var fractions := get_world_3d().direct_space_state.cast_motion(query)
 	if not fractions.is_empty(): offset *= fractions[0]
 	arm.position = Vector3(offset.x, body_height * 0.78, offset.z)
+func _step_over_seam(motion: Vector3) -> void:
+	if motion.is_zero_approx(): return
+	var contact := KinematicCollision3D.new()
+	if not test_move(global_transform, motion, contact): return
+	if contact.get_normal().y + 0.001 >= cos(floor_max_angle): return
+	var collider := contact.get_collider() as Node
+	if collider != null and (collider.is_in_group("world_npcs") or collider.name == "NativeActorCollision"): return
+	var height := minf(0.125, body_height * 0.25); var up := Vector3.UP * height
+	if test_move(global_transform, up): return
+	var raised := global_transform; raised.origin += up
+	if test_move(raised, motion): return
+	raised.origin += motion
+	var landing := KinematicCollision3D.new()
+	if not test_move(raised, Vector3.DOWN * (height + safe_margin * 2.0), landing): return
+	if landing.get_normal().y + 0.001 < cos(floor_max_angle): return
+	var rise := height + landing.get_travel().y
+	if rise <= safe_margin or rise > height: return
+	global_position.y += rise; velocity.y = 0.0
 func _move_camera(start: Vector3, destination: Vector3) -> Vector3:
 	var arm := camera_pivot as SpringArm3D
 	var position := start
@@ -557,7 +577,7 @@ func _play_animation(role: String) -> void:
 		return
 	if animation_player.current_animation == name and animation_player.is_playing(): return
 	animation_player.play(name, 0.1)
-func begin_interaction(role: String = "door_open") -> Dictionary:
+func begin_interaction(role: String = "door_open", quick: bool = false) -> Dictionary:
 	var name := str(animation_roles.get(role, ""))
 	if motion_tree == null or animation_player == null or not animation_player.has_animation(name) or not interaction_roles.has(role): return {}
 	if is_instance_valid(carried_actor): carried_actor.release_lift(-player_model.global_basis.z, -256, -896)
@@ -568,7 +588,8 @@ func begin_interaction(role: String = "door_open") -> Dictionary:
 	var source: Dictionary = interaction_roles[role]
 	interaction_role = role
 	interaction_elapsed = 0.0
-	interaction_duration = float(source["duration_ticks"]) / 30.0
+	var rate := 3.0 if quick and role == "door_open" else 1.0
+	interaction_duration = float(source["duration_ticks"]) / (30.0 * rate)
 	interaction_loop = int(source.get("loop_ticks", 0)) > 0
 	interaction_vertical_speed = -float(source.get("vertical_raw", 0)) * 30.0 / 4096.0
 	interaction_movement_ticks = 0
@@ -589,17 +610,20 @@ func begin_interaction(role: String = "door_open") -> Dictionary:
 		upper_modifier.track_target = false
 		upper_modifier.set_source_aim_angles(0, 0)
 	motion_role = ""
+	motion_tree.set("parameters/MotionSpeed/scale", rate)
 	_play_animation(role)
 	motion_tree.advance(0.0)
-	return {"duration": interaction_duration, "vertical_speed": interaction_vertical_speed} if interaction_loop else {"duration": animation_player.get_animation(name).length, "open_at": float(source["open_tick"]) / 30.0, "close_at": float(source["close_tick"]) / 30.0, "walk_at": float(source["walk_handoff_tick"]) / 30.0}
+	return {"duration": interaction_duration, "vertical_speed": interaction_vertical_speed} if interaction_loop else {"duration": interaction_duration, "open_at": float(source["open_tick"]) / (30.0 * rate), "close_at": float(source["close_tick"]) / (30.0 * rate), "walk_at": float(source["walk_handoff_tick"]) / (30.0 * rate)}
 func begin_scripted_walk(source: Dictionary, yaw: float) -> bool:
-	var clip := str(animation_roles.get("run", "")); var step: Array = source.get("local_step_raw", []); var rate := float(source.get("tick_rate", 0)); var ticks := int(source.get("ticks", 0))
-	if motion_tree == null or animation_player == null or not animation_player.has_animation(clip) or int(source.get("control", -1)) != 1 or step.size() != 3 or rate <= 0.0 or ticks <= 0: return false
+	var role := "walk" if int(source.get("control", -1)) == 2 else "run"; var clip := str(animation_roles.get(role, "")); var step: Array = source.get("local_step_raw", []); var rate := float(source.get("tick_rate", 0)); var ticks := int(source.get("ticks", 0))
+	if motion_tree == null or animation_player == null or not animation_player.has_animation(clip) or int(source.get("control", -1)) not in [1, 2] or step.size() != 3 or rate <= 0.0 or ticks <= 0: return false
 	if is_instance_valid(carried_actor): carried_actor.release_lift(-player_model.global_basis.z, -256, -896)
 	carried_actor = null; special_action = ""; interaction_role = ""; _set_carry_filter(false); aiming = false; locked_target = null; gun_pose_active = false; pending_shot = false; shot_pose = 0.0; arm_blend = 0.0; velocity = Vector3.ZERO; jump_phase = JumpPhase.GROUNDED; jump_velocity = 0
 	if upper_modifier != null: upper_modifier.active = true; upper_modifier.track_target = false; upper_modifier.set_source_aim_angles(0, 0)
-	motion_tree.set("parameters/UpperBody/blend_amount", 0.0); motion_tree.set("parameters/MotionSpeed/scale", rate / 30.0); player_model.rotation.y = yaw; scripted_walk = {"elapsed": 0.0, "duration": float(ticks) / rate, "velocity": Basis(Vector3.UP, yaw) * Vector3(-float(step[0]), -float(step[1]), float(step[2])) * rate / 4096.0}; motion_role = ""; _play_animation("run"); motion_tree.advance(0.0)
+	motion_tree.set("parameters/UpperBody/blend_amount", 0.0); motion_tree.set("parameters/MotionSpeed/scale", rate / 30.0); player_model.rotation.y = yaw; scripted_walk = {"elapsed": 0.0, "duration": float(ticks) / rate, "velocity": Basis(Vector3.UP, yaw) * Vector3(-float(step[0]), -float(step[1]), float(step[2])) * rate / 4096.0}; motion_role = ""; _play_animation(role); motion_tree.advance(0.0)
 	return true
+func refresh_room_camera() -> void:
+	camera_world_valid = false; camera_distance = -1.0; _update_camera(0.0)
 func _update_scripted_walk(delta: float) -> void:
 	var elapsed := float(scripted_walk["elapsed"]); var duration := float(scripted_walk["duration"]); var advance := minf(delta, duration - elapsed)
 	velocity = (scripted_walk["velocity"] as Vector3) * advance / delta; move_and_slide(); apply_floor_snap(); _update_camera(delta); scripted_walk["elapsed"] = elapsed + advance

@@ -14,7 +14,7 @@ def camera_table(data):
         if word >> 16 == 0x3C04: upper = (word & 65535) << 16
         if word >> 16 == 0x2484 and upper is not None: return upper + struct.unpack("<h", struct.pack("<H", word & 65535))[0]
     raise ValueError("Native area camera table address unresolved")
-def geometry(path):
+def geometry(path, native_map_face_flags=False):
     data = path.read_bytes(); size = struct.unpack_from("<I", data, 12)[0]; document = json.loads(data[20:20 + size]); binary = data[28 + size:]
     def accessor(index):
         record = document["accessors"][index]; view = document["bufferViews"][record["bufferView"]]; width = {"SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4}[record["type"]]; fmt = {5121: "B", 5123: "H", 5125: "I", 5126: "f"}[record["componentType"]]; stride = view.get("byteStride", struct.calcsize(fmt) * width); offset = view.get("byteOffset", 0) + record.get("byteOffset", 0)
@@ -33,6 +33,7 @@ def geometry(path):
         for surface, primitive in enumerate(document["meshes"][node["mesh"]]["primitives"]):
             if primitive.get("mode", 4) != 4: continue
             attributes = primitive["attributes"]; positions = [point(index, value) for value in accessor(attributes["POSITION"])]; uv = accessor(attributes["TEXCOORD_0"]) if "TEXCOORD_0" in attributes else [(0, 0)] * len(positions); colors = accessor(attributes["COLOR_0"]) if "COLOR_0" in attributes else [(0.5, 0.5, 0.5, 1)] * len(positions); indices = [value[0] for value in accessor(primitive["indices"])] if "indices" in primitive else list(range(len(positions)))
+            if native_map_face_flags and "TEXCOORD_1" in attributes: colors = [(*value[:3], 1.0) for value in colors]
             for start in range(0, len(indices), 3):
                 ids = indices[start:start + 3]
                 if len(ids) != 3: continue
@@ -165,26 +166,36 @@ def close_raised_roof(triangles, roof):
             ear = index; faces.append([a, b, c]); break
         if ear is None: return
         remaining.pop(ear)
-    faces.append(remaining); height += 0.01; low = [min(point[axis] for point in polygon) for axis in range(2)]; high = [max(point[axis] for point in polygon) for axis in range(2)]; uv_low = roof["sample_uv_min"]; uv_high = roof["sample_uv_max"]; roof["vertices"] = [[point[0], height, point[1]] for face in faces for point in face]; roof["uv"] = [[uv_low[axis] + (point[axis] - low[axis]) / max(high[axis] - low[axis], 1e-8) * (uv_high[axis] - uv_low[axis]) for axis in range(2)] for face in faces for point in face]; roof["height"] = height; groups = {}; wall_bias = 0.002
+    faces.append(remaining)
+    for start in range(0, len(roof["vertices"]), 3):
+        uncovered = [[[point[0], point[2]] for point in roof["vertices"][start:start + 3]]]
+        for face in faces:
+            uncovered = [piece for part in uncovered for piece in subtract(part, face)]
+            if not uncovered: break
+        uncovered_area = sum(abs(sum(point[0] * part[(index + 1) % len(part)][1] - part[(index + 1) % len(part)][0] * point[1] for index, point in enumerate(part))) / 2 for part in uncovered)
+        if uncovered_area > 1e-7:
+            roof["rejected_wall_contour"] = "Closed wall component does not cover the existing floor-derived roof"; return
+    height += 0.01; low = [min(point[axis] for point in polygon) for axis in range(2)]; high = [max(point[axis] for point in polygon) for axis in range(2)]; uv_low = roof["sample_uv_min"]; uv_high = roof["sample_uv_max"]; roof["vertices"] = [[point[0], height, point[1]] for face in faces for point in face]; roof["uv"] = [[uv_low[axis] + (point[axis] - low[axis]) / max(high[axis] - low[axis], 1e-8) * (uv_high[axis] - uv_low[axis]) for axis in range(2)] for face in faces for point in face]; roof["height"] = height; groups = {}; wall_bias = 0.002
     for index, a in enumerate(outline):
         b = outline[(index + 1) % len(outline)]; triangle, indices = edges[tuple(sorted((a, b)))]; ia, ib = indices; va, vb = triangle["vertices"][ia], triangle["vertices"][ib]; ic = next(item for item in range(3) if item not in indices); lower = triangle["vertices"][ic]; match = ia if math.hypot(lower[0] - va[0], lower[2] - va[2]) < math.hypot(lower[0] - vb[0], lower[2] - vb[2]) else ib; fraction = min(1.0, (height - wall_y) / max(wall_y - lower[1], 1e-8)); delta = [(triangle["uv"][ic][axis] - triangle["uv"][match][axis]) * fraction for axis in range(2)]; ua, ub = triangle["uv"][ia], triangle["uv"][ib]; da, db = [[uv[axis] + delta[axis] for axis in range(2)] for uv in (ua, ub)]; ta, tb = [va[0], height, va[2]], [vb[0], height, vb[2]]; key = (triangle["node"], triangle["surface"])
         if key not in groups: groups[key] = {"material_node": key[0], "material_surface": key[1], "vertices": [], "uv": [], "colors": []}
         length = math.hypot(b[0] - a[0], b[1] - a[1]); offset = [-(b[1] - a[1]) * sign * wall_bias / length, 0, (b[0] - a[0]) * sign * wall_bias / length]; va = [va[axis] + offset[axis] for axis in range(3)]; vb = [vb[axis] + offset[axis] for axis in range(3)]; ta = [ta[axis] + offset[axis] for axis in range(3)]; tb = [tb[axis] + offset[axis] for axis in range(3)]; va[1] -= wall_bias; vb[1] -= wall_bias
         group = groups[key]; group["vertices"].extend([va, vb, tb, va, tb, ta]); group["uv"].extend([da, db, ub, da, ub, ua]); group["colors"].extend([triangle["colors"][item] for item in (ia, ib, ib, ia, ib, ia)])
     roof["wall_infills"] = list(groups.values()); roof["wall_top_height"] = wall_y; roof["wall_inward_bias"] = wall_bias
-def export(dat_dir=None, output_dir=None):
+def export(dat_dir=None, output_dir=None, stages=None):
     dat_dir = Path(dat_dir or ROOT / "build/disc-assets/DAT"); output_dir = Path(output_dir or ROOT / "assets/levels"); summary = Counter()
     for path in sorted(dat_dir.glob("ST??T.BIN")):
         stage = path.stem[:-1]; lighting_path = output_dir / stage / "lighting.json"
+        if stages is not None and stage not in stages: continue
         if not lighting_path.is_file(): continue
-        data = path.read_bytes(); base = struct.unpack_from("<I", data, 12)[0]; table = camera_table(data); lighting = json.loads(lighting_path.read_text()); records = []
+        data = path.read_bytes(); base = struct.unpack_from("<I", data, 12)[0]; table = camera_table(data); lighting = json.loads(lighting_path.read_text()); records = []; map_manifest_path = output_dir / stage / "manifest.json"; map_manifest = json.loads(map_manifest_path.read_text()) if map_manifest_path.is_file() else {}; area_flags = {int(area["index"]): bool(area.get("native_map_face_flags_in_alpha", False)) for area in map_manifest.get("areas", [])}
         for area in lighting["native_color_pipeline"]["depth_cue"]["area_parameters"]:
             index = int(area["area"]); offset = 48 + table - base + index * 12
             if offset < 48 or offset + 12 > 48 + struct.unpack_from("<I", data, 4)[0]: raise ValueError(stage + " camera record outside native section")
             values = struct.unpack_from("<BB5h", data, offset); record = {"area": index, "native_camera_record": list(values), "fixed_pitch": values[1] == 2, "source_offset": hex(offset), "roof": {"reason": "camera_allows_pitch", "vertices": []}}; mesh_path = output_dir / stage / ("area_%02d.glb" % index)
             if record["fixed_pitch"] and mesh_path.is_file():
-                triangles = geometry(mesh_path); record["roof"] = roof_geometry(triangles); close_raised_roof(triangles, record["roof"])
-            if stage == "ST04" and index == 0 and record["roof"]["reason"] == "existing_ceiling": record["roof"]["blackouts"] = ceiling_holes(geometry(mesh_path), record["roof"]["height"])
+                triangles = geometry(mesh_path, area_flags.get(index, False)); record["roof"] = roof_geometry(triangles); close_raised_roof(triangles, record["roof"])
+            if stage == "ST04" and index == 0 and record["roof"]["reason"] == "existing_ceiling": record["roof"]["blackouts"] = ceiling_holes(geometry(mesh_path, area_flags.get(index, False)), record["roof"]["height"])
             summary[record["roof"]["reason"]] += 1; records.append(record)
         manifest = {"stage": stage, "source": {"archive": "DAT/" + path.name, "camera_table": hex(table), "record_stride": 12, "loader": "SLES80016270", "fixed_pitch_branch": "SLES800163EC..80016404; mode2 ignores look offset", "classification": "Fixed pitch is a roof candidate hint, not an indoor flag; generated geometry is a Godot adaptation"}, "areas": records}; write_if_changed(output_dir / stage / "area_roofs.json", json.dumps(manifest, separators=(",", ":")) + "\n", encoding="utf-8")
     return dict(summary)

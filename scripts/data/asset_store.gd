@@ -1,4 +1,5 @@
 extends Node
+const BASE_TEXTURES = ["res://assets/fades/circle.png", "res://assets/fades/bands.png"]
 signal progress(group: String, received: int, total: int)
 var last_error := ""
 var manifest: Dictionary = {}

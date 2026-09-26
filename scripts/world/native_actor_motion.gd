@@ -15,7 +15,9 @@ static func ray(actor: Node3D, start: Vector3, finish: Vector3, others: Array[RI
 	return actor.get_world_3d().direct_space_state.intersect_ray(query)
 static func move_actor(actor: Node3D, motion: Vector3, bounds: Array) -> Dictionary:
 	var minimum := Vector3(-float(bounds[1]), -float(bounds[3]), float(bounds[4])) / 256.0; var maximum := Vector3(-float(bounds[0]), -float(bounds[2]), float(bounds[5])) / 256.0
-	var box := BoxShape3D.new(); box.size = (maximum - minimum) * actor.global_basis.get_scale(); var query := PhysicsShapeQueryParameters3D.new(); query.shape = box; query.transform = Transform3D(Basis.IDENTITY, actor.global_position + (minimum + maximum) * 0.5); query.motion = motion; query.margin = 0.0; query.collision_mask = 1; query.exclude = excluded(actor)
+	var sweep_minimum := minimum
+	if is_zero_approx(motion.y): sweep_minimum.y += minf(1.0 / 256.0, (maximum.y - minimum.y) * 0.25)
+	var box := BoxShape3D.new(); box.size = (maximum - sweep_minimum) * actor.global_basis.get_scale(); var query := PhysicsShapeQueryParameters3D.new(); query.shape = box; query.transform = Transform3D(actor.global_basis.orthonormalized(), actor.global_position + actor.global_basis * (sweep_minimum + maximum) * 0.5); query.motion = motion; query.margin = 0.0; query.collision_mask = 1; query.exclude = excluded(actor)
 	var result: PackedFloat32Array = actor.get_world_3d().direct_space_state.cast_motion(query)
 	if result.size() < 2: return {"blocked": true, "floor": false, "grounded": false}
 	if result[0] < 1.0:

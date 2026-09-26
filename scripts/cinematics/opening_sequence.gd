@@ -9,10 +9,15 @@ var camera: Camera3D
 var effects: Node
 var audio: AudioStreamPlayer
 var audio_entries: Dictionary = {}
+var audio_streams: Dictionary = {}
+var xa_clock := 0.0
+var xa_generation := 0
+var xa_pending := false
 var xa_volume := 127
 var xa_fade := 0
-var veil: ColorRect
+var veil: Node
 var scenes: Dictionary = {}
+var map_face_flags: Dictionary = {}
 var actors: Dictionary = {}
 var bank := "ST02"
 var area := 0
@@ -38,8 +43,6 @@ var eye_velocity := Vector3.ZERO
 var focus_curve: Dictionary = {}
 var orbit_curve: Dictionary = {}
 var eye_curve: Dictionary = {}
-var fade := 255
-var fade_speed := 0
 var transition := 0
 var trig: Array = []
 func configure(path: String = "res://assets/opening/manifest.json") -> bool:
@@ -60,9 +63,16 @@ func configure(path: String = "res://assets/opening/manifest.json") -> bool:
 		var audio_manifest: Variant = JSON.parse_string(FileAccess.get_file_as_string(audio_path))
 		if audio_manifest is Dictionary:
 			for entry: Dictionary in audio_manifest.get("entries", []): audio_entries[str(int(entry["id"]))] = entry
-	veil = ColorRect.new(); veil.color = Color.BLACK; veil.mouse_filter = Control.MOUSE_FILTER_IGNORE; veil.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(veil)
+	veil = preload("res://scripts/ui/native_fade.gd").new(); add_child(veil)
+	if not veil.configure(true): prepared.emit(false); return false
+	veil.hold()
 	resized.connect(_resize); _resize(); _prepare.call_deferred(); return true
 func _prepare() -> void:
+	for key: String in audio_entries:
+		var path: String = str(audio_entries[key]["file"]); path = path if path.begins_with("res://") else directory.path_join("audio").path_join(path)
+		var stream := load(path) as AudioStream
+		if stream == null: prepared.emit(false); return
+		audio_streams[key] = stream
 	for source: Dictionary in manifest.get("actor_banks", []):
 		for model: Dictionary in source.get("models", []):
 			var path: String = directory.path_join(str(model["export"]["model_file"])); var resource: Resource = load(path)
@@ -71,6 +81,7 @@ func _prepare() -> void:
 	var level_path: String = directory.path_join(str(manifest["levels"])); var levels: Variant = JSON.parse_string(FileAccess.get_file_as_string(level_path))
 	if not levels is Dictionary: prepared.emit(false); return
 	for level: Dictionary in levels.get("areas", []):
+		map_face_flags[int(level["index"])] = bool(level.get("native_map_face_flags_in_alpha", false))
 		var path: String = level_path.get_base_dir().path_join(str(level["file"])); var resource: Resource = load(path)
 		if not resource is PackedScene: prepared.emit(false); return
 		scenes["area%d" % int(level["index"])] = resource
@@ -83,15 +94,21 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled(); _finish(true)
 func _process(delta: float) -> void:
 	if not running: return
-	accumulator += delta * 25.0
-	while accumulator >= 1.0 and running: accumulator -= 1.0; native_tick()
+	if audio.playing:
+		var position := audio.get_playback_position() + AudioServer.get_time_since_last_mix()
+		accumulator += maxf(0.0, position - xa_clock) * 25.0; xa_clock = maxf(xa_clock, position)
+	else: accumulator += delta * 25.0
+	var generation := xa_generation
+	while accumulator >= 1.0 and running:
+		accumulator -= 1.0; native_tick()
+		if generation != xa_generation: break
 func native_tick() -> void:
 	if not running: return
 	_callback()
 	if not running: return
 	_commands(); _curves(); _actors_tick(); _camera_update(); effects.native_tick()
 	if xa_fade != 0: xa_volume = clampi(xa_volume + xa_fade, 0, 127); audio.volume_db = linear_to_db(maxf(float(xa_volume) / 127.0, 0.0001))
-	if fade_speed != 0: fade = clampi(fade + fade_speed, 0, 255); veil.color.a = float(fade) / 255.0
+	veil.native_tick()
 	total_tick += 1; phase_tick += 1; segment_tick += 1
 	var duration: int = int(manifest["timeline"][segment]["duration"])
 	if duration >= 0 and segment_tick == duration: _advance()
@@ -112,24 +129,27 @@ func _segment_enter() -> void:
 	if source.has("area"): _set_area(int(source["area"]))
 func _callback() -> void:
 	var key: String = "%d:%d" % [phase, step]
-	if key == "0:0": _advance()
+	if key == "0:0" and veil.is_idle() and veil.is_covered() and _xa_ready(): _advance()
 	elif key == "0:2" and segment_tick == 350: _set_area(1); _advance()
 	elif key == "1:13":
 		if transition == 0 and segment_tick == 100: transition = 1; _request_fade(18); xa_fade = -8
-		elif transition == 1 and fade >= 255 and xa_volume == 0:
+		elif transition == 1 and veil.is_idle() and veil.is_covered() and xa_volume == 0:
 			for slot: int in actors.keys(): _remove(slot)
 			for effect: Dictionary in effects.actors.duplicate(): effects.remove(int(effect["slot"]))
-			_set_bank("ST0201"); _set_area(2); _play_xa(key); _request_fade(2); _advance()
+			_set_bank("ST0201"); _set_area(2); _play_xa(key); transition = 2
+		elif transition == 2 and _xa_ready(): _request_fade(2); _advance()
 	elif key == "2:6":
 		if segment_tick == 40: xa_fade = -8; transition = 1
-		elif transition == 1 and xa_volume == 0: _set_bank("ST0202"); _play_xa(key); _advance()
+		elif transition == 1 and xa_volume == 0: _set_bank("ST0202"); _play_xa(key); transition = 2
+		elif transition == 2 and _xa_ready(): _advance()
 	elif key == "2:7" and segment_tick == 0:
 		for record: Dictionary in manifest.get("callback_records", {}).get("0x800f1a38", []): _spawn(record)
 	elif key == "2:11":
 		if transition == 0: xa_fade = -8; transition = 1
-		elif xa_volume == 0: _set_bank("ST0203"); _play_xa(key); _advance()
+		elif transition == 1 and xa_volume == 0: _set_bank("ST0203"); _play_xa(key); transition = 2
+		elif transition == 2 and _xa_ready(): _advance()
 	elif key == "2:14" and segment_tick == 300: _request_fade(18)
-	elif key == "2:14" and segment_tick > 300 and fade >= 255: _advance()
+	elif key == "2:14" and segment_tick > 300 and veil.is_idle() and veil.is_covered(): _advance()
 	for action: Dictionary in manifest.get("callbacks", {}).get(key, {}).get("actions", []):
 		if int(action["tick"]) != segment_tick: continue
 		if action.has("effect"):
@@ -144,15 +164,15 @@ func _callback() -> void:
 		for slot: int in actors.keys():
 			if str(actors[slot]["record"].get("pool", "")) == str(clear["pool"]): _remove(slot)
 func _request_fade(code: int) -> void:
-	var speeds: Array[int] = [255, 64, 16, 8, 4]; var speed: int = speeds[code & 7]
-	fade = 255 if code < 16 else 0; fade_speed = -speed if code < 16 else speed; veil.color.a = float(fade) / 255.0
+	veil.request(code)
 func _play_xa(key: String) -> void:
 	xa_volume = 127; xa_fade = 0; audio.volume_db = 0.0
 	for entry: Dictionary in manifest.get("xa", {}).get("entries", []):
 		if str(entry["phase"]) != key or not audio_entries.has(str(int(entry["id"]))): continue
-		var source: Dictionary = audio_entries[str(int(entry["id"]))]; var path: String = str(source["file"]); path = path if path.begins_with("res://") else directory.path_join("audio").path_join(path)
-		if not ResourceLoader.exists(path): return
-		audio.stream = load(path) as AudioStream; audio.play(); return
+		audio.stream = audio_streams[str(int(entry["id"]))] as AudioStream; audio.play(); xa_clock = 0.0; accumulator = 0.0; xa_generation += 1; xa_pending = true; return
+func _xa_ready() -> bool:
+	if xa_pending and audio.get_playback_position() <= 0.0: return false
+	xa_pending = false; return true
 func _commands() -> void:
 	while command_index < manifest["commands"].size():
 		var command: Dictionary = manifest["commands"][command_index]; var words: Array = command["words"]; var opcode: int = int(command["opcode"]); var header: int = int(words[0])
@@ -176,7 +196,7 @@ func _commands() -> void:
 			24: focus_curve = {"start": focus if target_mode == 0 else relative_focus, "end": _fixed(words), "tick": 0, "duration": header & 65535, "curve": (header >> 16) & 7}; focus_velocity = Vector3.ZERO
 			25: orbit_curve = {"start": orbit, "end": _fixed(words), "tick": 0, "duration": header & 65535, "curve": (header >> 16) & 7}; orbit_velocity = Vector3.ZERO
 			26: eye_curve = {"start": eye, "end": _fixed(words), "tick": 0, "duration": header & 65535, "curve": (header >> 16) & 7}; eye_velocity = Vector3.ZERO
-			32, 33, 34: camera.set_meta("native_fade_mode", opcode - 32)
+			32, 33, 34: camera.set_meta("native_depth_cue_mode", opcode - 32)
 			64: _spawn(command["actor_record"])
 			65: _remove(_record(command["actor_record"])[1])
 			255: return
@@ -213,7 +233,7 @@ func _spawn(source: Dictionary) -> void:
 		if str(source_bank["archive"]).get_file().get_basename() != bank: continue
 		for model: Dictionary in source_bank["models"]:
 			if int(model["flags"]) != flags: continue
-			var model_path: String = directory.path_join(str(model["export"]["model_file"])); var node: Node3D = (scenes[model_path] as PackedScene).instantiate(); node.name = "Actor_%02d" % slot; world.add_child(node); node.position = _world(Vector3(record.decode_s16(12), record.decode_s16(14), record.decode_s16(16))); node.rotation.y = -float(record.decode_u16(18)) * TAU / 4096.0; preload("res://scripts/world/native_material.gd").apply(node, 128.0)
+			var model_path: String = directory.path_join(str(model["export"]["model_file"])); var node: Node3D = (scenes[model_path] as PackedScene).instantiate(); node.name = "Actor_%02d" % slot; world.add_child(node); node.position = _world(Vector3(record.decode_s16(12), record.decode_s16(14), record.decode_s16(16))); node.rotation.y = -float(record.decode_u16(18)) * TAU / 4096.0; preload("res://scripts/world/native_material.gd").apply(node, 255.0 if bool(model["export"].get("native_vertex_colors", false)) else 128.0)
 			actors[slot] = {"node": node, "record": source, "model": model, "clock": 0, "control": -1, "class": kind, "yaw": record.decode_u16(18), "forward": 0, "fields": {"0x0C": record.decode_u32(8)}}
 			_face_surfaces(actors[slot])
 			if kind == 20 and variant == 1: node.rotation.x = -float(record.decode_u16(10) & 4095) * TAU / 4096.0
@@ -256,6 +276,7 @@ func _set_area(index: int) -> void:
 	area = index
 	if not scenes.has("area%d" % index): return
 	var node: Node3D = (scenes["area%d" % index] as PackedScene).instantiate(); node.name = "StageMap"
+	node.set_meta("native_map_face_flags", bool(map_face_flags.get(index, false)))
 	world.add_child(node); preload("res://scripts/world/native_material.gd").apply(node)
 func _actors_tick() -> void:
 	for slot: int in actors:

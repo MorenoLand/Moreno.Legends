@@ -62,6 +62,8 @@ func _apply_native_layout(commands: Array, choice: Dictionary) -> void:
 		elif opcode == 0x18: current_arrow = true
 		elif opcode == 0x24: current_arrow = false
 		elif opcode == 0x09 and args.size() == 1: current_layout_flags = current_layout_flags | 0x40000 if int(args[0]) == 0 else current_layout_flags & ~0x40000
+		elif opcode == 0x29 and args.size() == 1: current_layout_flags = current_layout_flags | 0x20000 if int(args[0]) == 0 else current_layout_flags & ~0x20000
+		elif opcode == 0x1D: current_layout_flags &= ~0x10000
 	current_frame = Rect2(current_layout_origin - Vector2(7, 3), Vector2(2 * current_width + 3, 16 * current_lines + 7))
 func _update_choice_pointer(_stage: String, _index: int, _selection: int, point: Vector2) -> void:
 	var factor := size.y / 240.0
@@ -109,6 +111,10 @@ func present_message(stage: String, entry: Dictionary) -> Dictionary:
 		elif native_page_wait_updates[index] > 0: await _wait_native_updates(native_page_wait_updates[index])
 		else: await advance_requested
 	if not entry.get("native_tail_commands", []).is_empty(): native_page_started.emit(active_stage, active_index, native_pages.size() if native_pages is Array else 1)
+	for command: Dictionary in entry.get("native_tail_commands", []):
+		if int(command.get("opcode", -1)) == 0x08:
+			var arguments: Array = command.get("arguments", [])
+			if arguments.size() == 2: await _wait_native_updates(((int(arguments[0]) << 8) | int(arguments[1])) + 1)
 	if bool(entry.get("continue_window", false)): return {"choice_index": -1}
 	await FRAME.exit(self, layout, "gameplay")
 	visible = false; active = false; current_native_choice.clear(); queue_redraw(); message_finished.emit(active_stage, active_index); return {}

@@ -59,7 +59,7 @@ class NativeCamera:
 	def orbit(self, focus, distance, pitch, yaw, roll=0):
 		self.cpu.mem_write(0x1A0000, struct.pack("<4i", *focus, 0)); self.call(0x80015B6C, (0x801A0000, distance, pitch, yaw, roll)); return {"control": self.control[:8], "camera_state": list(struct.unpack("<40I", self.cpu.mem_read(0x7D010, 160)))}
 def record_source(path, archive, index, payload=None):
-	data = path.read_bytes(); size = struct.unpack_from("<I", data, 12)[0]; document = json.loads(data[20:20 + size]); document["asset"]["generator"] = "Native PBD source exporter"; document["extras"]["source_archive"] = archive; document["extras"]["vertex_color_source"] = "Source shading stream is not yet bound"; name = Path(archive).stem + "_model_%02d" % index
+	data = path.read_bytes(); size = struct.unpack_from("<I", data, 12)[0]; document = json.loads(data[20:20 + size]); document["asset"]["generator"] = "Native PBD source exporter"; document["extras"]["source_archive"] = archive; document["extras"].setdefault("vertex_color_source", "Source shading stream is not yet bound"); name = Path(archive).stem + "_model_%02d" % index
 	if payload is not None and "source_surfaces" not in document["extras"]:
 		mesh = struct.unpack_from("<I", payload, 8 + index * 16)[0]; high, hierarchy = struct.unpack_from("<I", payload, mesh + 4)[0], struct.unpack_from("<I", payload, mesh + 20)[0]; bone = struct.unpack_from("<I", payload, mesh + 16)[0]
 		if bone:
@@ -200,21 +200,27 @@ def native_texture_uploads(source, vram):
 	for offset in range(0, len(source) - 47, 0x800):
 		kind, size = struct.unpack_from("<2I", source, offset)
 		if kind != 2: continue
-		px, py, colors, palettes, x, y, width, height = struct.unpack_from("<8H", source, offset + 12); expected = colors * palettes * 2 + width * height * 2
-		if size not in (expected, expected + 0x7D0) or not expected or px + colors > 1024 or py + palettes > 512 or x + width > 1024 or y + height > 512: continue
-		cursor = offset + (0x800 if size == expected + 0x7D0 else 0x30)
+		px, py, colors, palettes, x, y, width, height = struct.unpack_from("<8H", source, offset + 12); palette_size, image_size = colors * palettes * 2, width * height * 2
+		if not palette_size + image_size or px + colors > 1024 or py + palettes > 512 or x + width > 1024 or y + height > 512: continue
+		if image_size and size == image_size + 0x7D0: image_start = offset + 0x800
+		elif size == palette_size + image_size: image_start = offset + 0x30 + palette_size
+		else: continue
+		if offset + 0x30 + palette_size > len(source) or image_start + image_size > len(source): raise ValueError("Native opening texture upload exceeds source archive")
+		cursor = offset + 0x30
 		for row in range(palettes):
 			start = ((py + row) * 1024 + px) * 2; count = colors * 2; vram[start:start + count] = source[cursor:cursor + count]; cursor += count
+		cursor = image_start
 		for row in range(height):
 			start = ((y + row) * 1024 + x) * 2; count = width * 2; vram[start:start + count] = source[cursor:cursor + count]; cursor += count
 	return vram
 def export_opening(dat_dir=None, output_dir=None):
 	dat_dir = Path(dat_dir) if dat_dir else ROOT / "build/disc-assets/DAT"; output_dir = Path(output_dir) if output_dir else ROOT / "assets/opening"; output_dir.mkdir(parents=True, exist_ok=True); work = ROOT / "build/opening"; work.mkdir(parents=True, exist_ok=True); export_maps("ST02", dat_dir, output_dir / "levels"); overlay_path = dat_dir / "ST02T.BIN"; overlay = overlay_path.read_bytes(); stage_vram, _ = textures(overlay_path); stage_vram = native_texture_uploads(overlay, stage_vram); banks = []
+	actor_vram = bytearray(stage_vram)
 	for bank in ("ST02", "ST0201", "ST0202", "ST0203"):
 		path = dat_dir / (bank + ".BIN"); source = path.read_bytes(); archive_path = path; section = None
 		if bank == "ST02":
 			payload, section = decompress_section(source, 0x7800); header = bytearray(48); struct.pack_into("<3I", header, 0, 10, len(payload), section["section_count"]); archive_path = work / "ST02_models.bin"; write_if_changed(archive_path, header + payload)
-		archive, payload = actor_archive(archive_path); vram = native_texture_uploads(source, bytearray(stage_vram)); normalized = work / (bank + "_vram.bin"); header = bytearray(48); struct.pack_into("<3I", header, 0, 2, len(vram), 1); struct.pack_into("<8H", header, 12, 0, 0, 0, 0, 0, 0, 1024, 512); write_if_changed(normalized, header + vram); directory = output_dir / bank; directory.mkdir(parents=True, exist_ok=True); models = []
+		archive, payload = actor_archive(archive_path); vram = native_texture_uploads(source, bytearray(actor_vram)); actor_vram = vram; normalized = work / (bank + "_vram.bin"); header = bytearray(48); struct.pack_into("<3I", header, 0, 2, len(vram), 1); struct.pack_into("<8H", header, 12, 0, 0, 0, 0, 0, 0, 1024, 512); write_if_changed(normalized, header + vram); directory = output_dir / bank; directory.mkdir(parents=True, exist_ok=True); models = []
 		for model in archive["models"]:
 			if not model.get("mesh_offset"): continue
 			index = model["index"]; destination = directory / ("model_%02d.glb" % index); metadata = export_actor_model(payload, index, normalized, destination) if model["mesh"]["bone_count"] else export_static_actor(payload, index, normalized, destination); metadata["source_surfaces"] = record_source(destination, path.name, index, payload); metadata["source_archive"] = path.name; metadata["model_file"] = destination.relative_to(output_dir).as_posix(); models.append({**model, "export": metadata})

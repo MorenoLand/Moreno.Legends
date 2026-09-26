@@ -29,6 +29,17 @@ func configure(dialogue_node: Control, manifest_path := "res://assets/dialogue/m
 		for entry: Dictionary in banks[stage].get("messages", []): entries[stage][int(entry["index"])] = entry
 	return true
 func update_native_context(context: Dictionary) -> void: native_context = context
+static func native_stat_mutation(context: Dictionary, delta: int) -> Dictionary:
+	if not context.has("native_save_word40") or not context.has("native_save_byte44"): return {}
+	var value := clampi(int(context["native_save_word40"]) + delta, -32767, 32767); var state := int(context["native_save_byte44"])
+	if state == 0 and value < 0x3000 or state == 2 and value >= -0x2fff: state = 1
+	if value > 0x4000: state = 0
+	elif value < -0x4000: state = 2
+	return {"native_save_word40": value, "native_save_byte44": state}
+func apply_native_stat_delta(delta: int, stage: String) -> bool:
+	var mutation := native_stat_mutation(native_context, delta)
+	if mutation.is_empty(): return false
+	native_context.merge(mutation, true); native_context_changed.emit(stage, native_context); return true
 func play_message(stage: String, index: int, source_address := "", source_actor: Node3D = null) -> bool:
 	if dialogue == null or not entries.has(stage) or not entries[stage].has(index): push_error("No source dialogue entry for %s:%02X" % [stage, index]); return false
 	return await _present_entry(stage, index, source_address, source_actor)
@@ -48,9 +59,9 @@ func _can_display_program(stage: String, index: int) -> bool:
 	var key := "%s:%d" % [stage, index]
 	if not preflight_results.has(key): preflight_results[key] = _resolved_displayable(_resolve_program(stage, index))
 	return bool(preflight_results[key])
-func play_bound_message(stage: String, bank: String, runtime_index: int, source_address: String, source_actor: Node3D = null) -> bool:
+func play_bound_message(stage: String, bank: String, runtime_index: int, source_address: String, source_actor: Node3D = null, window: int = 0) -> bool:
 	if not can_play_bound_message(stage, bank, runtime_index): push_error("Native message %s:%02X has no resolved page in bank %s" % [stage, runtime_index, bank]); return false
-	return await _present_entry(stage, runtime_index, source_address, source_actor)
+	return await _present_entry(stage, runtime_index, source_address, source_actor, window)
 func _native_call_entry(stage: String, address: String, runtime_index: int) -> Dictionary:
 	if not banks.has(stage) or not entries.has(stage): return {}
 	var matches: Array[Dictionary] = []
@@ -68,10 +79,10 @@ func _bound_bank_matches(stage: String, bank: String) -> bool:
 func _normalize_bank(value: String) -> String:
 	var normalized := value.strip_edges().to_lower()
 	return "0x%08x" % normalized.substr(2).hex_to_int() if normalized.begins_with("0x") else normalized
-func _present_entry(stage: String, index: int, source_address: String, source_actor: Node3D = null) -> bool:
+func _present_entry(stage: String, index: int, source_address: String, source_actor: Node3D = null, window: int = 0) -> bool:
 	if dialogue == null or not entries.has(stage) or not entries[stage].has(index) or bool(dialogue.get("active")): return false
 	if source_address != "": source_call_started.emit(stage, source_address, index)
-	active_program_stage = stage; active_program_index = index; active_source_actor = source_actor; active_window_state = {"flags": 0x00010083, "byte23": 2, "choice_index": 0, "text_speed": 2, "origin_x": 32, "origin_y": 176, "window_width": 144, "window_lines": 3}; var program_index := index; var program_offset := -1; var continuation := false; var choice_cancelled := false
+	active_program_stage = stage; active_program_index = index; active_source_actor = source_actor; active_window_state = {"window": window, "flags": 0x00010083, "byte23": 2, "choice_index": 0, "text_speed": 2, "origin_x": 32, "origin_y": 176, "window_width": 144, "window_lines": 3}; var program_index := index; var program_offset := -1; var continuation := false; var choice_cancelled := false
 	for _step in range(128):
 		var resolved := _resolve_program(stage, program_index, active_window_state, program_offset)
 		if not bool(resolved.get("supported", false)):
@@ -94,19 +105,19 @@ func _present_entry(stage: String, index: int, source_address: String, source_ac
 	return not choice_cancelled
 func _on_native_page_started(stage: String, index: int, page_index: int) -> void:
 	if stage != active_program_stage or index != active_program_index or page_index < 0: return
-	if page_index == active_page_commands.size():
-		for command: Dictionary in active_tail_commands: native_command_requested.emit(stage, index, int(command["opcode"]), command.get("arguments", []), command.get("source_command", {}), active_source_actor)
-		return
-	if page_index >= active_page_commands.size(): return
+	if page_index > active_page_commands.size(): return
+	var commands: Array = active_tail_commands if page_index == active_page_commands.size() else active_page_commands[page_index]
 	var flags_changed := false
-	for command: Dictionary in active_page_commands[page_index]:
+	for command: Dictionary in commands:
 		var opcode := int(command["opcode"]); var arguments: Array = command.get("arguments", [])
 		if opcode in [0x26, 0x27] and arguments.size() == 2 and native_context.get("event_flags", null) is Dictionary:
 			var flag_id := (int(arguments[0]) << 8) | int(arguments[1]); var flags: Dictionary = native_context["event_flags"]; var flag_key: Variant = flag_id if flags.has(flag_id) or not flags.has(str(flag_id)) else str(flag_id); flags[flag_key] = opcode == 0x26; native_context["event_flags"] = flags; flags_changed = true
 		if command.get("native_context_mutation", null) is Dictionary:
 			for key in command["native_context_mutation"]: native_context[key] = command["native_context_mutation"][key]
 			flags_changed = true
-		native_command_requested.emit(stage, index, opcode, arguments, command.get("source_command", {}), active_source_actor)
+		var source_command: Dictionary = command.get("source_command", {}).duplicate(true)
+		if command.has("native_context_mutation"): source_command["native_context_mutation"] = command["native_context_mutation"]
+		native_command_requested.emit(stage, index, opcode, arguments, source_command, active_source_actor)
 	if flags_changed: native_context_changed.emit(stage, native_context)
 func _resolved_displayable(resolved: Dictionary) -> bool:
 	if not bool(resolved.get("supported", false)): return false
@@ -180,6 +191,23 @@ func _resolve_program(stage: String, initial_index: int, window_state: Dictionar
 				0x30:
 					if arguments.size() != 1: return {"supported": false}
 					window_state["byte23"] = arguments[0]; current_page_commands.append({"opcode": opcode, "arguments": arguments, "source_command": command.duplicate(true)})
+				0x29:
+					if arguments.size() != 1: return {"supported": false}
+					window_state["flags"] = int(window_state.get("flags", 0)) | 0x20000 if arguments[0] == 0 else int(window_state.get("flags", 0)) & ~0x20000; current_page_commands.append({"opcode": opcode, "arguments": arguments, "source_command": command.duplicate(true)})
+				0x1D:
+					if not arguments.is_empty(): return {"supported": false}
+					window_state["flags"] = int(window_state.get("flags", 0)) & ~0x10000; current_page_commands.append({"opcode": opcode, "arguments": arguments, "source_command": command.duplicate(true)})
+				0x19:
+					if arguments.size() != 2: return {"supported": false}
+					current_page_commands.append({"opcode": opcode, "arguments": arguments, "source_command": command.duplicate(true)})
+				0x37:
+					if arguments.size() != 5 or arguments[0] in [1, 2] or not simulated_context.has("native_wallet"): return {"supported": false}
+					var delta := (int(arguments[1]) << 24) | (int(arguments[2]) << 16) | (int(arguments[3]) << 8) | int(arguments[4]); if delta >= 0x80000000: delta -= 0x100000000
+					var wallet := int(simulated_context["native_wallet"]); if wallet < -delta: return {"supported": false}
+					wallet = mini(wallet + delta, 9999999); simulated_context["native_wallet"] = wallet; current_page_commands.append({"opcode": opcode, "arguments": arguments, "source_command": command.duplicate(true), "native_context_mutation": {"native_wallet": wallet}})
+				0x08:
+					if arguments.size() != 2: return {"supported": false}
+					current_page_commands.append({"opcode": opcode, "arguments": arguments, "source_command": command.duplicate(true)})
 				0x06:
 					if arguments.size() != 6: return {"supported": false}
 					window_state["origin_x"] = (int(arguments[0]) << 8) | int(arguments[1]); window_state["origin_y"] = (int(arguments[2]) << 8) | int(arguments[3]); window_state["window_width"] = arguments[4]; window_state["window_lines"] = arguments[5]; current_page_commands.append({"opcode": opcode, "arguments": arguments, "source_command": command.duplicate(true)})
@@ -194,10 +222,7 @@ func _resolve_program(stage: String, initial_index: int, window_state: Dictionar
 					return {"supported": true, "program_index": message_index, "pages": pages, "page_speeds": page_speeds, "page_wait_updates": page_wait_updates, "page_choices": page_choices, "page_commands": page_commands, "tail_commands": tail_commands, "needs_choice": true, "resume_index": message_index, "resume_offset": int(event["offset"]) + command_length}
 				0x3E:
 					if arguments.size() != 2 or not simulated_context.has("native_save_word40") or not simulated_context.has("native_save_byte44"): return {"supported": false}
-					var delta := _signed_be16(arguments[0], arguments[1]); var value := clampi(int(simulated_context["native_save_word40"]) + delta, -32767, 32767); var state := int(simulated_context["native_save_byte44"]); if state == 0 and value < 0x3000 or state == 2 and value >= -0x2fff: state = 1
-					if value > 0x4000: state = 0
-					elif value < -0x4000: state = 2
-					simulated_context["native_save_word40"] = value; simulated_context["native_save_byte44"] = state; current_page_commands.append({"opcode": opcode, "arguments": arguments, "source_command": command.duplicate(true), "native_context_mutation": {"native_save_word40": value, "native_save_byte44": state}})
+					var mutation := native_stat_mutation(simulated_context, _signed_be16(arguments[0], arguments[1])); simulated_context.merge(mutation, true); current_page_commands.append({"opcode": opcode, "arguments": arguments, "source_command": command.duplicate(true), "native_context_mutation": mutation})
 				0x3F:
 					if arguments.size() != 3 or not simulated_context.has("native_save_byte44"): return {"supported": false}
 					var state := int(simulated_context["native_save_byte44"]); target = int(arguments[state]) if state >= 0 and state < 3 else 0xFF

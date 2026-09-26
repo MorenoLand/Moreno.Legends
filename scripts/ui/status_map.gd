@@ -56,6 +56,7 @@ func _draw_source_floorplan() -> void:
 	var scale := _scale(); var center := size * 0.5 + pan; var source_center := source_bounds.get_center()
 	for record: Dictionary in source_records:
 		var footprint: Array[Vector2] = SOURCE_FLOOR._footprint(int(record["kind"]), record["x"], record["z"]); var polygon := PackedVector2Array()
+		if footprint.size() == 4: footprint = [footprint[0], footprint[1], footprint[3], footprint[2]]
 		for point: Vector2 in footprint: polygon.append(center + (Vector2(point.x, -point.y) - source_center) * scale)
 		if polygon.size() < 3: continue
 		draw_colored_polygon(polygon, Color(0.36, 0.54, 0.67, 0.72)); var outline := polygon.duplicate(); outline.append(polygon[0]); draw_polyline(outline, Color8(48, 74, 96), 1.0)
@@ -73,6 +74,7 @@ func _refresh_source_area() -> void:
 	for record: Dictionary in boxes:
 		if int(record.get("kind", 0)) >= 0x100 or int(record.get("mask", 0)) == 0: continue
 		var x: Array = record["x"]; var z: Array = record["z"]; var x0 := minf(float(x[0]), float(x[1])); var x1 := maxf(float(x[0]), float(x[1])); var z0 := minf(float(z[0]), float(z[1])); var z1 := maxf(float(z[0]), float(z[1])); var first := Vector2(x0, -z1); var last := Vector2(x1, -z0)
+		if x0 == x1 or z0 == z1: continue
 		if not has_bounds: source_bounds = Rect2(first, last - first); has_bounds = true
 		else: source_bounds = source_bounds.expand(first).expand(last)
 		source_records.append(record)

@@ -180,6 +180,12 @@ static func _models_by_index(models: Array) -> Dictionary:
 	return result
 static func _attach_native_source(node: Node3D, stage: String, area: int, entry: Dictionary) -> void:
 	node.set_meta("native_stage", stage); node.set_meta("native_area", area); preload("res://scripts/world/native_interaction.gd").attach(node, entry)
+	var receiver := node.get_node_or_null("NativeKickableBody")
+	if receiver != null:
+		var ancestor: Node = node.get_parent()
+		while ancestor != null:
+			if ancestor.has_method("bind_native_kickable_prop"): ancestor.bind_native_kickable_prop(receiver); break
+			ancestor = ancestor.get_parent()
 static func _npc_source_offsets(stage: String) -> Dictionary:
 	if _npc_source_cache.has(stage): return _npc_source_cache[stage]
 	var result := {}; var data := _read_manifest("res://assets/levels/%s/npcs.json" % stage)
@@ -194,6 +200,7 @@ static func _npc_source_offsets(stage: String) -> Dictionary:
 static func _source_key(area: int, offset: int, raw: String) -> String: return "%d:%d:%s" % [area, offset, raw]
 static func _load_actor(parent: Node3D, path: String, entry: Dictionary, model: Dictionary, native_context: Dictionary = {}) -> Node3D:
 	if not is_instance_valid(parent) or path.ends_with("/") or not path.ends_with(".glb"): return null
+	if entry.has("native_kickable") and not preload("res://scripts/world/native_kickable_prop.gd").spawn_allowed(entry, native_context): return null
 	var transform: Dictionary = entry.get("transform", {})
 	if entry.has("native_pose_resolver"):
 		transform = preload("res://scripts/world/native_interaction.gd").resolve_pose(entry, native_context)
@@ -205,7 +212,11 @@ static func _load_actor(parent: Node3D, path: String, entry: Dictionary, model: 
 	parent.add_child(node)
 	var position: Array = transform.get("position", entry.get("position", [0.0, 0.0, 0.0])); node.position = Vector3(float(position[0]), float(position[1]), float(position[2])); node.rotation.y = float(transform.get("yaw_turns", entry.get("yaw_turns", 0.0))) * TAU
 	var scale: Array = model.get("native_scale_raw", [512, 512, 512]); node.scale = Vector3(float(scale[0]), float(scale[1]), float(scale[2])) / 512.0
-	var hitbox: Dictionary = entry.get("native_hitbox", {}); preload("res://scripts/world/native_actor_motion.gd").attach_collision(node, hitbox.get("bounds_raw", []))
+	var hitbox: Dictionary = entry.get("native_hitbox", {})
+	if entry.has("native_kickable"):
+		var receiver := preload("res://scripts/world/native_kickable_prop.gd").new(); receiver.name = "NativeKickableBody"; node.add_child(receiver)
+		if not receiver.configure(node, entry, native_context): node.queue_free(); return null
+	else: preload("res://scripts/world/native_actor_motion.gd").attach_collision(node, hitbox.get("bounds_raw", []))
 	var animation := node.find_child("AnimationPlayer", true, false) as AnimationPlayer
 	if animation != null:
 		var startup: Dictionary = entry.get("native_animation_startup", model.get("native_animation_startup", {})); var control := int(startup.get("control", entry.get("control", 0))); var frame := int(startup.get("start_record", entry.get("frame", 0)))
@@ -218,7 +229,7 @@ static func _load_actor(parent: Node3D, path: String, entry: Dictionary, model: 
 	if str(entry.get("stage", "")) == "ST08" and int(entry.get("actor_class", -1)) == 0 and int(entry.get("model_index", -1)) == 2 and str(entry.get("source_record_ram", "")) == "0x800f5284" and int(interaction.get("actor_state", -1)) == 1 and str(interaction.get("actor_callback", "")).to_lower() == "0x800e93ec":
 		var follower := preload("res://scripts/world/native_follower.gd").new(); follower.name = "NativeFollower"; node.add_child(follower)
 		if not follower.configure(node, entry, native_context): follower.queue_free()
-	preload("res://scripts/world/native_material.gd").apply(node, 128.0)
+	preload("res://scripts/world/native_material.gd").apply(node, 255.0 if bool(model.get("native_vertex_colors", false)) else 128.0)
 	if entry.has("native_broadphase"):
 		var meshes: Array[MeshInstance3D] = []
 		if node is MeshInstance3D: meshes.append(node as MeshInstance3D)

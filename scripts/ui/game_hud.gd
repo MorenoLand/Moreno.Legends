@@ -75,7 +75,7 @@ func _process(delta: float) -> void:
 	clock += delta
 	damage_timer = maxf(damage_timer - delta, 0)
 	if damage_timer <= 0: trail_height = move_toward(trail_height, _life_height(), delta * 15.0)
-	if previous_trail != trail_height or pupil_frame != int(clock * pupil_rate) % 6 or (_life_height() == 0 and warning_phase != int(clock * 30) % 32) or ((lifter_target_valid or lifter_activate_held) and (int((clock - delta) * 30) & 4) != (int(clock * 30) & 4)): queue_redraw()
+	if previous_trail != trail_height or pupil_frame != int(clock * pupil_rate) % 6 or (_life_height() == 0 and warning_phase != int(clock * 30) % 32) or ((lifter_target_valid or lifter_activate_held) and (int((clock - delta) * 25) & 4) != (int(clock * 25) & 4)): queue_redraw()
 func _draw() -> void:
 	var factor := size.y / 240.0
 	if factor <= 0: return
@@ -93,8 +93,8 @@ func _draw() -> void:
 		preload("res://scripts/ui/native_menu_frame.gd").draw(self, interaction_layout, "header", Rect2(position, Vector2(width, height)))
 		var text_position := position + Vector2(7, 4 + interaction_font.get_ascent(12))
 		if key_width > 0.0:
-			var key_edge := position + Vector2(7, height - 5); draw_polyline(PackedVector2Array([key_edge + Vector2(0, -2), key_edge, key_edge + Vector2(key_width - 4, 0), key_edge + Vector2(key_width - 4, -2)]), Color8(185, 190, 208), 1.0)
-			draw_string(interaction_font, text_position + Vector2(2, 0), interaction_key, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color8(255, 222, 99))
+			var key_edge := position + Vector2(7, height - 3); draw_polyline(PackedVector2Array([key_edge + Vector2(0, -2), key_edge, key_edge + Vector2(key_width - 4, 0), key_edge + Vector2(key_width - 4, -2)]), Color8(185, 190, 208), 1.0)
+			draw_string(interaction_font, text_position + Vector2(2, -2), interaction_key, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color8(255, 222, 99))
 			text_position.x += key_width + 4.0
 		draw_string(interaction_font, text_position, interaction_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
 func set_lifter_state(carrying: bool, grabbing: bool, target_valid: bool, target_disabled: bool, activate_held: bool) -> void:
@@ -102,8 +102,8 @@ func set_lifter_state(carrying: bool, grabbing: bool, target_valid: bool, target
 	lifter_carrying = carrying; lifter_grabbing = grabbing; lifter_target_valid = target_valid; lifter_target_disabled = target_disabled; lifter_activate_held = activate_held; queue_redraw()
 func _draw_lifter(right: float) -> void:
 	var closed := lifter_carrying or lifter_grabbing
-	var blink := (int(clock * 30.0) & 4) != 0
-	var palette := "_ready" if not closed and lifter_target_valid and not lifter_target_disabled else ""
+	var blink := (int(clock * 25.0) & 4) != 0
+	var palette := "_ready" if not closed and lifter_target_valid and lifter_target_disabled else ""
 	var bottom := "lifter_piece_a_closed" if closed or lifter_target_valid and blink else "lifter_piece_a"
 	var claw := "lifter_piece_c_closed" if closed else "lifter_piece_c_active" if lifter_activate_held and blink else "lifter_piece_c"
 	_texture(bottom + palette, Rect2(right + 282, 198, 16, 16))
