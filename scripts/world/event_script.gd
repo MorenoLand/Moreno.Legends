@@ -94,6 +94,8 @@ func _present_entry(stage: String, index: int, source_address: String, source_ac
 		if not has_text and not bool(resolved.get("needs_choice", false)) and resolved.get("tail_commands", []).is_empty():
 			push_error("Native message %s:%02X resolves to no displayable text" % [stage, index]); active_program_stage = ""; active_program_index = -1; active_source_actor = null; active_page_commands.clear(); active_tail_commands.clear(); active_window_state.clear(); return false
 		active_program_index = int(resolved.get("program_index", program_index)); active_page_commands = resolved.get("page_commands", []); active_tail_commands = resolved.get("tail_commands", [])
+		if not has_text and not bool(resolved.get("needs_choice", false)):
+			_on_native_page_started(stage, active_program_index, active_page_commands.size()); break
 		var entry: Dictionary = {"index": active_program_index, "text": "\n".join(pages), "native_pages": pages, "native_page_speeds": resolved.get("page_speeds", []), "native_page_wait_updates": resolved.get("page_wait_updates", []), "native_page_choices": resolved.get("page_choices", []), "native_page_commands": active_page_commands, "native_tail_commands": active_tail_commands, "continue_window": bool(resolved.get("needs_choice", false))}
 		var result: Dictionary = await dialogue.present_message(stage, entry)
 		if not bool(resolved.get("needs_choice", false)): break
@@ -123,7 +125,7 @@ func _resolved_displayable(resolved: Dictionary) -> bool:
 	if not bool(resolved.get("supported", false)): return false
 	for page: String in resolved.get("pages", []):
 		if not page.strip_edges().is_empty(): return true
-	return false
+	return not resolved.get("tail_commands", []).is_empty()
 func _resolve_program(stage: String, initial_index: int, window_state: Dictionary = {}, initial_offset := -1) -> Dictionary:
 	if window_state.is_empty(): window_state = {"flags": 0x00010083, "byte23": 2, "choice_index": 0, "text_speed": 2, "origin_x": 32, "origin_y": 176, "window_width": 144, "window_lines": 3}
 	if not entries.has(stage): return {"supported": false}

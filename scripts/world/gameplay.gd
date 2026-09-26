@@ -4,6 +4,7 @@ signal prepared(success: bool)
 signal room_changed(stage: String, area: int)
 signal stage_transition_requested(route: Dictionary)
 signal location_requested(stage: String, area: int)
+signal native_scene_failed(reason: String)
 var room_transfer_pending := false
 @export_file("*.json") var manifest_path := "res://assets/levels/ST04/manifest.json":
 	set(value):
@@ -25,6 +26,9 @@ var loading := false
 var routes: Array = []
 var automatic_gate_diagnostics: Dictionary = {}
 var nearest_door: Dictionary = {}
+var nearest_map_interaction: Dictionary = {}
+var map_interaction_cache: Dictionary = {}
+var scene_trigger_cache: Dictionary = {}
 var nearest_npc: Variant
 var transition_overlay: Node
 var actor_manifest: Dictionary = {}
@@ -38,6 +42,7 @@ var native_floor_collision: Dictionary = {}
 var audio: Node
 var dialogue_box: Control
 var event_script: Node
+var native_scenes: Node
 var event_flags: Dictionary = {}
 var actor_route: Dictionary = {}
 var actor_models: Dictionary = {}
@@ -94,9 +99,21 @@ func _ready() -> void:
 	native_floor_collision = manifest.get("native_floor_collision", {})
 	var stage := str(manifest["stage"])
 	game_hud.minimap.configure(stage)
-	streaming_rooms = stage in ["ST04", "ST05", "ST06", "ST07"]
+	var native_area := int(areas[initial_area]["index"]) if initial_area >= 0 and initial_area < areas.size() else -1
+	audio = preload("res://scripts/audio/game_audio.gd").new()
+	audio.name = "Audio"
+	add_child(audio)
+	audio.set_preparing(audio_preparing)
+	audio.configure(player, "res://assets/audio/ST0F/manifest.json", "music" if stage == "ST0F" else "")
+	dialogue_box = Control.new(); dialogue_box.name = "DialogueBox"; dialogue_box.set_script(preload("res://scripts/ui/dialogue_box.gd")); $HUD.add_child(dialogue_box)
+	dialogue_box.typing_sound_requested.connect(audio.play_sound)
+	event_script = Node.new(); event_script.name = "EventScript"; event_script.set_script(preload("res://scripts/world/event_script.gd")); add_child(event_script); event_script.configure(dialogue_box, "res://assets/dialogue/manifest.json", native_context)
+	event_script.native_context_changed.connect(_dialogue_context_changed)
+	event_script.native_command_requested.connect(_native_dialogue_command)
+	native_scenes = preload("res://scripts/cinematics/native_scene_dispatcher.gd").new(); add_child(native_scenes); native_scenes.configure(self)
+	var layout_path := preload("res://scripts/world/room_stream.gd").layout_path_for(stage, native_area)
+	streaming_rooms = not layout_path.is_empty()
 	if streaming_rooms:
-		var layout_path := "res://assets/locations/room_layout.json"
 		if not FileAccess.file_exists(layout_path):
 			push_error("Missing Flutter room layout: " + layout_path)
 			preparation_finished = true
@@ -124,16 +141,6 @@ func _ready() -> void:
 	actors = Node3D.new()
 	actors.name = "Actors"
 	add_child(actors)
-	audio = preload("res://scripts/audio/game_audio.gd").new()
-	audio.name = "Audio"
-	add_child(audio)
-	audio.set_preparing(audio_preparing)
-	audio.configure(player, "res://assets/audio/ST0F/manifest.json", "music" if stage == "ST0F" else "")
-	dialogue_box = Control.new(); dialogue_box.name = "DialogueBox"; dialogue_box.set_script(preload("res://scripts/ui/dialogue_box.gd")); $HUD.add_child(dialogue_box)
-	dialogue_box.typing_sound_requested.connect(audio.play_sound)
-	event_script = Node.new(); event_script.name = "EventScript"; event_script.set_script(preload("res://scripts/world/event_script.gd")); add_child(event_script); event_script.configure(dialogue_box, "res://assets/dialogue/manifest.json", native_context)
-	event_script.native_context_changed.connect(_dialogue_context_changed)
-	event_script.native_command_requested.connect(_native_dialogue_command)
 	if streaming_rooms:
 		room_stream.door_sound.connect(audio.play_sound)
 	sky = preload("res://scripts/world/environment_sky.gd").new()
@@ -145,7 +152,7 @@ func _ready() -> void:
 	zone_notice = preload("res://scripts/ui/zone_notice.gd").new()
 	$HUD.add_child(zone_notice)
 	roof_status = Label.new(); roof_status.name = "RoofStatus"; roof_status.visible = false; roof_status.text = "roof: false"; roof_status.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE); roof_status.offset_top = 16; roof_status.offset_bottom = 44; roof_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; roof_status.mouse_filter = Control.MOUSE_FILTER_IGNORE; roof_status.add_theme_font_size_override("font_size", 20); roof_status.add_theme_color_override("font_shadow_color", Color.BLACK); roof_status.add_theme_constant_override("shadow_offset_x", 1); roof_status.add_theme_constant_override("shadow_offset_y", 1); $HUD.add_child(roof_status)
-	if streaming_rooms and not parked_location.is_empty():
+	if streaming_rooms and room_stream.can_show_parked_exterior() and not parked_location.is_empty():
 		if not await room_stream.set_parked_exterior(str(parked_location["stage"]), int(parked_location["area"])): push_warning("Cannot load parked Flutter exterior")
 	var door_path := manifest_path.get_base_dir().path_join("doors.json")
 	var door_data: Variant = JSON.parse_string(FileAccess.get_file_as_string(door_path)) if FileAccess.file_exists(door_path) else null
@@ -310,10 +317,25 @@ func _prepare_area(transition: bool = false) -> bool:
 		if is_instance_valid(prop): preload("res://scripts/world/native_material.gd").depth_cue(prop, depth_cue_parameters)
 	_set_current_area(int(areas[area_picker.selected]["index"]))
 	_sync_stage_picker()
-	if is_instance_valid(audio): audio.set_stage(manifest_path.get_base_dir().get_file(), int(areas[area_picker.selected]["index"]), native_context)
+	if is_instance_valid(audio):
+		var audio_stage := manifest_path.get_base_dir().get_file(); var audio_area := int(areas[area_picker.selected]["index"])
+		if await audio.set_stage(audio_stage, audio_area, native_context): _drain_native_actor_audio(audio_stage, audio_area)
+	_run_native_scene_requests.call_deferred(level, manifest_path.get_base_dir().get_file(), int(areas[area_picker.selected]["index"]))
 	player.set_physics_process(not transition)
 	game_hud.set_health(player.health, player.max_health)
 	return true
+func _run_native_scene_requests(parent: Node3D, stage: String, area: int) -> void:
+	if preload("res://scripts/world/native_props.gd").pending_scene_requests(parent).is_empty(): return
+	while is_inside_tree() and is_instance_valid(parent) and (not preparation_finished or not is_visible_in_tree() or loading or not player.is_physics_processing()): await get_tree().process_frame
+	if not is_inside_tree() or not is_instance_valid(parent) or native_scenes.active or stage != manifest_path.get_base_dir().get_file() or areas.is_empty() or area != int(areas[area_picker.selected]["index"]): return
+	if parent != (room_stream.room_root(stage, area) if streaming_rooms else level): return
+	loading = true; area_picker.disabled = true; player.set_physics_process(false)
+	var success: bool = await native_scenes.run_pending(parent, stage, area)
+	if not is_inside_tree() or not is_instance_valid(parent): return
+	if not success:
+		var reason := str(native_scenes.last_error); push_error(reason); native_scene_failed.emit(reason); loading = false; area_picker.disabled = false; player.set_physics_process(true); return
+	if native_scenes.transition_requested: return
+	_update_native_player_pose(); loading = false; area_picker.disabled = false; player.set_physics_process(true)
 func save_state(allow_loading: bool = false) -> Dictionary:
 	if (loading and not allow_loading) or not playable: return {}
 	var defeated: Array = []
@@ -347,7 +369,7 @@ func _update_native_player_pose() -> void:
 	native_context["native_player_pose_raw"] = [roundi(-point.x * 256.0), roundi(-point.y * 256.0), roundi(point.z * 256.0), roundi(-player.player_model.rotation.y * 4096.0 / TAU) & 4095]
 func _set_current_area(area: int) -> void:
 	_update_native_player_pose()
-	if is_instance_valid(sky): sky.set_fog(not streaming_rooms and sky.flying)
+	if is_instance_valid(sky): sky.set_fog(sky.flying and (not streaming_rooms or room_stream.is_exterior_room(manifest_path.get_base_dir().get_file(), area)))
 	game_hud.set_area(area)
 	if is_instance_valid(weather): weather.configure(manifest_path.get_base_dir().get_file(), area, player.camera, native_context)
 func _limit_location_popup(picker: OptionButton) -> void:
@@ -484,6 +506,10 @@ func _dialogue_context_changed(stage: String, context: Dictionary) -> void:
 	if not areas.is_empty(): _native_context_changed(stage, int(areas[area_picker.selected]["index"]))
 func bind_native_kickable_prop(receiver: Node) -> void:
 	var actor := receiver.get("actor") as Node3D; var stage := str(actor.get_meta("native_stage", "")); receiver.sound_requested.connect(audio.play_at); receiver.stat_delta_requested.connect(event_script.apply_native_stat_delta.bind(stage)); receiver.message_requested.connect(_native_prop_message.bind(stage))
+func _drain_native_actor_audio(stage: String, area: int) -> void:
+	if not is_instance_valid(audio) or stage != manifest_path.get_base_dir().get_file() or areas.is_empty() or area != int(areas[area_picker.selected]["index"]): return
+	var parent: Node3D = room_stream.room_root(stage, area) if streaming_rooms else level
+	if is_instance_valid(parent): preload("res://scripts/world/native_props.gd").drain_audio_requests(parent, audio, stage, area)
 func _native_prop_message(index: int, window: int, stage: String) -> void:
 	while is_inside_tree() and (loading or bool(dialogue_box.get("active"))): await get_tree().process_frame
 	if not is_inside_tree() or manifest_path.get_base_dir().get_file() != stage: return
@@ -493,8 +519,36 @@ func _native_dialogue_command(_stage: String, _index: int, _opcode: int, _argume
 	if str(source.get("effect", "")) == "native_sound_cue": audio.play_sound(int(source["sound_id"]))
 	var mutation: Dictionary = source.get("native_context_mutation", {})
 	if mutation.has("native_wallet"): player.zenny = int(mutation["native_wallet"])
+func _update_nearest_map_interaction() -> void:
+	nearest_map_interaction = {}
+	if loading or areas.is_empty() or player.health <= 0 or not player.special_action.is_empty() or not player.hurt_phase.is_empty() or not player.interaction_role.is_empty(): return
+	var stage := manifest_path.get_base_dir().get_file(); var area := int(areas[area_picker.selected]["index"])
+	if not map_interaction_cache.has(stage):
+		var path := "res://assets/levels/%s/doors.json" % stage; var value: Variant = JSON.parse_string(FileAccess.get_file_as_string(path)) if FileAccess.file_exists(path) else null; map_interaction_cache[stage] = value.get("map_interactions", []) if value is Dictionary else []
+	for interaction: Dictionary in map_interaction_cache[stage]:
+		if int(interaction["source_area"]) != area: continue
+		if preload("res://scripts/world/native_transition.gd").manual_contact(interaction, _room_local_position(), player.player_model.rotation.y): nearest_map_interaction = interaction; return
+func _use_map_interaction(interaction: Dictionary) -> void:
+	if loading: return
+	var stage := manifest_path.get_base_dir().get_file(); loading = true; area_picker.disabled = true; player.velocity = Vector3.ZERO; player.set_physics_process(false)
+	var success: bool = await event_script.play_bound_message(stage, str(interaction["source_bank_pointer"]), int(interaction["runtime_index"]), str(interaction["source_function"]), null, int(interaction.get("window", 0)))
+	if not is_inside_tree(): return
+	if not success: push_error("Native map interaction did not execute in %s:%d" % [stage, int(interaction["runtime_index"])])
+	loading = false; area_picker.disabled = false; player.set_physics_process(true)
 func _native_context_changed(stage: String, area: int) -> void:
-	if stage == manifest_path.get_base_dir().get_file() and not areas.is_empty() and area == int(areas[area_picker.selected]["index"]) and is_instance_valid(audio): audio.set_stage(stage, area, native_context)
+	if stage == manifest_path.get_base_dir().get_file() and not areas.is_empty() and area == int(areas[area_picker.selected]["index"]) and is_instance_valid(audio):
+		if await audio.set_stage(stage, area, native_context): _drain_native_actor_audio(stage, area)
+	if stage != manifest_path.get_base_dir().get_file() or areas.is_empty(): return
+	if area != int(areas[area_picker.selected]["index"]): return
+	var scene_parent: Node3D = room_stream.room_root(stage, area) if streaming_rooms else level
+	if not is_instance_valid(scene_parent): return
+	if not scene_trigger_cache.has(stage):
+		var path := "res://assets/levels/%s/scene_triggers.json" % stage; var value: Variant = JSON.parse_string(FileAccess.get_file_as_string(path)) if FileAccess.file_exists(path) else null; scene_trigger_cache[stage] = value.get("triggers", []) if value is Dictionary else []
+	for trigger: Dictionary in scene_trigger_cache[stage]:
+		var flags: Dictionary = native_context.get("event_flags", {}); var id := int(trigger["event_flag"])
+		if not bool(flags.get(id, flags.get(str(id), false))): continue
+		flags[id] = false; flags[str(id)] = false; native_context["event_flags"] = flags
+		var pending: Array = preload("res://scripts/world/native_props.gd").pending_scene_requests(scene_parent); pending.append({"key": "%s:%d:event%d:%d" % [stage, area, id, Time.get_ticks_usec()], "stage": stage, "area": area, "source_function": str(trigger["source_function"]), "argument": int(trigger["scene_id"]), "status": "pending_native_scene"}); scene_parent.set_meta("native_pending_scene_requests", pending); _run_native_scene_requests.call_deferred(scene_parent, stage, area)
 func _stream_room_activated(stage: String, area: int) -> void:
 	if not streaming_rooms: return
 	var old_stage := manifest_path.get_base_dir().get_file()
@@ -525,13 +579,14 @@ func _stream_room_activated(stage: String, area: int) -> void:
 	if is_instance_valid(audio):
 		_sync_stage_picker()
 		if room_audio_stage != stage:
-			audio.set_stage(stage, area, native_context)
-			room_audio_stage = stage
-		else: audio.set_area(area)
+			if await audio.set_stage(stage, area, native_context): room_audio_stage = stage; _drain_native_actor_audio(stage, area)
+		else: audio.set_area(area); _drain_native_actor_audio(stage, area)
 	if not loading:
 		spawn_position = player.global_position
 		_update_actor_route()
 		game_hud.set_player(_room_local_position(), player.player_model.rotation.y)
+	var scene_parent: Node3D = room_stream.room_root(stage, area)
+	if is_instance_valid(scene_parent): _run_native_scene_requests.call_deferred(scene_parent, stage, area)
 	room_changed.emit(stage, area)
 func _room_local_position() -> Vector3:
 	return player.global_position - room_stream.offset_for(manifest_path.get_base_dir().get_file(), int(areas[area_picker.selected]["index"])) if streaming_rooms and not areas.is_empty() else player.global_position
@@ -562,17 +617,18 @@ func _find_spawn() -> bool:
 				found = true
 	return found
 func _unhandled_input(event: InputEvent) -> void:
-	if Engine.is_editor_hint(): return
+	if Engine.is_editor_hint() or not preparation_finished or not playable: return
 	if event.is_action_pressed("respawn") and not loading: player.reset_at(spawn_position)
 	elif event.is_action_pressed("interact") and not loading:
-		_update_nearest_npc(); _update_nearest_door()
+		_update_nearest_map_interaction(); _update_nearest_npc(); _update_nearest_door()
 		if is_instance_valid(player.carried_actor):
 			if player.use_special(): get_viewport().set_input_as_handled()
+		elif not nearest_map_interaction.is_empty(): get_viewport().set_input_as_handled(); _use_map_interaction(nearest_map_interaction)
 		elif is_instance_valid(nearest_npc): get_viewport().set_input_as_handled(); _talk_to_npc(nearest_npc)
 		elif not nearest_door.is_empty(): get_viewport().set_input_as_handled(); _use_door(nearest_door)
 		elif Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and player.use_special(): get_viewport().set_input_as_handled()
 func _physics_process(_delta: float) -> void:
-	if Engine.is_editor_hint(): return
+	if Engine.is_editor_hint() or not preparation_finished or not playable: return
 	if room_transfer_pending: return
 	if playable and not loading and is_instance_valid(roof_status) and roof_status.visible:
 		roof_check_elapsed += _delta
@@ -651,6 +707,7 @@ func _update_door_prompt() -> void:
 			game_hud.set_interaction(player.camera.unproject_position(point), "Talk", key)
 			return
 	if loading or nearest_door.is_empty(): game_hud.set_interaction(Vector2.ZERO, ""); return
+	if streaming_rooms: room_stream.preload_route(manifest_path.get_base_dir().get_file(), int(areas[area_picker.selected]["index"]), nearest_door)
 	var point: Vector3
 	if streaming_rooms:
 		var portal: Dictionary = room_stream.portal_for_route(manifest_path.get_base_dir().get_file(), int(areas[area_picker.selected]["index"]), nearest_door)
@@ -730,7 +787,7 @@ func _update_nearest_door() -> void:
 			for area: Dictionary in areas:
 				if int(area["index"]) == destination_area: destination_known = true; break
 		else: destination_known = known_stage_areas.has(destination_stage) and known_stage_areas[destination_stage].has(destination_area)
-		if not destination_known: continue
+		if not destination_known or preload("res://scripts/world/native_transition.gd").is_automatic(route): continue
 		if not streaming_rooms and not route.get("native_contacts", []).is_empty():
 			if not preload("res://scripts/world/native_transition.gd").manual_contact(route, _room_local_position(), player.player_model.rotation.y): continue
 			var raw: Array = route["source_transform_raw"]; var source := Vector3(-float(raw[0]), -float(raw[1]), float(raw[2])) / 256.0; var contact_distance := player.global_position.distance_squared_to(source)
@@ -750,11 +807,13 @@ func _update_nearest_door() -> void:
 				if ladder_distance < distance: distance = ladder_distance; nearest_door = route
 				continue
 			var center: Array = portal["world_center"]; var contact: Vector3 = player.global_position + Vector3.UP * player.body_height * 0.65; var panel_center := Vector3(float(center[0]), float(center[1]), float(center[2]))
-			if contact.distance_to(panel_center) > 0.5: continue
+			if route.get("native_contacts", []).is_empty() and contact.distance_to(panel_center) > 0.5: continue
+			var source_contact: bool = not route.get("native_contacts", []).is_empty()
+			if source_contact and not preload("res://scripts/world/native_transition.gd").manual_contact(route, _room_local_position(), player.player_model.rotation.y): continue
 			var size: Array = portal["shared_panel_size"]; var axis := 0 if str(portal["normal_axis"]) == "x" else 2; var lateral := 2 if axis == 0 else 0; var radius := ($Player/Collision.shape as CapsuleShape3D).radius
 			if absf(player.global_position[lateral] - float(center[lateral])) > float(size[0]) * 0.5 + radius or absf(contact.y - float(center[1])) > (float(size[1]) + player.body_height) * 0.5: continue
 			var expected_yaw := -float(route["source_transform_raw"][3]) * TAU / 4096.0
-			if absf(wrapf(player.player_model.rotation.y - expected_yaw, -PI, PI)) > TAU * 512.0 / 4096.0 or not _clear_stream_door_los(portal, manifest_path.get_base_dir().get_file(), index, contact, panel_center): continue
+			if absf(wrapf(player.player_model.rotation.y - expected_yaw, -PI, PI)) > TAU * 512.0 / 4096.0 or (not source_contact and not _clear_stream_door_los(portal, manifest_path.get_base_dir().get_file(), index, contact, panel_center)): continue
 			var stream_distance: float = contact.distance_squared_to(panel_center)
 			if stream_distance < distance: distance = stream_distance; nearest_door = route
 			continue
@@ -815,6 +874,7 @@ func _native_event_set(id: int) -> bool:
 	var flags: Dictionary = native_context.get("event_flags", {})
 	return bool(flags.get(id, flags.get(str(id), false)))
 func _use_door(route: Dictionary, automatic: bool = false) -> void:
+	automatic = automatic or preload("res://scripts/world/native_transition.gd").is_automatic(route)
 	if loading: return
 	if _door_locked(route): audio.play_ui("menu_cancel"); return
 	var elevator := preload("res://scripts/world/native_transition.gd").is_elevator(route)
@@ -870,6 +930,10 @@ func _use_door(route: Dictionary, automatic: bool = false) -> void:
 	if native_transition and not await room_stream.prepare_transition_door(source_stage, route):
 		cancel_stage_transition()
 		return
+	var physical_door: Node3D = null
+	if not streaming_rooms and not automatic and not ladder and str(door_profile.get("style", "")) in ["hinged", "hinged_with_fixed_companion"]:
+		physical_door = preload("res://scripts/world/native_door.gd").new(); add_child(physical_door); physical_door.sound_requested.connect(audio.play_sound)
+		if not physical_door.configure(level, source_stage, route): physical_door.dispose(); cancel_stage_transition(); return
 	var interaction: Dictionary = {}
 	var animated_transition := false
 	if not automatic and not ladder and str(door_profile.get("style", "")) == "sliding_pair":
@@ -891,8 +955,13 @@ func _use_door(route: Dictionary, automatic: bool = false) -> void:
 					if not player.interaction_role.is_empty(): await player.interaction_finished
 					cancel_stage_transition()
 					return
+			elif physical_door != null:
+				await physical_door.open(); animated_transition = true
 			else: audio.play_sound(0xB8)
-			if animated_transition and not flutter_exit:
+			if physical_door != null:
+				await get_tree().create_timer(maxf(float(interaction["close_at"]) - player.interaction_elapsed, 0.0), false).timeout
+				await physical_door.close(); physical_door.dispose()
+			elif animated_transition and not flutter_exit:
 				await get_tree().create_timer(maxf(float(interaction["close_at"]) - player.interaction_elapsed, 0.0), false).timeout
 				await room_stream.close_transition_door(source_stage, int(areas[source_area]["index"]), route)
 		if not player.interaction_role.is_empty(): await player.interaction_finished
@@ -902,7 +971,7 @@ func _use_door(route: Dictionary, automatic: bool = false) -> void:
 		player.set_physics_process(true); await player.scripted_walk_finished; player.set_physics_process(false)
 	await transition_overlay.request(int(fade_profile.get("exit", 0xFF)))
 	if flutter_exit and animated_transition: await room_stream.close_transition_door(source_stage, int(areas[source_area]["index"]), route)
-	if policy_changed or streaming_rooms != (destination_stage in ["ST04", "ST05", "ST06", "ST07"]):
+	if policy_changed or streaming_rooms != (not preload("res://scripts/world/room_stream.gd").layout_path_for(destination_stage, int(route["destination_area"])).is_empty()):
 		var request := fade_route.duplicate(true); request["native_entry_fade"] = int(fade_profile.get("entry", 0xFF))
 		stage_transition_requested.emit(request)
 		return

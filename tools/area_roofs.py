@@ -174,7 +174,9 @@ def close_raised_roof(triangles, roof):
             if not uncovered: break
         uncovered_area = sum(abs(sum(point[0] * part[(index + 1) % len(part)][1] - part[(index + 1) % len(part)][0] * point[1] for index, point in enumerate(part))) / 2 for part in uncovered)
         if uncovered_area > 1e-7:
-            roof["rejected_wall_contour"] = "Closed wall component does not cover the existing floor-derived roof"; return
+            roof["rejected_wall_contour"] = "Closed wall component does not cover the existing floor-derived roof"
+            perimeter_roof_height(triangles, roof)
+            return
     height += 0.01; low = [min(point[axis] for point in polygon) for axis in range(2)]; high = [max(point[axis] for point in polygon) for axis in range(2)]; uv_low = roof["sample_uv_min"]; uv_high = roof["sample_uv_max"]; roof["vertices"] = [[point[0], height, point[1]] for face in faces for point in face]; roof["uv"] = [[uv_low[axis] + (point[axis] - low[axis]) / max(high[axis] - low[axis], 1e-8) * (uv_high[axis] - uv_low[axis]) for axis in range(2)] for face in faces for point in face]; roof["height"] = height; groups = {}; wall_bias = 0.002
     for index, a in enumerate(outline):
         b = outline[(index + 1) % len(outline)]; triangle, indices = edges[tuple(sorted((a, b)))]; ia, ib = indices; va, vb = triangle["vertices"][ia], triangle["vertices"][ib]; ic = next(item for item in range(3) if item not in indices); lower = triangle["vertices"][ic]; match = ia if math.hypot(lower[0] - va[0], lower[2] - va[2]) < math.hypot(lower[0] - vb[0], lower[2] - vb[2]) else ib; fraction = min(1.0, (height - wall_y) / max(wall_y - lower[1], 1e-8)); delta = [(triangle["uv"][ic][axis] - triangle["uv"][match][axis]) * fraction for axis in range(2)]; ua, ub = triangle["uv"][ia], triangle["uv"][ib]; da, db = [[uv[axis] + delta[axis] for axis in range(2)] for uv in (ua, ub)]; ta, tb = [va[0], height, va[2]], [vb[0], height, vb[2]]; key = (triangle["node"], triangle["surface"])
@@ -182,6 +184,22 @@ def close_raised_roof(triangles, roof):
         length = math.hypot(b[0] - a[0], b[1] - a[1]); offset = [-(b[1] - a[1]) * sign * wall_bias / length, 0, (b[0] - a[0]) * sign * wall_bias / length]; va = [va[axis] + offset[axis] for axis in range(3)]; vb = [vb[axis] + offset[axis] for axis in range(3)]; ta = [ta[axis] + offset[axis] for axis in range(3)]; tb = [tb[axis] + offset[axis] for axis in range(3)]; va[1] -= wall_bias; vb[1] -= wall_bias
         group = groups[key]; group["vertices"].extend([va, vb, tb, va, tb, ta]); group["uv"].extend([da, db, ub, da, ub, ua]); group["colors"].extend([triangle["colors"][item] for item in (ia, ib, ib, ia, ib, ia)])
     roof["wall_infills"] = list(groups.values()); roof["wall_top_height"] = wall_y; roof["wall_inward_bias"] = wall_bias
+def perimeter_roof_height(triangles, roof):
+    floor = [[[point[0], point[2]] for point in roof["vertices"][start:start + 3]] for start in range(0, len(roof["vertices"]), 3)]; tops = []
+    def inside(point): return any(all(signed_edge(a, b, point) >= -1e-8 for a, b in zip(face, face[1:] + face[:1])) or all(signed_edge(a, b, point) <= 1e-8 for a, b in zip(face, face[1:] + face[:1])) for face in floor)
+    for triangle in triangles:
+        if abs(triangle["normal_y"]) > 0.01: continue
+        top = max(point[1] for point in triangle["vertices"]); points = [point for point in triangle["vertices"] if abs(point[1] - top) < 1e-6]
+        if len(points) != 2: continue
+        a, b = points; dx, dz = b[0] - a[0], b[2] - a[2]; length = math.hypot(dx, dz)
+        if length < 1e-8: continue
+        middle = [(a[0] + b[0]) / 2, (a[2] + b[2]) / 2]; left = inside([middle[0] - dz * 0.002 / length, middle[1] + dx * 0.002 / length]); right = inside([middle[0] + dz * 0.002 / length, middle[1] - dx * 0.002 / length])
+        if left != right: tops.append(top)
+    if not tops: return
+    height = max(tops)
+    if height >= float(roof["height"]): return
+    roof["height"] = height; roof["wall_top_height"] = height
+    for point in roof["vertices"]: point[1] = height
 def export(dat_dir=None, output_dir=None, stages=None):
     dat_dir = Path(dat_dir or ROOT / "build/disc-assets/DAT"); output_dir = Path(output_dir or ROOT / "assets/levels"); summary = Counter()
     for path in sorted(dat_dir.glob("ST??T.BIN")):

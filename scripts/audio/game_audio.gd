@@ -106,11 +106,12 @@ func _load_stream(path: String) -> AudioStream:
 		status = ResourceLoader.load_threaded_get_status(path)
 	return ResourceLoader.load_threaded_get(path) as AudioStream if status == ResourceLoader.THREAD_LOAD_LOADED else null
 func _request_music(cue: int) -> void:
+	if cue == 255: requested_music_cue = cue; return
 	requested_music_cue = cue
 	requested_music_signature = ""
 	music_request += 1
 	var request := music_request
-	if cue == 255 or cue < 0: return
+	if cue < 0: return
 	var key := "0x%04X" % cue
 	var entry: Dictionary = audio_catalog.get("music_variants", {}).get(stage, {}).get(key, audio_catalog.get("music", {}).get(key, manifest.get("music", {}).get(key, {})))
 	if entry.is_empty(): return
@@ -164,30 +165,31 @@ func _effect(node: AudioStreamPlayer3D, role: String) -> void:
 	var stream: AudioStream = _sound_stream(key, entry)
 	if target.stream != stream: target.stream = stream
 	target.volume_db = float(entry.get("volume_db", 0)); target.play()
-func set_stage(value: String, target_area: int = 0, context: Dictionary = {}) -> void:
+func set_stage(value: String, target_area: int = 0, context: Dictionary = {}) -> bool:
+	var changed_stage := stage != value.to_upper()
 	stage = value.to_upper(); area = target_area
 	if not context.is_empty(): native_context = context.duplicate(true)
 	zone_request += 1
-	music_request += 1
+	if changed_stage: music_request += 1; requested_music_cue = -1
 	var request := zone_request
-	requested_music_cue = -1
 	var entry: Dictionary = audio_catalog.get("zones", {}).get(stage, {})
-	if entry.is_empty(): return
-	if not await AssetStore.ensure_group("audio-" + stage) or request != zone_request: return
+	if entry.is_empty(): return false
+	if not await AssetStore.ensure_group("audio-" + stage) or request != zone_request: return false
 	if not zone_manifests.has(stage):
 		var data: Variant = JSON.parse_string(FileAccess.get_file_as_string(str(entry["manifest"])))
-		if not data is Dictionary: return
+		if not data is Dictionary: return false
 		zone_manifests[stage] = data
-	if request != zone_request: return
+	if request != zone_request: return false
 	var zone: Dictionary = zone_manifests[stage]
 	for owner: String in zone.get("audio_dependencies", []):
-		if not await AssetStore.ensure_group("audio-" + owner) or request != zone_request: return
+		if not await AssetStore.ensure_group("audio-" + owner) or request != zone_request: return false
 	var effects: Dictionary = manifest.get("effects", {}).duplicate(true)
 	for key in effects.keys():
 		if int(effects[key].get("physical_bank", 0)) in zone.get("loaded_effect_slots", []): effects.erase(key)
 	for key in zone.get("effects", {}): effects[key] = zone["effects"][key]
 	manifest["effects"] = effects
 	set_area(area)
+	return true
 func set_area(value: int) -> void:
 	area = value
 	var entry: Dictionary = audio_catalog.get("zones", {}).get(stage, {})

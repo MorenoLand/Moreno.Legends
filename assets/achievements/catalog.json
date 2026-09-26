@@ -1,0 +1,1819 @@
+{
+  "schema_version": 1,
+  "game": "Mega Man Legends 2",
+  "platform": "PlayStation",
+  "retroachievements_game_id": 11262,
+  "source_url": "https://retroachievements.org/game/11262",
+  "permission_status": "granted by Searo",
+  "attribution": "Achievement set and badges by Searo (RetroAchievements).",
+  "asset_use": "local development",
+  "requirements_source": "Published achievement descriptions and explicit conditions; emulator trigger logic is not included.",
+  "achievements": [
+    {
+      "id": 83061,
+      "title": "Jaiwana Piece Of Me",
+      "description": "Defeat the Jaiwan in the Abandoned Yosyonke Mines",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83061",
+      "creator": "Searo",
+      "badge_id": "88492",
+      "icon_file": "88492.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88492.png",
+      "locked_icon_file": "88492_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88492_lock.png",
+      "requirements": {
+        "summary": "Defeat the Jaiwan in the Abandoned Yosyonke Mines",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83062,
+      "title": "Jaiwan Minimal Buster Challenge [Class S or higher]",
+      "description": "Defeat the Jaiwan in the Abandoned Yosyonke Mines [Mega Buster only|No Armor|No Healing|Class S or higher]",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83062",
+      "creator": "Searo",
+      "badge_id": "88496",
+      "icon_file": "88496.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88496.png",
+      "locked_icon_file": "88496_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88496_lock.png",
+      "requirements": {
+        "summary": "Defeat the Jaiwan in the Abandoned Yosyonke Mines",
+        "conditions": [
+          "Mega Buster only",
+          "No Armor",
+          "No Healing",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83063,
+      "title": "Jaiwan Damageless [Class S or higher]",
+      "description": "Defeat the Jaiwan in the Abandoned Yosyonke Mines [No Damage|Class S or higher]",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83063",
+      "creator": "Searo",
+      "badge_id": "88493",
+      "icon_file": "88493.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88493.png",
+      "locked_icon_file": "88493_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88493_lock.png",
+      "requirements": {
+        "summary": "Defeat the Jaiwan in the Abandoned Yosyonke Mines",
+        "conditions": [
+          "No Damage",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83064,
+      "title": "Mammooooooo",
+      "description": "Defeat Rush Mammoo on the Forbidden Island",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83064",
+      "creator": "Searo",
+      "badge_id": "88709",
+      "icon_file": "88709.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88709.png",
+      "locked_icon_file": "88709_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88709_lock.png",
+      "requirements": {
+        "summary": "Defeat Rush Mammoo on the Forbidden Island",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83065,
+      "title": "Rush Mammoo Minimal Buster Challenge [Class S or higher]",
+      "description": "Defeat Rush Mammoo on the Forbidden Island [Mega Buster only|No Armor|No Healing|Class S or higher]",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83065",
+      "creator": "Searo",
+      "badge_id": "89507",
+      "icon_file": "89507.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89507.png",
+      "locked_icon_file": "89507_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89507_lock.png",
+      "requirements": {
+        "summary": "Defeat Rush Mammoo on the Forbidden Island",
+        "conditions": [
+          "Mega Buster only",
+          "No Armor",
+          "No Healing",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83066,
+      "title": "Rush Mammoo Damageless [Class S or higher]",
+      "description": "Defeat Rush Mammoo on the Forbidden Island [No Damage|Class S or higher]",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83066",
+      "creator": "Searo",
+      "badge_id": "89345",
+      "icon_file": "89345.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89345.png",
+      "locked_icon_file": "89345_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89345_lock.png",
+      "requirements": {
+        "summary": "Defeat Rush Mammoo on the Forbidden Island",
+        "conditions": [
+          "No Damage",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83067,
+      "title": "Always Check for Krabs",
+      "description": "Defeat Jagd Krabbe in Pokte Village",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83067",
+      "creator": "Searo",
+      "badge_id": "88710",
+      "icon_file": "88710.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88710.png",
+      "locked_icon_file": "88710_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88710_lock.png",
+      "requirements": {
+        "summary": "Defeat Jagd Krabbe in Pokte Village",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83068,
+      "title": "Jagd Krabbe Minimal Buster Challenge [Class S or higher]",
+      "description": "Defeat Tron's Crab-Bot in Pokte Village [Mega Buster only|No Armor|No Healing|Class S or higher]",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83068",
+      "creator": "Searo",
+      "badge_id": "89506",
+      "icon_file": "89506.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89506.png",
+      "locked_icon_file": "89506_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89506_lock.png",
+      "requirements": {
+        "summary": "Defeat Tron's Crab-Bot in Pokte Village",
+        "conditions": [
+          "Mega Buster only",
+          "No Armor",
+          "No Healing",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83069,
+      "title": "Jagd Krabbe Damageless [Class S or higher]",
+      "description": "Defeat Tron's Crab-Bot in Pokte Village [No Damage|Class S or higher]",
+      "points": 10,
+      "source_url": "https://retroachievements.org/achievement/83069",
+      "creator": "Searo",
+      "badge_id": "88723",
+      "icon_file": "88723.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88723.png",
+      "locked_icon_file": "88723_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88723_lock.png",
+      "requirements": {
+        "summary": "Defeat Tron's Crab-Bot in Pokte Village",
+        "conditions": [
+          "No Damage",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83070,
+      "title": "Give An Old Man A Break",
+      "description": "Defeat Bola a second time in the Manda Ruins",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83070",
+      "creator": "Searo",
+      "badge_id": "88711",
+      "icon_file": "88711.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88711.png",
+      "locked_icon_file": "88711_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88711_lock.png",
+      "requirements": {
+        "summary": "Defeat Bola a second time in the Manda Ruins",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83071,
+      "title": "Bola Minimal Buster Challenge [Class S or higher]",
+      "description": "Defeat Bola a second time in Manda Ruins [Mega Buster only|No Armor|No Healing|Class S or higher]",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83071",
+      "creator": "Searo",
+      "badge_id": "89673",
+      "icon_file": "89673.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89673.png",
+      "locked_icon_file": "89673_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89673_lock.png",
+      "requirements": {
+        "summary": "Defeat Bola a second time in Manda Ruins",
+        "conditions": [
+          "Mega Buster only",
+          "No Armor",
+          "No Healing",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83072,
+      "title": "Bola Damageless [Class S or higher]",
+      "description": "Defeat Bola a second time in Manda Ruins [No Damage|Class S or higher]",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83072",
+      "creator": "Searo",
+      "badge_id": "88724",
+      "icon_file": "88724.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88724.png",
+      "locked_icon_file": "88724_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88724_lock.png",
+      "requirements": {
+        "summary": "Defeat Bola a second time in Manda Ruins",
+        "conditions": [
+          "No Damage",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83073,
+      "title": "Frogfucius",
+      "description": "Defeat Gargarfummi in the Manda Ruins",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83073",
+      "creator": "Searo",
+      "badge_id": "88712",
+      "icon_file": "88712.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88712.png",
+      "locked_icon_file": "88712_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88712_lock.png",
+      "requirements": {
+        "summary": "Defeat Gargarfummi in the Manda Ruins",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83074,
+      "title": "Gargarfummi Minimal Buster Challenge [Class S or higher]",
+      "description": "Defeat Gargarfummi in Manda Ruins [Mega Buster only|No Armor|No Healing|Class S or higher]",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83074",
+      "creator": "Searo",
+      "badge_id": "89508",
+      "icon_file": "89508.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89508.png",
+      "locked_icon_file": "89508_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89508_lock.png",
+      "requirements": {
+        "summary": "Defeat Gargarfummi in Manda Ruins",
+        "conditions": [
+          "Mega Buster only",
+          "No Armor",
+          "No Healing",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83075,
+      "title": "Gargarfummi Damageless [Class S or higher]",
+      "description": "Defeat Gargarfummi in Manda Ruins [No Damage|Class S or higher]",
+      "points": 10,
+      "source_url": "https://retroachievements.org/achievement/83075",
+      "creator": "Searo",
+      "badge_id": "88725",
+      "icon_file": "88725.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88725.png",
+      "locked_icon_file": "88725_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88725_lock.png",
+      "requirements": {
+        "summary": "Defeat Gargarfummi in Manda Ruins",
+        "conditions": [
+          "No Damage",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83076,
+      "title": "Bird Buster",
+      "description": "Defeat the Birdbot Command Carrier on Nino Island",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83076",
+      "creator": "Searo",
+      "badge_id": "88715",
+      "icon_file": "88715.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88715.png",
+      "locked_icon_file": "88715_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88715_lock.png",
+      "requirements": {
+        "summary": "Defeat the Birdbot Command Carrier on Nino Island",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83077,
+      "title": "Defend the Gate 1 Full Gate HP [Class S or higher]",
+      "description": "Defend Gate 1 [Full Gate Health|Class S or higher]",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83077",
+      "creator": "Searo",
+      "badge_id": "89712",
+      "icon_file": "89712.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89712.png",
+      "locked_icon_file": "89712_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89712_lock.png",
+      "requirements": {
+        "summary": "Defend Gate 1",
+        "conditions": [
+          "Full Gate Health",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83078,
+      "title": "Defend the Gate 2 Full Gate HP [Class S or higher]",
+      "description": "Defend Gate 2 [Full Gate Health|Class S or higher]",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83078",
+      "creator": "Searo",
+      "badge_id": "89713",
+      "icon_file": "89713.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89713.png",
+      "locked_icon_file": "89713_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89713_lock.png",
+      "requirements": {
+        "summary": "Defend Gate 2",
+        "conditions": [
+          "Full Gate Health",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83079,
+      "title": "Defend the Gate 3 Full Gate HP [Class S or higher]",
+      "description": "Defend Gate 3 [Full Gate Health|Class S or higher]",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83079",
+      "creator": "Searo",
+      "badge_id": "89714",
+      "icon_file": "89714.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89714.png",
+      "locked_icon_file": "89714_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89714_lock.png",
+      "requirements": {
+        "summary": "Defend Gate 3",
+        "conditions": [
+          "Full Gate Health",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83080,
+      "title": "Defend the Gate 4 Full Gate HP [Class S or higher]",
+      "description": "Defend Gate 4 [Full Gate Health|Class S or higher]",
+      "points": 10,
+      "source_url": "https://retroachievements.org/achievement/83080",
+      "creator": "Searo",
+      "badge_id": "89715",
+      "icon_file": "89715.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89715.png",
+      "locked_icon_file": "89715_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89715_lock.png",
+      "requirements": {
+        "summary": "Defend Gate 4",
+        "conditions": [
+          "Full Gate Health",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83081,
+      "title": "Birdbot Minimal Buster Challenge [Class S or higher]",
+      "description": "Defeat the Birdbot Command Carrier on Nino Island [Mega Buster only|No Armor|No Healing|Class S or higher]",
+      "points": 10,
+      "source_url": "https://retroachievements.org/achievement/83081",
+      "creator": "Searo",
+      "badge_id": "89509",
+      "icon_file": "89509.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89509.png",
+      "locked_icon_file": "89509_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89509_lock.png",
+      "requirements": {
+        "summary": "Defeat the Birdbot Command Carrier on Nino Island",
+        "conditions": [
+          "Mega Buster only",
+          "No Armor",
+          "No Healing",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83082,
+      "title": "Bird Bot Command Carrier Damageless [Class S or higher]",
+      "description": "Defeat the Birdbot Command Carrier on Nino Island [No Damage|Class S or higher]",
+      "points": 10,
+      "source_url": "https://retroachievements.org/achievement/83082",
+      "creator": "Searo",
+      "badge_id": "89693",
+      "icon_file": "89693.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89693.png",
+      "locked_icon_file": "89693_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89693_lock.png",
+      "requirements": {
+        "summary": "Defeat the Birdbot Command Carrier on Nino Island",
+        "conditions": [
+          "No Damage",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83083,
+      "title": "Save Shu",
+      "description": "Save Shu and receive bacon",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83083",
+      "creator": "Searo",
+      "badge_id": "88787",
+      "icon_file": "88787.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88787.png",
+      "locked_icon_file": "88787_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88787_lock.png",
+      "requirements": {
+        "summary": "Save Shu and receive bacon",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83084,
+      "title": "Uhhhh Roll?",
+      "description": "Protect Roll until she finishes repairing the Parabola to take out Glyde",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83084",
+      "creator": "Searo",
+      "badge_id": "88714",
+      "icon_file": "88714.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88714.png",
+      "locked_icon_file": "88714_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88714_lock.png",
+      "requirements": {
+        "summary": "Protect Roll until she finishes repairing the Parabola to take out Glyde",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83085,
+      "title": "Glyde - Full HP Parabola [Class S or higher]",
+      "description": "Protect Roll until the Parabola takes out Glyde [Parabola Full Health|Class S or higher]",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83085",
+      "creator": "Searo",
+      "badge_id": "89695",
+      "icon_file": "89695.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89695.png",
+      "locked_icon_file": "89695_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89695_lock.png",
+      "requirements": {
+        "summary": "Protect Roll until the Parabola takes out Glyde",
+        "conditions": [
+          "Parabola Full Health",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83086,
+      "title": "Triple Threat",
+      "description": "Defeat the 3 Midosus in Nino Ruins",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83086",
+      "creator": "Searo",
+      "badge_id": "88788",
+      "icon_file": "88788.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88788.png",
+      "locked_icon_file": "88788_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88788_lock.png",
+      "requirements": {
+        "summary": "Defeat the 3 Midosus in Nino Ruins",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83087,
+      "title": "Midosus Minimal Buster Challenge [Class S or higher]",
+      "description": "Defeat the 3 Midosus in Nino Ruins [Mega Buster only|No Armor|No Healing|Class S or higher]",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83087",
+      "creator": "Searo",
+      "badge_id": "89696",
+      "icon_file": "89696.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89696.png",
+      "locked_icon_file": "89696_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89696_lock.png",
+      "requirements": {
+        "summary": "Defeat the 3 Midosus in Nino Ruins",
+        "conditions": [
+          "Mega Buster only",
+          "No Armor",
+          "No Healing",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83088,
+      "title": "Midosus Damageless [Class S or higher]",
+      "description": "Defeat the 3 Midosus in Nino Ruins [No Damage|Class S or higher]",
+      "points": 10,
+      "source_url": "https://retroachievements.org/achievement/83088",
+      "creator": "Searo",
+      "badge_id": "89697",
+      "icon_file": "89697.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89697.png",
+      "locked_icon_file": "89697_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89697_lock.png",
+      "requirements": {
+        "summary": "Defeat the 3 Midosus in Nino Ruins",
+        "conditions": [
+          "No Damage",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83089,
+      "title": "My Back!",
+      "description": "Defeat Klaymoor for good in the Nino Ruins",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83089",
+      "creator": "Searo",
+      "badge_id": "88716",
+      "icon_file": "88716.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88716.png",
+      "locked_icon_file": "88716_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88716_lock.png",
+      "requirements": {
+        "summary": "Defeat Klaymoor for good in the Nino Ruins",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83090,
+      "title": "Klaymoor Minimal Buster Challenge [Class S or higher]",
+      "description": "Defeat Klaymoor (1 or 2) in the Nino Ruins [Mega Buster only|No Armor|No Healing|Class S or higher]",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83090",
+      "creator": "Searo",
+      "badge_id": "89338",
+      "icon_file": "89338.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89338.png",
+      "locked_icon_file": "89338_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89338_lock.png",
+      "requirements": {
+        "summary": "Defeat Klaymoor (1 or 2) in the Nino Ruins",
+        "conditions": [
+          "Mega Buster only",
+          "No Armor",
+          "No Healing",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83091,
+      "title": "Klaymoor Damageless [Class S or higher]",
+      "description": "Defeat Klaymoor (1 or 2) in the Nino Ruins [No Damage|Class S or higher]",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83091",
+      "creator": "Searo",
+      "badge_id": "89339",
+      "icon_file": "89339.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89339.png",
+      "locked_icon_file": "89339_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89339_lock.png",
+      "requirements": {
+        "summary": "Defeat Klaymoor (1 or 2) in the Nino Ruins",
+        "conditions": [
+          "No Damage",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83092,
+      "title": "Coward!",
+      "description": "Defeat Teisel's Blitzkrieg on Saul Kada Island",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83092",
+      "creator": "Searo",
+      "badge_id": "88717",
+      "icon_file": "88717.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88717.png",
+      "locked_icon_file": "88717_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88717_lock.png",
+      "requirements": {
+        "summary": "Defeat Teisel's Blitzkrieg on Saul Kada Island",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83093,
+      "title": "Blitzkrieg Minimal Buster Challenge [Class S or higher]",
+      "description": "Defeat Teisel's Blitzkrieg on Saul Kada Island [Mega Buster only|No Armor|No Healing|Class S or higher]",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83093",
+      "creator": "Searo",
+      "badge_id": "89336",
+      "icon_file": "89336.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89336.png",
+      "locked_icon_file": "89336_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89336_lock.png",
+      "requirements": {
+        "summary": "Defeat Teisel's Blitzkrieg on Saul Kada Island",
+        "conditions": [
+          "Mega Buster only",
+          "No Armor",
+          "No Healing",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83094,
+      "title": "Blitzkrieg Damageless [Class S or higher]",
+      "description": "Defeat Teisel's Blitzkrieg on Saul Kada Island [No Damage|Class S or higher]",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83094",
+      "creator": "Searo",
+      "badge_id": "89337",
+      "icon_file": "89337.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89337.png",
+      "locked_icon_file": "89337_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89337_lock.png",
+      "requirements": {
+        "summary": "Defeat Teisel's Blitzkrieg on Saul Kada Island",
+        "conditions": [
+          "No Damage",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83095,
+      "title": "Blitzkrieg No Statue Damage [Class S or higher]",
+      "description": "DefeatTeisel's Blitzkrieg on Saul Kada Island [No Statue Damage|Class S or higher]",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83095",
+      "creator": "Searo",
+      "badge_id": "88718",
+      "icon_file": "88718.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88718.png",
+      "locked_icon_file": "88718_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88718_lock.png",
+      "requirements": {
+        "summary": "DefeatTeisel's Blitzkrieg on Saul Kada Island",
+        "conditions": [
+          "No Statue Damage",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83096,
+      "title": "The Bigger They Are",
+      "description": "Defeat Wojigairon in the Saul Kada Ruins",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83096",
+      "creator": "Searo",
+      "badge_id": "88719",
+      "icon_file": "88719.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88719.png",
+      "locked_icon_file": "88719_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88719_lock.png",
+      "requirements": {
+        "summary": "Defeat Wojigairon in the Saul Kada Ruins",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83097,
+      "title": "Wojigairon Minimal Buster Challenge [Class S or higher]",
+      "description": "Defeat Wojigairon in the Saul Kada Ruins [Mega Buster only|No Armor|No Healing|Class S or higher]",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83097",
+      "creator": "Searo",
+      "badge_id": "89334",
+      "icon_file": "89334.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89334.png",
+      "locked_icon_file": "89334_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89334_lock.png",
+      "requirements": {
+        "summary": "Defeat Wojigairon in the Saul Kada Ruins",
+        "conditions": [
+          "Mega Buster only",
+          "No Armor",
+          "No Healing",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83098,
+      "title": "Wojigairon Damageless [Class S or higher]",
+      "description": "Defeat Wojigairon in the Saul Kada Ruins [No Damage|Class S or higher]",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83098",
+      "creator": "Searo",
+      "badge_id": "89335",
+      "icon_file": "89335.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89335.png",
+      "locked_icon_file": "89335_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89335_lock.png",
+      "requirements": {
+        "summary": "Defeat Wojigairon in the Saul Kada Ruins",
+        "conditions": [
+          "No Damage",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83099,
+      "title": "So Lewd",
+      "description": "Defeat Tron's Hover Gustaff in the Saul Kada Ruins",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83099",
+      "creator": "Searo",
+      "badge_id": "88720",
+      "icon_file": "88720.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88720.png",
+      "locked_icon_file": "88720_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88720_lock.png",
+      "requirements": {
+        "summary": "Defeat Tron's Hover Gustaff in the Saul Kada Ruins",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83100,
+      "title": "Tron's Gustaff Minimal Buster Challenge [Class S or higher]",
+      "description": "Defeat Tron's Hover Gustaff in the Saul Kada Ruins [Mega Buster only|No Armor|No Healing|Class S or higher]",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83100",
+      "creator": "Searo",
+      "badge_id": "89332",
+      "icon_file": "89332.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89332.png",
+      "locked_icon_file": "89332_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89332_lock.png",
+      "requirements": {
+        "summary": "Defeat Tron's Hover Gustaff in the Saul Kada Ruins",
+        "conditions": [
+          "Mega Buster only",
+          "No Armor",
+          "No Healing",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83101,
+      "title": "Tron's Hover Gustaff Damageless [Class S or higher]",
+      "description": "Defeat Tron's Hover Gustaff in the Saul Kada Ruins [No Damage|Class S or higher]",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83101",
+      "creator": "Searo",
+      "badge_id": "89333",
+      "icon_file": "89333.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89333.png",
+      "locked_icon_file": "89333_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89333_lock.png",
+      "requirements": {
+        "summary": "Defeat Tron's Hover Gustaff in the Saul Kada Ruins",
+        "conditions": [
+          "No Damage",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83102,
+      "title": "Babuuuuu",
+      "description": "Defeat Bon Bonne in the Saul Kada Ruins",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83102",
+      "creator": "Searo",
+      "badge_id": "88721",
+      "icon_file": "88721.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88721.png",
+      "locked_icon_file": "88721_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88721_lock.png",
+      "requirements": {
+        "summary": "Defeat Bon Bonne in the Saul Kada Ruins",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83103,
+      "title": "Bon Bonne Minimal Buster Challenge [Class S or higher]",
+      "description": "Defeat Bon Bonne in the Saul Kada Ruins [Mega Buster only|No Armor|No Healing|Class S or higher]",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83103",
+      "creator": "Searo",
+      "badge_id": "89346",
+      "icon_file": "89346.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89346.png",
+      "locked_icon_file": "89346_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89346_lock.png",
+      "requirements": {
+        "summary": "Defeat Bon Bonne in the Saul Kada Ruins",
+        "conditions": [
+          "Mega Buster only",
+          "No Armor",
+          "No Healing",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83104,
+      "title": "Bon Bonne Damageless [Class S or higher]",
+      "description": "Defeat Bon Bonne in the Saul Kada Ruins [No Damage|Class S or higher]",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83104",
+      "creator": "Searo",
+      "badge_id": "89347",
+      "icon_file": "89347.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89347.png",
+      "locked_icon_file": "89347_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89347_lock.png",
+      "requirements": {
+        "summary": "Defeat Bon Bonne in the Saul Kada Ruins",
+        "conditions": [
+          "No Damage",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83105,
+      "title": "Right On Track",
+      "description": "Defeat the Gemeinschaft on Yosyonke Island",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83105",
+      "creator": "Searo",
+      "badge_id": "88722",
+      "icon_file": "88722.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88722.png",
+      "locked_icon_file": "88722_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88722_lock.png",
+      "requirements": {
+        "summary": "Defeat the Gemeinschaft on Yosyonke Island",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83106,
+      "title": "Gemeinschaft Defense Full Train Health [Class S or higher]",
+      "description": "Defeat the Gemeinschaft on Yosyonke Island without your train being damaged [Class S or higher]",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83106",
+      "creator": "Searo",
+      "badge_id": "89699",
+      "icon_file": "89699.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89699.png",
+      "locked_icon_file": "89699_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89699_lock.png",
+      "requirements": {
+        "summary": "Defeat the Gemeinschaft on Yosyonke Island without your train being damaged",
+        "conditions": [
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83107,
+      "title": "Gemeinschaft Damageless [Class S or higher]",
+      "description": "Defeat the Gemeinschaft on Yosyonke Island [No Damage|Class S or higher]",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83107",
+      "creator": "Searo",
+      "badge_id": "89698",
+      "icon_file": "89698.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89698.png",
+      "locked_icon_file": "89698_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89698_lock.png",
+      "requirements": {
+        "summary": "Defeat the Gemeinschaft on Yosyonke Island",
+        "conditions": [
+          "No Damage",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83108,
+      "title": "Have A Jelly Good Time",
+      "description": "Defeat Rimblemenji in Calinca Ruins",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83108",
+      "creator": "Searo",
+      "badge_id": "88789",
+      "icon_file": "88789.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88789.png",
+      "locked_icon_file": "88789_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88789_lock.png",
+      "requirements": {
+        "summary": "Defeat Rimblemenji in Calinca Ruins",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83109,
+      "title": "Rimblemenji Minimal Buster Challenge [Class S or higher]",
+      "description": "Defeat Rimblemenji in Calinca Ruins [Mega Buster only|No Armor|No Cleats|No Healing|Class S or higher]",
+      "points": 10,
+      "source_url": "https://retroachievements.org/achievement/83109",
+      "creator": "Searo",
+      "badge_id": "89329",
+      "icon_file": "89329.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89329.png",
+      "locked_icon_file": "89329_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89329_lock.png",
+      "requirements": {
+        "summary": "Defeat Rimblemenji in Calinca Ruins",
+        "conditions": [
+          "Mega Buster only",
+          "No Armor",
+          "No Cleats",
+          "No Healing",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83110,
+      "title": "Rimblemenji Damageless [Class S or higher]",
+      "description": "Defeat Rimblemenji in Calinca Ruins [No Damage|Class S or higher]",
+      "points": 10,
+      "source_url": "https://retroachievements.org/achievement/83110",
+      "creator": "Searo",
+      "badge_id": "89330",
+      "icon_file": "89330.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89330.png",
+      "locked_icon_file": "89330_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89330_lock.png",
+      "requirements": {
+        "summary": "Defeat Rimblemenji in Calinca Ruins",
+        "conditions": [
+          "No Damage",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83111,
+      "title": "This Guy Geetz It",
+      "description": "Defeat Geetz Atop the Sulphur Bottom",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83111",
+      "creator": "Searo",
+      "badge_id": "88790",
+      "icon_file": "88790.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88790.png",
+      "locked_icon_file": "88790_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88790_lock.png",
+      "requirements": {
+        "summary": "Defeat Geetz Atop the Sulphur Bottom",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83112,
+      "title": "Geetz Minimal Buster Challenge [Class S or higher]",
+      "description": "Defeat Geetz Atop the Sulphur Bottom [Mega Buster only|No Armor|No Healing|Class S or higher]",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83112",
+      "creator": "Searo",
+      "badge_id": "89327",
+      "icon_file": "89327.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89327.png",
+      "locked_icon_file": "89327_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89327_lock.png",
+      "requirements": {
+        "summary": "Defeat Geetz Atop the Sulphur Bottom",
+        "conditions": [
+          "Mega Buster only",
+          "No Armor",
+          "No Healing",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83113,
+      "title": "Geetz Damageless [Class S or higher]",
+      "description": "Defeat Geetz Atop the Sulphur Bottom [No Damage|Class S or higher]",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83113",
+      "creator": "Searo",
+      "badge_id": "89328",
+      "icon_file": "89328.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89328.png",
+      "locked_icon_file": "89328_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89328_lock.png",
+      "requirements": {
+        "summary": "Defeat Geetz Atop the Sulphur Bottom",
+        "conditions": [
+          "No Damage",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83114,
+      "title": "Gauntlet Minimal Buster Challenge [Class S or higher]",
+      "description": "Defeat the 4 Boss Gauntlet in Elysium's Mother Zone, starts at first Boss area [Mega Buster only|No Armor|No Healing|Class S or",
+      "points": 10,
+      "source_url": "https://retroachievements.org/achievement/83114",
+      "creator": "Searo",
+      "badge_id": "89732",
+      "icon_file": "89732.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89732.png",
+      "locked_icon_file": "89732_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89732_lock.png",
+      "requirements": {
+        "summary": "Defeat the 4 Boss Gauntlet in Elysium's Mother Zone, starts at first Boss area [Mega Buster only|No Armor|No Healing|Class S or",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83115,
+      "title": "Gauntlet Damageless [Class S or higher]",
+      "description": "Defeat the 4 Boss Gauntlet in Elysium's Mother Zone, starts when you enter first boss area [No Damage|Class S or higher]",
+      "points": 25,
+      "source_url": "https://retroachievements.org/achievement/83115",
+      "creator": "Searo",
+      "badge_id": "89733",
+      "icon_file": "89733.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89733.png",
+      "locked_icon_file": "89733_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89733_lock.png",
+      "requirements": {
+        "summary": "Defeat the 4 Boss Gauntlet in Elysium's Mother Zone, starts when you enter first boss area",
+        "conditions": [
+          "No Damage",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83116,
+      "title": "Sera 1 Minimal Buster Challenge [Class S or higher]",
+      "description": "Defeat Sera's first form in the Library [Mega Buster only|No Armor|No Healing|Class S or higher]",
+      "points": 10,
+      "source_url": "https://retroachievements.org/achievement/83116",
+      "creator": "Searo",
+      "badge_id": "89725",
+      "icon_file": "89725.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89725.png",
+      "locked_icon_file": "89725_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89725_lock.png",
+      "requirements": {
+        "summary": "Defeat Sera's first form in the Library",
+        "conditions": [
+          "Mega Buster only",
+          "No Armor",
+          "No Healing",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83117,
+      "title": "Sera 1 Damageless [Class S or higher]",
+      "description": "Defeat Sera's first form in the Library [No Damage|Class S or higher]",
+      "points": 10,
+      "source_url": "https://retroachievements.org/achievement/83117",
+      "creator": "Searo",
+      "badge_id": "89726",
+      "icon_file": "89726.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89726.png",
+      "locked_icon_file": "89726_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89726_lock.png",
+      "requirements": {
+        "summary": "Defeat Sera's first form in the Library",
+        "conditions": [
+          "No Damage",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83118,
+      "title": "Save The Carbons!",
+      "description": "Finish the game",
+      "points": 25,
+      "source_url": "https://retroachievements.org/achievement/83118",
+      "creator": "Searo",
+      "badge_id": "89717",
+      "icon_file": "89717.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89717.png",
+      "locked_icon_file": "89717_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89717_lock.png",
+      "requirements": {
+        "summary": "Finish the game",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83119,
+      "title": "Sera 2 Minimal Buster Challenge [Class S or higher]",
+      "description": "Defeat Sera's final form in ??? [Mega Buster only|No Kevlar Armor|No Healing|Class S or higher]",
+      "points": 25,
+      "source_url": "https://retroachievements.org/achievement/83119",
+      "creator": "Searo",
+      "badge_id": "89719",
+      "icon_file": "89719.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89719.png",
+      "locked_icon_file": "89719_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89719_lock.png",
+      "requirements": {
+        "summary": "Defeat Sera's final form in ???",
+        "conditions": [
+          "Mega Buster only",
+          "No Kevlar Armor",
+          "No Healing",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83120,
+      "title": "Sera 2 Damageless [Class S or higher]",
+      "description": "Defeat Sera's final form in ??? [No Damage|Class S or higher]",
+      "points": 25,
+      "source_url": "https://retroachievements.org/achievement/83120",
+      "creator": "Searo",
+      "badge_id": "89720",
+      "icon_file": "89720.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89720.png",
+      "locked_icon_file": "89720_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89720_lock.png",
+      "requirements": {
+        "summary": "Defeat Sera's final form in ???",
+        "conditions": [
+          "No Damage",
+          "Class S or higher"
+        ]
+      }
+    },
+    {
+      "id": 83121,
+      "title": "Protector of Carbons",
+      "description": "Finish the game [Very Hard]",
+      "points": 50,
+      "source_url": "https://retroachievements.org/achievement/83121",
+      "creator": "Searo",
+      "badge_id": "89718",
+      "icon_file": "89718.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89718.png",
+      "locked_icon_file": "89718_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89718_lock.png",
+      "requirements": {
+        "summary": "Finish the game",
+        "conditions": [
+          "Very Hard"
+        ]
+      }
+    },
+    {
+      "id": 83122,
+      "title": "Healthy Man",
+      "description": "Have Max Health, at least 20 Canteens, and at least 20 Medicine Bottles",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83122",
+      "creator": "Searo",
+      "badge_id": "88706",
+      "icon_file": "88706.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88706.png",
+      "locked_icon_file": "88706_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88706_lock.png",
+      "requirements": {
+        "summary": "Have Max Health, at least 20 Canteens, and at least 20 Medicine Bottles",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83123,
+      "title": "Helmet Hair",
+      "description": "Collect all Helmets",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83123",
+      "creator": "Searo",
+      "badge_id": "88023",
+      "icon_file": "88023.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88023.png",
+      "locked_icon_file": "88023_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88023_lock.png",
+      "requirements": {
+        "summary": "Collect all Helmets",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83124,
+      "title": "Fashionable",
+      "description": "Collect all Armors",
+      "points": 10,
+      "source_url": "https://retroachievements.org/achievement/83124",
+      "creator": "Searo",
+      "badge_id": "88024",
+      "icon_file": "88024.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88024.png",
+      "locked_icon_file": "88024_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88024_lock.png",
+      "requirements": {
+        "summary": "Collect all Armors",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83125,
+      "title": "Check Out My Kicks",
+      "description": "Collect all Shoes",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83125",
+      "creator": "Searo",
+      "badge_id": "88025",
+      "icon_file": "88025.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88025.png",
+      "locked_icon_file": "88025_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88025_lock.png",
+      "requirements": {
+        "summary": "Collect all Shoes",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83126,
+      "title": "Bust Yer Ass",
+      "description": "Collect every buster part",
+      "points": 10,
+      "source_url": "https://retroachievements.org/achievement/83126",
+      "creator": "Searo",
+      "badge_id": "88026",
+      "icon_file": "88026.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88026.png",
+      "locked_icon_file": "88026_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88026_lock.png",
+      "requirements": {
+        "summary": "Collect every buster part",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83127,
+      "title": "Connoisseur",
+      "description": "Collect every special weapon",
+      "points": 10,
+      "source_url": "https://retroachievements.org/achievement/83127",
+      "creator": "Searo",
+      "badge_id": "89352",
+      "icon_file": "89352.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89352.png",
+      "locked_icon_file": "89352_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89352_lock.png",
+      "requirements": {
+        "summary": "Collect every special weapon",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83128,
+      "title": "Mr. Money Bags",
+      "description": "Have at least 2 million zenny on you",
+      "points": 10,
+      "source_url": "https://retroachievements.org/achievement/83128",
+      "creator": "Searo",
+      "badge_id": "92254",
+      "icon_file": "92254.png",
+      "icon_url": "https://media.retroachievements.org/Badge/92254.png",
+      "locked_icon_file": "92254_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/92254_lock.png",
+      "requirements": {
+        "summary": "Have at least 2 million zenny on you",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83129,
+      "title": "A Class",
+      "description": "Pass the Class A License exam",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83129",
+      "creator": "Searo",
+      "badge_id": "89350",
+      "icon_file": "89350.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89350.png",
+      "locked_icon_file": "89350_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89350_lock.png",
+      "requirements": {
+        "summary": "Pass the Class A License exam",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83130,
+      "title": "S Class",
+      "description": "Pass the Class S License exam",
+      "points": 10,
+      "source_url": "https://retroachievements.org/achievement/83130",
+      "creator": "Searo",
+      "badge_id": "89349",
+      "icon_file": "89349.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89349.png",
+      "locked_icon_file": "89349_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89349_lock.png",
+      "requirements": {
+        "summary": "Pass the Class S License exam",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83131,
+      "title": "Angelman",
+      "description": "Do enough good deeds to turn your armor light and get a discount at stores",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83131",
+      "creator": "Searo",
+      "badge_id": "89727",
+      "icon_file": "89727.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89727.png",
+      "locked_icon_file": "89727_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89727_lock.png",
+      "requirements": {
+        "summary": "Do enough good deeds to turn your armor light and get a discount at stores",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83132,
+      "title": "Devilman",
+      "description": "Do enough bad deeds to turn your armor black and get charged more at shops",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83132",
+      "creator": "Searo",
+      "badge_id": "89728",
+      "icon_file": "89728.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89728.png",
+      "locked_icon_file": "89728_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89728_lock.png",
+      "requirements": {
+        "summary": "Do enough bad deeds to turn your armor black and get charged more at shops",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83133,
+      "title": "Abandoned Mine Treasure Hunter",
+      "description": "Collect all the treasures in the Abandoned Yosyonke Mines",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83133",
+      "creator": "Searo",
+      "badge_id": "88729",
+      "icon_file": "88729.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88729.png",
+      "locked_icon_file": "88729_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88729_lock.png",
+      "requirements": {
+        "summary": "Collect all the treasures in the Abandoned Yosyonke Mines",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83134,
+      "title": "Pokte Caverns (Class B) Treasure Hunter",
+      "description": "Collect all the treasures in the Pokte Caverns including the refractor",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83134",
+      "creator": "Searo",
+      "badge_id": "88792",
+      "icon_file": "88792.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88792.png",
+      "locked_icon_file": "88792_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88792_lock.png",
+      "requirements": {
+        "summary": "Collect all the treasures in the Pokte Caverns including the refractor",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83135,
+      "title": "Manda Ruins Treasure Hunter",
+      "description": "Collect all the treasures in Manda Ruins",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83135",
+      "creator": "Searo",
+      "badge_id": "88730",
+      "icon_file": "88730.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88730.png",
+      "locked_icon_file": "88730_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88730_lock.png",
+      "requirements": {
+        "summary": "Collect all the treasures in Manda Ruins",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83136,
+      "title": "Saul Kada Ruin Treasure Hunter",
+      "description": "Collect all the treasures in Saul Kada Ruins",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83136",
+      "creator": "Searo",
+      "badge_id": "88731",
+      "icon_file": "88731.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88731.png",
+      "locked_icon_file": "88731_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88731_lock.png",
+      "requirements": {
+        "summary": "Collect all the treasures in Saul Kada Ruins",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83137,
+      "title": "Airship Treasure Hunter",
+      "description": "Collect all the treasures in the Flutter and Sulphur Bottom",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83137",
+      "creator": "Searo",
+      "badge_id": "88793",
+      "icon_file": "88793.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88793.png",
+      "locked_icon_file": "88793_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88793_lock.png",
+      "requirements": {
+        "summary": "Collect all the treasures in the Flutter and Sulphur Bottom",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83138,
+      "title": "Kito Caverns (Class A) Treasure Hunter",
+      "description": "Collect all the treasures in Kito Caverns Including the Refractor",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83138",
+      "creator": "Searo",
+      "badge_id": "88796",
+      "icon_file": "88796.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88796.png",
+      "locked_icon_file": "88796_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88796_lock.png",
+      "requirements": {
+        "summary": "Collect all the treasures in Kito Caverns Including the Refractor",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83139,
+      "title": "Nino Ruins Treasure Hunter",
+      "description": "Collect all the treasures in Nino Ruins and the Nino Island Guild Ruins",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83139",
+      "creator": "Searo",
+      "badge_id": "88732",
+      "icon_file": "88732.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88732.png",
+      "locked_icon_file": "88732_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88732_lock.png",
+      "requirements": {
+        "summary": "Collect all the treasures in Nino Ruins and the Nino Island Guild Ruins",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83140,
+      "title": "Kimotomoa Cavern (Class S) Treasure Hunter",
+      "description": "Collect all the treasures in Kimotomoa Caverns including the Refractor",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83140",
+      "creator": "Searo",
+      "badge_id": "88795",
+      "icon_file": "88795.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88795.png",
+      "locked_icon_file": "88795_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88795_lock.png",
+      "requirements": {
+        "summary": "Collect all the treasures in Kimotomoa Caverns including the Refractor",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83141,
+      "title": "Calinca Ruins Treasure Hunter",
+      "description": "Collect all the treasures in Calinca Ruins",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83141",
+      "creator": "Searo",
+      "badge_id": "88797",
+      "icon_file": "88797.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88797.png",
+      "locked_icon_file": "88797_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88797_lock.png",
+      "requirements": {
+        "summary": "Collect all the treasures in Calinca Ruins",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83142,
+      "title": "Misc Treasure Hunter",
+      "description": "Collect all the treasures not in Ruins",
+      "points": 10,
+      "source_url": "https://retroachievements.org/achievement/83142",
+      "creator": "Searo",
+      "badge_id": "88735",
+      "icon_file": "88735.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88735.png",
+      "locked_icon_file": "88735_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88735_lock.png",
+      "requirements": {
+        "summary": "Collect all the treasures not in Ruins",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83143,
+      "title": "Elysium Treasure Hunter",
+      "description": "Collect all the treasures in Elysium",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83143",
+      "creator": "Searo",
+      "badge_id": "89354",
+      "icon_file": "89354.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89354.png",
+      "locked_icon_file": "89354_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89354_lock.png",
+      "requirements": {
+        "summary": "Collect all the treasures in Elysium",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83144,
+      "title": "Spelunker",
+      "description": "Collect all the treasures in the game",
+      "points": 25,
+      "source_url": "https://retroachievements.org/achievement/83144",
+      "creator": "Searo",
+      "badge_id": "88736",
+      "icon_file": "88736.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88736.png",
+      "locked_icon_file": "88736_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88736_lock.png",
+      "requirements": {
+        "summary": "Collect all the treasures in the game",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83145,
+      "title": "Manda Circuit Pro",
+      "description": "Beat the First Place time of 25.95 seconds in Manda Circuit",
+      "points": 10,
+      "source_url": "https://retroachievements.org/achievement/83145",
+      "creator": "Searo",
+      "badge_id": "88489",
+      "icon_file": "88489.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88489.png",
+      "locked_icon_file": "88489_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88489_lock.png",
+      "requirements": {
+        "summary": "Beat the First Place time of 25.95 seconds in Manda Circuit",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83146,
+      "title": "Calinca Circuit Pro",
+      "description": "Beat the First Place time of 31.24 seconds in Calinca Circuit",
+      "points": 10,
+      "source_url": "https://retroachievements.org/achievement/83146",
+      "creator": "Searo",
+      "badge_id": "88490",
+      "icon_file": "88490.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88490.png",
+      "locked_icon_file": "88490_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88490_lock.png",
+      "requirements": {
+        "summary": "Beat the First Place time of 31.24 seconds in Calinca Circuit",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83147,
+      "title": "Saul Kada Circuit Pro",
+      "description": "Beat the First Place time of 32.12 seconds in Saul Kada Circuit",
+      "points": 10,
+      "source_url": "https://retroachievements.org/achievement/83147",
+      "creator": "Searo",
+      "badge_id": "88491",
+      "icon_file": "88491.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88491.png",
+      "locked_icon_file": "88491_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88491_lock.png",
+      "requirements": {
+        "summary": "Beat the First Place time of 32.12 seconds in Saul Kada Circuit",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83148,
+      "title": "Dammit Data!",
+      "description": "Put out the fire and rescue Data on the Flutter before the sprinklers activate",
+      "points": 1,
+      "source_url": "https://retroachievements.org/achievement/83148",
+      "creator": "Searo",
+      "badge_id": "88739",
+      "icon_file": "88739.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88739.png",
+      "locked_icon_file": "88739_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88739_lock.png",
+      "requirements": {
+        "summary": "Put out the fire and rescue Data on the Flutter before the sprinklers activate",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83149,
+      "title": "Taking Out the Trash",
+      "description": "Kick a can into a trash can and earn 200 zenny!",
+      "points": 1,
+      "source_url": "https://retroachievements.org/achievement/83149",
+      "creator": "Searo",
+      "badge_id": "88746",
+      "icon_file": "88746.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88746.png",
+      "locked_icon_file": "88746_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88746_lock.png",
+      "requirements": {
+        "summary": "Kick a can into a trash can and earn 200 zenny!",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83150,
+      "title": "Slapped by Roll",
+      "description": "Attempt to lift up Roll's skirt in the Calinca Tundra",
+      "points": 1,
+      "source_url": "https://retroachievements.org/achievement/83150",
+      "creator": "Searo",
+      "badge_id": "89348",
+      "icon_file": "89348.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89348.png",
+      "locked_icon_file": "89348_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89348_lock.png",
+      "requirements": {
+        "summary": "Attempt to lift up Roll's skirt in the Calinca Tundra",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83151,
+      "title": "Truly Cultured",
+      "description": "Answer all 100 questions correctly and win the Ultimate Quiz!",
+      "points": 10,
+      "source_url": "https://retroachievements.org/achievement/83151",
+      "creator": "Searo",
+      "badge_id": "89729",
+      "icon_file": "89729.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89729.png",
+      "locked_icon_file": "89729_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89729_lock.png",
+      "requirements": {
+        "summary": "Answer all 100 questions correctly and win the Ultimate Quiz!",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83152,
+      "title": "Teacher",
+      "description": "Give Shu a Textbook, Pencil, and Notes so she can teach her brothers to read and write",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/83152",
+      "creator": "Searo",
+      "badge_id": "89730",
+      "icon_file": "89730.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89730.png",
+      "locked_icon_file": "89730_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89730_lock.png",
+      "requirements": {
+        "summary": "Give Shu a Textbook, Pencil, and Notes so she can teach her brothers to read and write",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83153,
+      "title": "Game cart",
+      "description": "Buy a copy of Residen Evil 43",
+      "points": 1,
+      "source_url": "https://retroachievements.org/achievement/83153",
+      "creator": "Searo",
+      "badge_id": "89734",
+      "icon_file": "89734.png",
+      "icon_url": "https://media.retroachievements.org/Badge/89734.png",
+      "locked_icon_file": "89734_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/89734_lock.png",
+      "requirements": {
+        "summary": "Buy a copy of Residen Evil 43",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83154,
+      "title": "Television",
+      "description": "Watch clips of the first episode of Mega Man",
+      "points": 1,
+      "source_url": "https://retroachievements.org/achievement/83154",
+      "creator": "Searo",
+      "badge_id": "88750",
+      "icon_file": "88750.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88750.png",
+      "locked_icon_file": "88750_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88750_lock.png",
+      "requirements": {
+        "summary": "Watch clips of the first episode of Mega Man",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83155,
+      "title": "Zero Poster",
+      "description": "Check out the coolest Maverick Hunter",
+      "points": 1,
+      "source_url": "https://retroachievements.org/achievement/83155",
+      "creator": "Searo",
+      "badge_id": "88751",
+      "icon_file": "88751.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88751.png",
+      "locked_icon_file": "88751_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88751_lock.png",
+      "requirements": {
+        "summary": "Check out the coolest Maverick Hunter",
+        "conditions": []
+      }
+    },
+    {
+      "id": 83156,
+      "title": "Depressed Roll",
+      "description": "Disappoint Roll so much that she gets depressed",
+      "points": 10,
+      "source_url": "https://retroachievements.org/achievement/83156",
+      "creator": "Searo",
+      "badge_id": "88754",
+      "icon_file": "88754.png",
+      "icon_url": "https://media.retroachievements.org/Badge/88754.png",
+      "locked_icon_file": "88754_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/88754_lock.png",
+      "requirements": {
+        "summary": "Disappoint Roll so much that she gets depressed",
+        "conditions": []
+      }
+    },
+    {
+      "id": 84431,
+      "title": "Nice View",
+      "description": "Take a peek at Roll and get a discount on all weapon development costs",
+      "points": 5,
+      "source_url": "https://retroachievements.org/achievement/84431",
+      "creator": "Searo",
+      "badge_id": "91804",
+      "icon_file": "91804.png",
+      "icon_url": "https://media.retroachievements.org/Badge/91804.png",
+      "locked_icon_file": "91804_lock.png",
+      "locked_icon_url": "https://media.retroachievements.org/Badge/91804_lock.png",
+      "requirements": {
+        "summary": "Take a peek at Roll and get a discount on all weapon development costs",
+        "conditions": []
+      }
+    }
+  ]
+}

@@ -968,45 +968,182 @@ def export_st08_scripted_actors(dat_dir, output_dir):
 	manifest = {"stage": stage, "source": {"archive_file": archive_info["archive_file"], "archive_section": archive_info["offset"], "archive_sha256": sha256(root), "overlay_file": str(overlay_path.relative_to(ROOT)), "overlay_sha256": sha256(overlay), "record_size": 20, "record_consumer": "GAME.BIN 0x800C0818 calls 0x800C05E0", "local_context_reset": SCRIPT_LOCAL_CONTEXT_RESET, "native_broadphase": {"setter": "ST08T.BIN 0x800ED2A8..0x800ED2B8 stores pointer at actor+0x58", "consumer": "GAME.BIN 0x800B13E0..0x800B13E8 passes actor+0x58 to 0x800B13FC", "bounds_pointer": hex(hitbox_pointer), "bounds_raw": hitbox_bounds, "bounds_layout": "three signed16 min/max pairs used by the native actor/map collision path"}, "collision_adapter": {"geometry": "source PBD hull mesh triangles", "skin": "identity inverse binds, identity rest pose, control_00 constant pose"}, "resource_match": "PBD flags == record byte+2 | byte+4<<8 | byte+6<<16", "coordinate_unit": "1/256 map unit", "coordinate_basis": "canonical stage mesh (-X,-Y,+Z)"}, "spawn_sets": spawn_sets, "instances": instances, "models": [models_by_index[index] for index in sorted(models_by_index)], "identity_evidence": {"model_1": {"character": "Flutter hull", "role": "player_vehicle", "resource_flags": "0x3020", "mesh_bounds_source": "ST08 PBD model1, 3-bone high LOD", "native_transform_source": "ST08T.BIN record at 0xB6A0", "native_broadphase_pointer": hex(hitbox_pointer), "mesh_collision_source": "PBD model1 source triangles; rest/control_00 verified static"}}}
 	output_dir.mkdir(parents=True, exist_ok=True); write_if_changed(output_dir / "scripted_actors.json", json.dumps(manifest, indent=2) + "\n", encoding="utf-8"); print(f"ST08 scripted actors: {len(instances)} conditional records, {len(models_by_index)} original models -> {output_dir / 'scripted_actors.json'}"); return manifest
 
-INTERIOR_SCRIPT_BINDINGS = {"ST0A": {"section": 0xA800, "table": 0x800EF500, "dispatcher": 0x800E74E8, "areas": 5, "constructor": 0x800E8B70, "callback": 0x800E8920, "hitbox": 0x800EFA80}, "ST0C": {"section": 0x6000, "table": 0x800EABCC, "dispatcher": 0x800E72B4, "areas": 3, "constructor": 0x800E777C, "callback": 0x800E752C, "hitbox": 0x800EAECC}, "ST47": {"section": 0x5800, "table": 0x800ECABC, "dispatcher": 0x800E7348, "areas": 1, "constructor": 0x800E8850, "callback": 0x800E8600, "hitbox": 0x800ED068}}
-def native_interior_callback_paths(overlay, callback, state, area):
+INTERIOR_SCRIPT_BINDINGS = {"ST0A": {"section": 0xA800, "table": 0x800EF500, "dispatcher": 0x800E74E8, "areas": 5, "constructor": 0x800E8B70, "callback": 0x800E8920, "hitbox": 0x800EFA80}, "ST0C": {"section": 0x6000, "table": 0x800EABCC, "dispatcher": 0x800E72B4, "areas": 3, "constructor": 0x800E777C, "callback": 0x800E752C, "hitbox": 0x800EAECC}, "ST47": {"section": 0x5800, "table": 0x800ECABC, "dispatcher": 0x800E7348, "areas": 3, "constructor": 0x800E8850, "callback": 0x800E8600, "hitbox": 0x800ED068}}
+for stage, values in {"ST09": (0xE7410, 0xF2300, 1, 0x15000, 0xE81EC, 0xE843C, 0xF2744), "ST0B": (0xE75C8, 0xEEF88, 2, 0x18000, 0xE8174, 0xE83C4, 0xEF450), "ST0D": (0xE72E4, 0xF05B8, 2, 0xB000, 0xE74A4, 0xE76F4, 0xF0840), "ST17": (0xE7788, 0xFED78, 3, 0x9800, 0xE9D00, 0xE9F50, 0x106F3C), "ST18": (0xE760C, 0xFFA70, 6, None, 0xE84C4, 0xE8620, 0x1075D8), "ST1B": (0xE7494, 0xF009C, 5, 0x9800, 0xE78F0, 0xE7B40, 0xF0274), "ST1F": (0xE7B7C, 0x1010A0, 2, 0xA800, 0xE80D4, 0xE8324, 0x1012BC), "ST20": (0xE7508, 0xF1AE4, 2, 0xC800, 0xE8494, 0xE86E4, 0xF207C), "ST24": (0xE75F4, 0xF21F8, 3, 0xE800, 0xE7944, 0xE7BCC, 0xF2448), "ST25": (0xE7570, 0xF9CD4, 7, 0x10800, 0xE7FFC, 0xE824C, 0xF9F38), "ST29": (0xE7838, 0xF6B9C, 2, 0x9000, 0xE7CB4, 0xE7F04, 0xF709C), "ST2B": (0xE7504, 0xF3860, 4, 0x7800, 0xE7B6C, 0xE7C48, 0xF3D00), "ST3B": (0xE7644, 0xFDCBC, 2, 0x6800, 0xE8E24, 0xE9074, 0xFE518), "ST3C": (0xE83B0, 0xFE564, 5, None, 0xE8A2C, 0xE8C7C, 0xFEA68), "ST3D": (0xE73B0, 0xEAFE0, 4, 0x6800, 0xE77C0, 0xE7A10, 0xEB0AC), "ST3E": (0xE75B0, None, 2, 0xA800, 0xE799C, 0xE7BEC, 0xED608), "ST3F": (0xE7530, 0xEF800, 2, 0x6800, 0xE77FC, 0xE7A4C, 0xEF93C)}.items():
+	dispatcher, table, areas, section, callback, constructor, hitbox = values; INTERIOR_SCRIPT_BINDINGS[stage] = {"dispatcher": 0x80000000 + dispatcher, "table": 0x80000000 + table if table is not None else None, "areas": areas, "section": section, "callback": 0x80000000 + callback, "constructor": 0x80000000 + constructor, "hitbox": 0x80000000 + hitbox}
+INTERIOR_SCRIPT_BINDINGS["ST18"]["actor_archive_file"] = "ST1800.BIN"
+INTERIOR_SCRIPT_BINDINGS["ST3C"]["actor_archive_file"] = "ST3C00.BIN"
+INTERIOR_SCRIPT_BINDINGS["ST3E"]["areas"] = 7
+INTERIOR_SCRIPT_BINDINGS["ST3F"]["states"] = 19
+INTERIOR_SCRIPT_BINDINGS["ST1F"]["states"] = 19
+INTERIOR_SCRIPT_BINDINGS["ST17"]["actor_archive_file"] = "ST1705.BIN"
+INTERIOR_SCRIPT_BINDINGS["ST1F"]["actor_archive_file"] = "ST1F01.BIN"
+INTERIOR_SCRIPT_BINDINGS["ST1F"]["additional_texture_file"] = "ST1F01T.BIN"
+INTERIOR_SCRIPT_BINDINGS["ST25"]["actor_archive_file"] = "ST2502.BIN"
+INTERIOR_SCRIPT_BINDINGS["ST25"]["additional_texture_file"] = "ST2502T.BIN"
+INTERIOR_SCRIPT_BINDINGS["ST3C"]["additional_texture_file"] = "ST3C01T.BIN"
+INTERIOR_SCRIPT_BINDINGS["ST29"]["actor_archive_file"] = "ST2901.BIN"
+INTERIOR_SCRIPT_BINDINGS["ST29"]["additional_texture_file"] = "ST2901T.BIN"
+INTERIOR_SCRIPT_BINDINGS["ST29"]["pickup_table"] = 0x800F6628
+INTERIOR_SCRIPT_BINDINGS["ST2B"]["pickup_table"] = 0x800F3294
+INTERIOR_SCRIPT_BINDINGS["ST3B"]["pickup_table"] = 0x800FD3E8
+INTERIOR_SCRIPT_BINDINGS["ST2C"] = {"dispatcher": 0x800E7358, "table": 0x800EA414, "areas": 1, "section": 0x1800, "callback": 0x800E7454, "constructor": 0x800E76A4, "hitbox": 0x800EA878}
+SCRIPT_RESOURCE_OVERRIDES = {("ST3B", 0x20, 0, 1): {"variant": 45, "constructor": 0x800E8B60, "callback": 0x800E8A60, "hitbox": 0x800FE4F8, "control": 0}, ("ST3B", 0x60, 0x49, 0): {"variant": 0, "constructor": 0x800F4F34, "callback": 0x800F4E68, "hitbox": 0x800FECB4}, ("ST1B", 0x20, 0xA, 0): {"variant": 0, "constructor": 0x800E95A8, "hitbox": 0x800F059C, "control": 2, "target_flags60": 2}, ("ST20", 0x20, 0xA, 0): {"variant": 0, "constructor": 0x800EB528, "hitbox": 0x800F23D0, "control": 2, "target_flags60": 2}, ("ST18", 0x20, 0x5E, 1): {"variant": 0, "constructor": 0x800EDA9C, "callback": 0x800ED9B8, "hitbox": 0x801078B0, "control": 1, "target_flags60": 0, "header_flags_or": 0x40}}
+def compact_callback_paths(paths):
+	groups = {}
+	for path in paths:
+		key = json.dumps({name: path[name] for name in ("registrations", "actions", "local_bytes")}, sort_keys=True); group = groups.setdefault(key, {"sample": path, "cubes": set()}); group["cubes"].add(tuple(sorted(path["queries"].items())))
+	result = []
+	for group in groups.values():
+		cubes = group["cubes"]
+		while True:
+			merged = set(); used = set(); buckets = {}
+			for cube in cubes:
+				for position, (flag, enabled) in enumerate(cube): buckets.setdefault((flag, cube[:position] + cube[position + 1:]), {})[enabled] = cube
+			for (_, common), pair in buckets.items():
+				if len(pair) == 2: merged.add(common); used.update(pair.values())
+			if not used: break
+			cubes = (cubes - used) | merged
+		for cube in sorted(cubes): result.append({**group["sample"], "queries": dict(cube)})
+	return result
+def subtract_query_cube(cube, cover):
+	if any(flag in cube and cube[flag] != enabled for flag, enabled in cover.items()): return [cube]
+	remaining = dict(cube); pieces = []
+	for flag, enabled in sorted(cover.items()):
+		if flag in remaining: continue
+		pieces.append({**remaining, flag: not enabled}); remaining[flag] = enabled
+	return pieces
+def disjoint_callback_paths(paths):
+	result = []
+	for path in sorted(compact_callback_paths(paths), key=lambda entry: len(entry["queries"])):
+		pieces = [path["queries"]]
+		for previous in result:
+			pieces = [piece for cube in pieces for piece in subtract_query_cube(cube, previous["queries"])]
+			if not pieces: break
+		result.extend({**path, "queries": cube} for cube in pieces)
+	return result
+def audit_query_union(original, reduced):
+	before = [dict(cube) for cube in set(tuple(sorted(path["queries"].items())) for path in original)]; after = [path["queries"] for path in reduced]
+	for source, covers in ((before, after), (after, before)):
+		for cube in source:
+			pieces = [cube]
+			for cover in covers:
+				pieces = [piece for remaining in pieces for piece in subtract_query_cube(remaining, cover)]
+				if not pieces: break
+			if pieces: raise ValueError("Native registration predicate union changed during compaction")
+def native_interior_callback_paths(overlay, callback, state, area, stage=""):
+	if stage == "ST24" and callback == 0x800E76E4:
+		paths = []
+		for minimum, maximum in [(-32768, -1), (0, 4095), (4096, 8191), (8192, 12287), (12288, 16383), (16384, 32767)]:
+			for path in _native_interior_callback_paths(overlay, callback, state, area, stage, minimum): paths.append({**path, "native_conditions": [{"kind": "native_save_word40_range", "minimum": minimum, "maximum": maximum, "source": "ST24T0x800E770C/0x800E7744..0x800E7780 signed16 saved+40"}]})
+		return paths
+	return _native_interior_callback_paths(overlay, callback, state, area, stage)
+def _native_interior_callback_paths(overlay, callback, state, area, stage="", native_save_word40=0):
 	import sys
 	sys.path.insert(0, str(ROOT / "build/pydeps")); import unicorn; from unicorn import mips_const as registers
 	executable = (ROOT / "build/disc-assets/SLES_035.56").read_bytes(); game = (ROOT / "build/disc-assets/COMMON/GAME.BIN").read_bytes(); pending = [{}]; visited = set(); paths = []
 	while pending:
 		assignment = pending.pop(); identity = tuple(sorted(assignment.items()))
 		if identity in visited: continue
-		visited.add(identity); cpu = unicorn.Uc(unicorn.UC_ARCH_MIPS, unicorn.UC_MODE_MIPS32 | unicorn.UC_MODE_LITTLE_ENDIAN); cpu.mem_map(0, 0x200000); cpu.mem_map(0x1F800000, 0x1000); cpu.mem_write(0x10000, executable[0x800:]); cpu.mem_write(0xAD000, game[48:]); cpu.mem_write(0xE7000, overlay[48:]); cpu.mem_write(0x9C7FC, bytes((state,))); cpu.mem_write(0x9C7F3, bytes((area,))); queries = {}; registrations = []; actions = []; changed_flags = set()
+		visited.add(identity); cpu = unicorn.Uc(unicorn.UC_ARCH_MIPS, unicorn.UC_MODE_MIPS32 | unicorn.UC_MODE_LITTLE_ENDIAN); cpu.mem_map(0, 0x200000); cpu.mem_map(0x1F800000, 0x1000); cpu.mem_write(0x10000, executable[0x800:]); cpu.mem_write(0xAD000, game[48:]); cpu.mem_write(0xE7000, overlay[48:]); cpu.mem_write(0x9C7FC, bytes((state,))); queries = {}; registrations = []; actions = []; changed_flags = set()
+		cpu.mem_write(0x9C7F9, bytes((area,)))
+		cpu.mem_write(0x9C828, struct.pack("<h", native_save_word40))
+		if stage: cpu.mem_write(0x9C7F8, bytes((int(stage[2:], 16),)))
+		if stage in INTERIOR_SCRIPT_BINDINGS and INTERIOR_SCRIPT_BINDINGS[stage].get("pickup_table"): cpu.mem_write(0x78CE0, struct.pack("<I", INTERIOR_SCRIPT_BINDINGS[stage]["pickup_table"]))
 		for event, enabled in assignment.items():
 			if enabled: address = 0x98538 + (event >> 3); value = cpu.mem_read(address, 1)[0] | (1 << (event & 7)); cpu.mem_write(address, bytes((value,)))
 		def observe(machine, address, size, user):
 			argument = machine.reg_read(registers.UC_MIPS_REG_A0); caller = machine.reg_read(registers.UC_MIPS_REG_RA) - 8
-			if address == 0x800C05B4 and argument not in changed_flags: queries[argument] = bool(assignment.get(argument, False))
+			if stage == "ST3B" and address == 0x800E7D34:
+				actions.append({"kind": "unported_engine_call", "function": "ST3BT.BIN 0x800E7D34", "argument": argument, "source_pc": hex(caller), "reason": "Native pickup placement traversal does not register NPC actors"}); machine.reg_write(registers.UC_MIPS_REG_V0, 0); machine.reg_write(registers.UC_MIPS_REG_PC, machine.reg_read(registers.UC_MIPS_REG_RA))
+			elif stage == "ST3B" and address == 0x800C05B4 and caller == 0x800E7750:
+				pair = struct.unpack("<2H", machine.mem_read(machine.reg_read(registers.UC_MIPS_REG_S0) & 0x1FFFFFFF, 4)); actions.append({"kind": "set_event_flag", "id": pair[0], "source_pc": "0x800e7764", "conditional_queries": {str(pair[1]): True}}); machine.reg_write(registers.UC_MIPS_REG_V0, 0); machine.reg_write(registers.UC_MIPS_REG_PC, machine.reg_read(registers.UC_MIPS_REG_RA))
+			elif address == 0x800C05B4 and argument not in changed_flags: queries[argument] = bool(assignment.get(argument, False))
 			elif address in (0x800C0558, 0x800C0584): actions.append({"kind": "set_event_flag" if address == 0x800C0558 else "clear_event_flag", "id": argument, "source_pc": hex(caller)}); changed_flags.add(argument)
 			elif address == 0x800C0818:
 				registrations.append({"call_pc": caller, "pointer": argument, "count": machine.reg_read(registers.UC_MIPS_REG_A1)}); machine.reg_write(registers.UC_MIPS_REG_V0, 0); machine.reg_write(registers.UC_MIPS_REG_PC, machine.reg_read(registers.UC_MIPS_REG_RA))
+			elif address == 0x800D9B50:
+				actions.append({"kind": "unported_engine_call", "function": "GAME.BIN 0x800D9B50", "argument": argument, "source_pc": hex(caller), "reason": "Stage pickup allocation is outside NPC registration observation"}); machine.reg_write(registers.UC_MIPS_REG_V0, 0); machine.reg_write(registers.UC_MIPS_REG_PC, machine.reg_read(registers.UC_MIPS_REG_RA))
 			elif address in (0x800C0B0C, 0x800C0B78, 0x800201B0):
-				if address != 0x800201B0: actions.append({"kind": "call", "function": "GAME.BIN " + hex(address), "argument": argument, "source_pc": hex(caller)})
+				if address == 0x800201B0: actions.append({"kind": "native_audio_cue", "sound_id": argument, "source_pc": hex(caller), "source_function": "SLES0x800201B0"})
+				else: actions.append({"kind": "call", "function": "GAME.BIN " + hex(address), "argument": argument, "source_pc": hex(caller)})
 				machine.reg_write(registers.UC_MIPS_REG_V0, 0); machine.reg_write(registers.UC_MIPS_REG_PC, machine.reg_read(registers.UC_MIPS_REG_RA))
-		cpu.hook_add(unicorn.UC_HOOK_CODE, observe); cpu.reg_write(registers.UC_MIPS_REG_SP, 0x801FF000); cpu.reg_write(registers.UC_MIPS_REG_GP, 0x8007890C); cpu.reg_write(registers.UC_MIPS_REG_RA, 0x80000800); cpu.reg_write(registers.UC_MIPS_REG_A0, 0x8009BE08); cpu.emu_start(callback, 0x80000800, count=100000)
+		cpu.hook_add(unicorn.UC_HOOK_CODE, observe); cpu.reg_write(registers.UC_MIPS_REG_SP, 0x801FF000); cpu.reg_write(registers.UC_MIPS_REG_GP, 0x8007890C); cpu.reg_write(registers.UC_MIPS_REG_RA, 0x80000800); cpu.reg_write(registers.UC_MIPS_REG_A0, 0x8009BE08)
+		try: cpu.emu_start(callback, 0x80000800, count=100000)
+		except unicorn.UcError as error: raise ValueError(f"{stage} callback{callback:#x} state{state} area{area} PC{cpu.reg_read(registers.UC_MIPS_REG_PC):#x} RA{cpu.reg_read(registers.UC_MIPS_REG_RA):#x}: {error}") from error
 		if cpu.reg_read(registers.UC_MIPS_REG_PC) != 0x80000800: raise ValueError(f"Interior callback {callback:#x} did not return")
 		for event, enabled in queries.items():
 			if event not in assignment: alternate = dict(assignment); alternate[event] = not enabled; pending.append(alternate)
 		path = {"queries": queries, "registrations": registrations, "actions": actions, "local_bytes": list(cpu.mem_read(0x9BE08, 4))}
 		if path not in paths: paths.append(path)
-	return paths
+	return compact_callback_paths(paths)
+def export_stage_native_scenes(stage, overlay, payload, archive, texture_path, output_dir, models):
+	if stage != "ST0A": return []
+	import world
+	def read(address, size): return overlay[48 + address - 0x800E7000:48 + address - 0x800E7000 + size]
+	commands = []; address = 0x800EF88C; pointers = []; timeline = []
+	while address < 0x800EF9E4:
+		header = read_u32(read(address, 4), 0); opcode = header >> 24; size = 16 if 0x10 <= opcode <= 0x1A else 8 if opcode in (0x1B, 0x40, 0x41) else 20 if opcode == 0x42 else 4; words = list(struct.unpack("<" + "I" * (size // 4), read(address, size))); command = {"source_ram": hex(address), "opcode": opcode, "words": words}
+		if opcode in (0x40, 0x41): command["actor_record_ram"] = hex(words[1]); pointers.append(words[1])
+		commands.append(command); address += size
+	commands.append({"source_ram": hex(address), "opcode": read_u32(read(address, 4), 0) >> 24, "words": [read_u32(read(address, 4), 0)]})
+	address = 0x800EF9E4
+	while True:
+		phase, step, duration, callback = struct.unpack("<BBhI", read(address, 8))
+		if phase == 255: break
+		timeline.append({"phase": phase, "step": step, "duration": duration, "callback": hex(callback), "source_ram": hex(address)}); address += 8
+	actors = []
+	for pointer in dict.fromkeys([*pointers, 0x800EF878]):
+		raw = read(pointer, 20); resource_flags = raw[2] | raw[4] << 8 | raw[6] << 16; matches = [model for model in archive["models"] if model["flags"] & 0xFFFFFF == resource_flags]
+		if len(matches) != 1: raise ValueError(f"{stage} scene4D actor{pointer:#x} has no unique native resource{resource_flags:#x}")
+		index = matches[0]["index"]; model_file = f"actors/{stage}_model_{index:02d}.glb"
+		if index not in models:
+			metadata = export_actor_model(payload, index, texture_path, output_dir / model_file, stage + ".BIN") if matches[0]["mesh"]["bone_count"] else export_static_actor(payload, index, texture_path, output_dir / model_file, stage + ".BIN"); metadata.update(model_file=model_file, native_resource_flags=resource_flags, native_scale_raw=list(struct.unpack_from("<3h", payload, matches[0]["mesh_offset"] + 0x30))); models[index] = metadata
+		x, y, z, yaw = struct.unpack_from("<hhhH", raw, 12); entry = {"stage": stage, "area_index": 0, "source_record_ram": hex(pointer), "file_offset": 48 + pointer - 0x800E7000, "source_bytes_hex": raw.hex(), "record_id": raw[1], "record_type": raw[2], "record_class": raw[3], "actor_class": raw[4], "dispatch_index": raw[5], "resource_variant": raw[6], "resource_key": raw[7], "native_private_raw": list(raw[8:12]), "model_index": index, "model_file": model_file, "native_resource_flags": resource_flags, "transform_raw": [x, y, z, yaw], "transform": {"position": [-x / 256, -y / 256, z / 256], "yaw_raw": yaw, "yaw_turns": -yaw / 4096, "floor_height": y == -1}}
+		if pointer in (0x800EF864, 0x800EF878):
+			constructor = 0x800EAE4C if pointer == 0x800EF864 else 0x800E8B70; bounds = 0x800EFDB4 if pointer == 0x800EF864 else 0x800EFA80; entry["native_animation_startup"] = {"control": 0, "start_record": 0, "source_constructor": hex(constructor)}; entry["native_hitbox"] = {"bounds_raw": list(struct.unpack("<6h", read(bounds, 12))), "source_pointer_ram": hex(bounds), "source_field": "actor+0x58"}
+		if pointer == 0x800EF878: world.bind_scripted_interactions(stage, [entry], overlay)
+		actors.append({"source_ram": hex(pointer), "slot": raw[1], "model_file": model_file, "model_index": index, "entry": entry, "model": models[index]})
+	profile = {"scene_id": 0x4D, "stage": stage, "area": 0, "native_tick_hz": 25, "source": {"request": "GAME0x800C0B0C", "dispatch_table": "GAME0x800DC490", "handler": "ST0A0x800E7A1C", "state_table": "ST0A0x800EFA74", "initialize": "ST0A0x800E7A58", "update": "ST0A0x800E7B60", "finish": "ST0A0x800E7C9C", "commands": "0x800EF88C", "timeline": "0x800EF9E4"}, "callback_contract_file": "scene_4d_callbacks.json", "commands": commands, "timeline": timeline, "actors": actors, "completion": {"registration_record_ram": "0x800ef878", "registration_call": "GAME0x800C1010", "source_pc": "ST0A0x800E7D5C", "clear_actor_mask": 0x496, "clear_actor_flags": 0x80, "restore_calls": ["GAME0x800CDE4C", "GAME0x800C11F0", "GAME0x800C0F58"], "player_yaw_raw": 0xC00}, "player_initial_pose": {"position_raw": [240, -16, -144], "yaw_raw": 0x400, "source": "ST0A0x800E7AB8..0x800E7AD4"}}
+	write_if_changed(output_dir / "scene_4d.json", json.dumps(profile, indent=2) + "\n", encoding="utf-8"); from scenes import export_callbacks; export_callbacks(stage, 0x4D, output_dir); return [{"id": 0x4D, "file": "scene_4d.json"}]
+def compact_registration_manifest(manifest):
+	sets = {item["id"]: item for item in manifest["spawn_sets"]}; actor_groups = {}; action_groups = {}; rebuilt_sets = []; rebuilt_actors = []; original_count = len(manifest["instances"])
+	for actor in manifest["instances"]:
+		owner = sets[actor["spawn_set"]]; fixed = [item for item in owner["predicate"]["all"] if item["kind"] != "native_event_flag"]; flags = {item["id"]: item["set"] for item in owner["predicate"]["all"] if item["kind"] == "native_event_flag"}; entry = {key: value for key, value in actor.items() if key not in ("spawn_set", "source_pc")}; key = json.dumps([fixed, entry], sort_keys=True); group = actor_groups.setdefault(key, {"fixed": fixed, "entry": entry, "source": owner["source"], "paths": []}); group["paths"].append({"queries": flags, "registrations": [], "actions": [], "local_bytes": []})
+	for owner in manifest["spawn_sets"]:
+		fixed = [item for item in owner["predicate"]["all"] if item["kind"] != "native_event_flag"]; flags = {item["id"]: item["set"] for item in owner["predicate"]["all"] if item["kind"] == "native_event_flag"}
+		for name in ("native_side_effects", "native_local_state_mutations"):
+			for ordinal, action in enumerate(owner["source"].get(name, [])):
+				conditional = {int(flag): enabled for flag, enabled in action.get("conditional_queries", {}).items()}
+				if any(flag in flags and flags[flag] != enabled for flag, enabled in conditional.items()): continue
+				queries = {**flags, **conditional}; action = {key: value for key, value in action.items() if key != "conditional_queries"}; key = json.dumps([fixed, name, action], sort_keys=True); group = action_groups.setdefault(key, {"fixed": fixed, "action": action, "name": name, "source": owner["source"], "paths": []}); group["paths"].append({"queries": queries, "registrations": [], "actions": [], "local_bytes": []})
+	for group in actor_groups.values():
+		paths = compact_callback_paths(group["paths"]); audit_query_union(group["paths"], paths)
+		for path in paths:
+			identifier = "native_actor_" + str(len(rebuilt_sets)); conditions = group["fixed"] + [{"kind": "native_event_flag", "id": flag, "set": enabled} for flag, enabled in path["queries"].items()]; source = {**group["source"], "native_side_effects": [], "native_local_state_mutations": []}; rebuilt_sets.append({"id": identifier, "area_index": group["entry"]["area_index"], "predicate": {"all": conditions}, "source": source, "record_offsets": [group["entry"]["file_offset"]], "non_mesh_records": []}); rebuilt_actors.append({**group["entry"], "spawn_set": identifier, "source_pc": source["call_pc"]})
+	for group in sorted(action_groups.values(), key=lambda entry: entry["name"] == "native_local_state_mutations"):
+		paths = disjoint_callback_paths(group["paths"]); audit_query_union(group["paths"], paths)
+		for path in paths:
+			identifier = "native_action_" + str(len(rebuilt_sets)); conditions = group["fixed"] + [{"kind": "native_event_flag", "id": flag, "set": enabled} for flag, enabled in path["queries"].items()]; source = {**group["source"], "native_side_effects": [], "native_local_state_mutations": []}; source[group["name"]] = [group["action"]]; area = next(item["value"] for item in group["fixed"] if item["kind"] == "stage_area_byte_equals"); rebuilt_sets.append({"id": identifier, "area_index": area, "predicate": {"all": conditions}, "source": source, "record_offsets": [], "non_mesh_records": []})
+	manifest["source"]["registration_compaction"] = {"original_conditional_instances": original_count, "conditional_instances": len(rebuilt_actors), "actor_predicate_groups": len(actor_groups), "action_predicate_groups": len(action_groups), "exact_boolean_union_audited": True, "action_terms_disjoint": True}; manifest["spawn_sets"] = rebuilt_sets; manifest["instances"] = rebuilt_actors; return manifest
 def export_interior_scripted_actors(dat_dir, output_dir, stage):
 	from disc import decompress_section
 	import world
-	binding = INTERIOR_SCRIPT_BINDINGS[stage]; dat_dir = Path(dat_dir).resolve(); output_dir = Path(output_dir); root_path = dat_dir / (stage + ".BIN"); overlay_path = dat_dir / (stage + "T.BIN"); root = root_path.read_bytes(); overlay = overlay_path.read_bytes(); payload, section = decompress_section(root, binding["section"]); work = ROOT / "build/stages"; work.mkdir(parents=True, exist_ok=True); header = bytearray(48); struct.pack_into("<3I", header, 0, 10, len(payload), section["section_count"]); archive_path = work / (stage + "_models.bin"); write_if_changed(archive_path, header + payload); archive, payload = actor_archive(archive_path); dispatch_rows = []; spawn_sets = []; paths_by_callback = {}; instances = []; models = {}; unported_paths = []
-	vram = bytearray(1024 * 512 * 2); world.texture_uploads((dat_dir.parent / "COMMON/PL00T.BIN").read_bytes(), vram, "COMMON/PL00T.BIN"); world.texture_uploads(overlay, vram, "DAT/" + overlay_path.name); world.texture_uploads(root, vram, "DAT/" + root_path.name); texture_header = bytearray(48); struct.pack_into("<3I", texture_header, 0, 2, len(vram), 1); struct.pack_into("<8H", texture_header, 12, 0, 0, 0, 0, 0, 0, 1024, 512); texture_path = work / (stage + "_scripted_vram.bin"); write_if_changed(texture_path, texture_header + vram)
-	for state in range(21):
-		row = read_u32(overlay, 48 + binding["table"] + state * 4 - 0x800E7000); callbacks = list(struct.unpack_from("<" + "I" * binding["areas"], overlay, 48 + row - 0x800E7000)); dispatch_rows.append({"native_save_byte14": state, "row_ram": hex(row), "area_callbacks": {str(area): hex(callback) for area, callback in enumerate(callbacks)}})
+	binding = INTERIOR_SCRIPT_BINDINGS[stage]; dat_dir = Path(dat_dir).resolve(); output_dir = Path(output_dir); root_path = dat_dir / (stage + ".BIN"); overlay_path = dat_dir / (stage + "T.BIN"); root = root_path.read_bytes(); overlay = overlay_path.read_bytes(); work = ROOT / "build/stages"; work.mkdir(parents=True, exist_ok=True); archive_source = binding.get("actor_archive_file", root_path.name)
+	if binding.get("actor_archive_file") and read_u32((dat_dir / archive_source).read_bytes(), 0) == 10: archive_path = dat_dir / archive_source; archive, payload = actor_archive(archive_path); section = None; archive_digest = sha256(archive_path.read_bytes())
+	else:
+		actor_source = (dat_dir / archive_source).read_bytes(); payload, section = decompress_section(actor_source, binding["section"]); header = bytearray(48); struct.pack_into("<3I", header, 0, 10, len(payload), section["section_count"]); archive_path = work / (stage + "_models.bin"); write_if_changed(archive_path, header + payload); archive, payload = actor_archive(archive_path); archive_digest = sha256(actor_source)
+	dispatch_rows = []; spawn_sets = []; paths_by_callback = {}; instances = []; models = {}; unported_paths = []; controller_models = {}; base_controller_archive = None
+	vram = bytearray(1024 * 512 * 2); uploads = []; uploads.extend(world.texture_uploads((dat_dir.parent / "COMMON/PL00T.BIN").read_bytes(), vram, "COMMON/PL00T.BIN")); uploads.extend(world.texture_uploads(overlay, vram, "DAT/" + overlay_path.name)); uploads.extend(world.texture_uploads(root, vram, "DAT/" + root_path.name))
+	if binding.get("additional_texture_file"): uploads.extend(world.texture_uploads((dat_dir / binding["additional_texture_file"]).read_bytes(), vram, "DAT/" + binding["additional_texture_file"]))
+	texture_header = bytearray(48); struct.pack_into("<3I", texture_header, 0, 2, len(vram), 1); struct.pack_into("<8H", texture_header, 12, 0, 0, 0, 0, 0, 0, 1024, 512); texture_path = work / (stage + "_scripted_vram.bin"); write_if_changed(texture_path, texture_header + vram)
+	for state in range(binding.get("states", 21)):
+		row = read_u32(overlay, 48 + binding["table"] + state * 4 - 0x800E7000) if binding["table"] is not None else None; callbacks = list(struct.unpack_from("<" + "I" * binding["areas"], overlay, 48 + row - 0x800E7000)) if row is not None else [binding["dispatcher"]] * binding["areas"]; dispatch_rows.append({"native_save_byte14": state, "row_ram": hex(row) if row is not None else None, "area_callbacks": {str(area): hex(callback) for area, callback in enumerate(callbacks)}})
 		for area, callback in enumerate(callbacks):
 			callback_key = (callback, state, area)
-			if callback_key not in paths_by_callback: paths_by_callback[callback_key] = native_interior_callback_paths(overlay, callback, state, area)
+			if callback_key not in paths_by_callback: paths_by_callback[callback_key] = native_interior_callback_paths(overlay, callback, state, area, stage)
 			for path_index, path in enumerate(paths_by_callback[callback_key]):
-				conditions = [{"kind": "stage_state_byte_equals", "value": state}, {"kind": "stage_area_byte_equals", "value": area}, {"kind": "stage_script_state_byte_equals", "owner_ram": SCRIPT_LOCAL_CONTEXT_RESET["owner_ram"], "source_function": hex(callback), "script_slot": state, "offset": 0, "value": 0}, *[{"kind": "native_event_flag", "id": event, "set": enabled} for event, enabled in path["queries"].items()]]; set_id = f"{stage.lower()}_state{state}_area{area}_path{path_index}"; offsets = []
+				conditions = [{"kind": "stage_state_byte_equals", "value": state}, {"kind": "stage_area_byte_equals", "value": area}, {"kind": "stage_script_state_byte_equals", "owner_ram": SCRIPT_LOCAL_CONTEXT_RESET["owner_ram"], "source_function": hex(callback), "script_slot": state, "offset": 0, "value": 0}, *path.get("native_conditions", []), *[{"kind": "native_event_flag", "id": event, "set": enabled} for event, enabled in path["queries"].items()]]; set_id = f"{stage.lower()}_state{state}_area{area}_path{path_index}"; offsets = []
 				for registration in path["registrations"]:
 					for ordinal in range(registration["count"]): offsets.append((48 + registration["pointer"] - 0x800E7000 + ordinal * 20, registration["call_pc"], ordinal))
 				mutations = [{"kind": "increment_stage_script_state_byte", "owner_ram": SCRIPT_LOCAL_CONTEXT_RESET["owner_ram"], "source_function": hex(callback), "script_slot": state, "offset": offset, "amount": value} for offset, value in enumerate(path["local_bytes"]) if value]; source = {"file": overlay_path.name, "call_pc": hex(path["registrations"][0]["call_pc"]) if path["registrations"] else hex(callback), "callback": hex(callback), "consumer": "GAME0x800C0818/0x800C05E0", "native_side_effects": path["actions"], "native_local_state_mutations": mutations}; spawn_sets.append({"id": set_id, "area_index": area, "source": source, "predicate": {"all": conditions}, "record_offsets": [entry[0] for entry in offsets], "non_mesh_records": []})
@@ -1014,17 +1151,40 @@ def export_interior_scripted_actors(dat_dir, output_dir, stage):
 				for offset, caller, ordinal in offsets:
 					raw = overlay[offset:offset + 20]
 					if len(raw) != 20: raise ValueError("Interior registration record is truncated")
-					if raw[2] not in (0x20, 0x60, 0x61): spawn_sets[-1]["non_mesh_records"].append({"file_offset": offset, "source_bytes_hex": raw.hex(), "record_type": raw[2]}); continue
-					resource_flags = raw[2] | (raw[4] << 8) | (raw[6] << 16); matches = [model for model in archive["models"] if model["flags"] & 0xFFFFFF == resource_flags]
-					if len(matches) != 1: raise ValueError(f"{stage} actor at{offset:#x} has no unique PBD resource{resource_flags:#x}")
+					if raw[2] not in (0x20, 0x60, 0x61) or raw[2] == 0x60 and raw[4] == 2: spawn_sets[-1]["non_mesh_records"].append({"file_offset": offset, "source_bytes_hex": raw.hex(), "record_type": raw[2]}); continue
+					kickable = world.kickable_profile(stage, raw); override = SCRIPT_RESOURCE_OVERRIDES.get((stage, raw[2], raw[4], raw[5]), {}); variant = override["variant"] if override else kickable["resource_variant"] if kickable else raw[6]; resource_flags = raw[2] | (raw[4] << 8) | (variant << 16); matches = [model for model in archive["models"] if model["flags"] & 0xFFFFFF == resource_flags]
+					if len(matches) != 1:
+						if raw[2] == 0x20 and raw[4] == 0 and raw[5] == 0: raise ValueError(f"{stage} NPC at{offset:#x} has no unique PBD resource{resource_flags:#x}")
+						if stage == "ST29" and raw[2:7] == bytes((0x20, 2, 1, 0, 0)) or stage == "ST18" and raw[2:7] == bytes((0x60, 8, 0x2D, 0, 3)):
+							controller_archive, controller_payload, controller_source = archive, payload, archive_source; controller_flags = raw[2] | raw[4] << 8
+							if stage == "ST29":
+								if base_controller_archive is None:
+									base_payload, base_section = decompress_section(root, 0x9000); base_header = bytearray(48); struct.pack_into("<3I", base_header, 0, 10, len(base_payload), base_section["section_count"]); base_path = work / "ST29_base_models.bin"; write_if_changed(base_path, base_header + base_payload); base_controller_archive = actor_archive(base_path)
+								controller_archive, controller_payload = base_controller_archive; controller_source = root_path.name
+							controller_match = [entry for entry in controller_archive["models"] if entry["flags"] & 0xFFFFFF == controller_flags]
+							if len(controller_match) != 1: raise ValueError("Native combat controller has no unique source resource")
+							controller_index = controller_match[0]["index"]; controller_key = (controller_source, controller_index)
+							if controller_key not in controller_models:
+								controller_file = f"controllers/{Path(controller_source).stem}_model_{controller_index:02d}.glb"; metadata = export_actor_model(controller_payload, controller_index, texture_path, output_dir / controller_file, controller_source) if controller_match[0]["mesh"]["bone_count"] else export_static_actor(controller_payload, controller_index, texture_path, output_dir / controller_file, controller_source); metadata.update(model_file=controller_file, native_resource_flags=controller_flags); controller_models[controller_key] = metadata
+							unported_paths.append({"spawn_set": set_id, "file_offset": offset, "source_bytes_hex": raw.hex(), "actor_class": raw[4], "resource_flags": hex(controller_flags), "native_resource": {"model_file": controller_models[controller_key]["model_file"], "source_model_index": controller_index, "native_resource_flags": controller_flags}, "source_controller": "ST29T0x800E97D4 hit registration0x800E9950" if stage == "ST29" else "ST18T0x800F6388;descriptor80107DD4[3] supplies variant0;constructor0x800F6500;flags60=2", "reason": "Native combat controller is unported; original resource has been exported"}); continue
+						unported_paths.append({"spawn_set": set_id, "file_offset": offset, "source_bytes_hex": raw.hex(), "actor_class": raw[4], "resource_flags": hex(resource_flags), "reason": "Native non-class0 resource constructor is not bound to this archive"}); continue
 					model = matches[0]; index = model["index"]; model_file = f"actors/{stage}_model_{index:02d}.glb"
 					if index not in models:
-						metadata = export_actor_model(payload, index, texture_path, output_dir / model_file, root_path.name, preserve_default_hidden=stage == "ST0C" and index == 2) if model["mesh"]["bone_count"] else export_static_actor(payload, index, texture_path, output_dir / model_file, root_path.name); metadata.update(model_file=model_file, native_resource_flags=resource_flags, native_scale_raw=list(struct.unpack_from("<3h", payload, model["mesh_offset"] + 0x30))); models[index] = metadata
-					x, y, z, yaw = struct.unpack_from("<hhhH", raw, 12); instances.append({"stage": stage, "spawn_set": set_id, "area_index": area, "source_pc": hex(caller), "record_ordinal": ordinal, "file_offset": offset, "source_record_ram": hex(0x800E7000 + offset - 48), "record_id": raw[1], "record_type": raw[2], "record_class": raw[3], "actor_class": raw[4], "resource_variant": raw[6], "resource_key": raw[7], "control": raw[8], "source_bytes_hex": raw.hex(), "native_private_raw": list(raw[8:12]), "model_index": index, "model_file": model_file, "native_resource_flags": resource_flags, "transform_raw": [x, y, z, yaw], "transform": {"position": [-x / 256.0, -y / 256.0, z / 256.0], "yaw_raw": yaw, "yaw_turns": -yaw / 4096.0, "floor_height": y == -1}})
+						metadata = export_actor_model(payload, index, texture_path, output_dir / model_file, archive_source, preserve_default_hidden=(stage, index) in (("ST0C", 2), ("ST0B", 2))) if model["mesh"]["bone_count"] else export_static_actor(payload, index, texture_path, output_dir / model_file, archive_source); metadata.update(model_file=model_file, native_resource_flags=resource_flags, native_scale_raw=list(struct.unpack_from("<3h", payload, model["mesh_offset"] + 0x30))); models[index] = metadata
+					x, y, z, yaw = struct.unpack_from("<hhhH", raw, 12); instances.append({"stage": stage, "spawn_set": set_id, "area_index": area, "source_pc": hex(caller), "native_registration_call_pc": hex(caller), "record_ordinal": ordinal, "file_offset": offset, "source_record_ram": hex(0x800E7000 + offset - 48), "record_id": raw[1], "record_type": raw[2], "record_class": raw[3], "actor_class": raw[4], "resource_variant": raw[6], "resource_key": raw[7], "control": raw[8], "source_bytes_hex": raw.hex(), "native_private_raw": list(raw[8:12]), "model_index": index, "model_file": model_file, "native_resource_flags": resource_flags, "transform_raw": [x, y, z, yaw], "transform": {"position": [-x / 256.0, -y / 256.0, z / 256.0], "yaw_raw": yaw, "yaw_turns": -yaw / 4096.0, "floor_height": y == -1}})
+					if kickable: instances[-1]["native_kickable"] = kickable
+	if stage == "ST0A":
+		spawn_sets.append({"id": "st0a_state0_area0_music_step1", "area_index": 0, "predicate": {"all": [{"kind": "stage_state_byte_equals", "value": 0}, {"kind": "stage_area_byte_equals", "value": 0}, {"kind": "stage_script_state_byte_equals", "owner_ram": SCRIPT_LOCAL_CONTEXT_RESET["owner_ram"], "source_function": "0x800e7578", "script_slot": 0, "offset": 0, "value": 1}]}, "source": {"file": "ST0AT.BIN", "callback": "0x800e7578", "call_pc": "0x800e75e8", "native_side_effects": [{"kind": "native_audio_cue", "sound_id": 0x16, "source_pc": "0x800e75e8", "source_function": "SLES0x800201B0"}], "native_local_state_mutations": [{"kind": "increment_stage_script_state_byte", "owner_ram": SCRIPT_LOCAL_CONTEXT_RESET["owner_ram"], "source_function": "0x800e7578", "script_slot": 0, "offset": 0, "amount": 1}]}, "record_offsets": [], "non_mesh_records": []})
 	for instance in instances:
-		if instance["actor_class"] != 0: continue
+		override = SCRIPT_RESOURCE_OVERRIDES.get((stage, instance["record_type"], instance["actor_class"], bytes.fromhex(instance["source_bytes_hex"])[5]), {})
+		if override:
+			instance["native_model_selector"] = {"resource_variant": override["variant"], "source_constructor": hex(override["constructor"]), "resource_loader": "SLES0x8003DFC8 explicit constructor key" if override["variant"] else "SLES0x8003DFA4 zero variant key"}; instance["native_hitbox"] = {"bounds_raw": list(struct.unpack_from("<6h", overlay, 48 + override["hitbox"] - 0x800E7000)), "source_pointer_ram": hex(override["hitbox"]), "source_field": "actor+0x58", "source_constructor": hex(override["constructor"])}
+			if "control" in override: instance["native_animation_startup"] = {"control": override["control"], "start_record": 0, "source_constructor": hex(override["constructor"])}
+			if "target_flags60" in override: instance["native_constructor_target_flags60"] = override["target_flags60"]
+			if "header_flags_or" in override: instance["native_constructor_header_flags_or"] = override["header_flags_or"]
+		if instance["record_type"] != 0x20 or instance["actor_class"] != 0 or bytes.fromhex(instance["source_bytes_hex"])[5] != 0: continue
 		instance["native_animation_startup"] = {"control": 0, "start_record": 0, "source_constructor": hex(binding["constructor"]), "source_update": hex(binding["callback"]), "source_fields": "constructor sets actor+A0=0/A1=FF; privateD80 selects native idle state1, not animation frame128"}; instance["native_hitbox"] = {"bounds_raw": list(struct.unpack_from("<6h", overlay, 48 + binding["hitbox"] - 0x800E7000)), "source_pointer_ram": hex(binding["hitbox"]), "source_field": "actor+0x58", "source_constructor": hex(binding["constructor"])}
-	world.bind_scripted_interactions(stage, instances, overlay); manifest = {"stage": stage, "source": {"archive_file": str(root_path.relative_to(ROOT)), "archive_section": binding["section"], "archive_sha256": sha256(root), "overlay_file": str(overlay_path.relative_to(ROOT)), "overlay_sha256": sha256(overlay), "local_context_reset": SCRIPT_LOCAL_CONTEXT_RESET, "record_size": 20, "resource_match": "PBD flags == record+2 | record+4<<8 | record+6<<16", "native_stage_dispatch": {"dispatcher": hex(binding["dispatcher"]), "table_ram": hex(binding["table"]), "rows": dispatch_rows}, "registration_observation": "Original callback/event bitmap instructions executed; registration/scene/audio APIs observed without executing actor allocation or engine scene changes"}, "spawn_sets": spawn_sets, "instances": instances, "models": list(models.values()), "unported_native_script_paths": unported_paths}; output_dir.mkdir(parents=True, exist_ok=True); write_if_changed(output_dir / "scripted_actors.json", json.dumps(manifest, indent=2) + "\n", encoding="utf-8"); print(f"{stage} scripted actors: {len(instances)} conditional instances, {len(models)} original models, {len(spawn_sets)} source paths"); return manifest
+	world.bind_scripted_interactions(stage, instances, overlay); output_dir.mkdir(parents=True, exist_ok=True); scenes = export_stage_native_scenes(stage, overlay, payload, archive, texture_path, output_dir, models); manifest = {"stage": stage, "source": {"archive_file": str((dat_dir / archive_source).relative_to(ROOT)), "archive_section": binding["section"], "archive_sha256": archive_digest, "overlay_file": str(overlay_path.relative_to(ROOT)), "overlay_sha256": sha256(overlay), "local_context_reset": SCRIPT_LOCAL_CONTEXT_RESET, "record_size": 20, "resource_match": "PBD flags == record+2 | record+4<<8 | record+6<<16", "native_stage_dispatch": {"dispatcher": hex(binding["dispatcher"]), "table_ram": hex(binding["table"]) if binding["table"] is not None else None, "rows": dispatch_rows}, "registration_observation": "Original callback/event bitmap instructions executed; registration/scene/audio APIs observed without executing actor allocation or engine scene changes"}, "spawn_sets": spawn_sets, "instances": instances, "models": list(models.values()), "native_scenes": scenes, "unported_native_script_paths": unported_paths}; manifest["source"]["texture_uploads"] = uploads; manifest["unported_controller_models"] = list(controller_models.values()); manifest = compact_registration_manifest(manifest); write_if_changed(output_dir / "scripted_actors.json", json.dumps(manifest, indent=2) + "\n", encoding="utf-8"); print(f"{stage} scripted actors: {len(manifest['instances'])} conditional instances, {len(models)} original models, {len(manifest['spawn_sets'])} source paths"); return manifest
 def export_stage_scripted_actors(dat_dir, output_dir, stage):
 	if stage == "ST04": return export_flutter_scripted_actors(dat_dir, output_dir)
 	if stage == "ST08": return export_st08_scripted_actors(dat_dir, output_dir)
@@ -1090,7 +1250,10 @@ def flutter_actors_cli():
 	parser = argparse.ArgumentParser(); parser.add_argument("--dat-dir", type=Path, default=Path("build/disc-assets/DAT")); parser.add_argument("--output-dir", type=Path); args = parser.parse_args(); export_flutter_scripted_actors(args.dat_dir, args.output_dir or ROOT / "assets/levels/ST04")
 
 def stage_actors_cli():
-	parser = argparse.ArgumentParser(); parser.add_argument("--dat-dir", type=Path, default=Path("build/disc-assets/DAT")); parser.add_argument("--stage", choices=["ST04", "ST08", *INTERIOR_SCRIPT_BINDINGS], required=True); parser.add_argument("--output-dir", type=Path); args = parser.parse_args(); export_stage_scripted_actors(args.dat_dir, args.output_dir or ROOT / "assets/levels" / args.stage, args.stage)
+	parser = argparse.ArgumentParser(); parser.add_argument("--dat-dir", type=Path, default=Path("build/disc-assets/DAT")); parser.add_argument("--stage", choices=["ST04", "ST08", *INTERIOR_SCRIPT_BINDINGS], required=True); parser.add_argument("--output-dir", type=Path); parser.add_argument("--compact-existing", action="store_true"); args = parser.parse_args(); output = args.output_dir or ROOT / "assets/levels" / args.stage
+	if args.compact_existing:
+		path = output / "scripted_actors.json"; manifest = compact_registration_manifest(json.loads(path.read_text(encoding="utf-8"))); write_if_changed(path, json.dumps(manifest, indent=2) + "\n", encoding="utf-8"); print(f"{args.stage} compacted: {len(manifest['instances'])} conditional instances, {len(manifest['spawn_sets'])} source paths")
+	else: export_stage_scripted_actors(args.dat_dir, output, args.stage)
 from world import textures
 from world import texture_page
 from ui import decode_page

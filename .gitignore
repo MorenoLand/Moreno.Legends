@@ -27,3 +27,5 @@ assets/dialogue/
 assets/weather/
 assets/fades/
 *.tmp
+!assets/achievements/
+!assets/achievements/**

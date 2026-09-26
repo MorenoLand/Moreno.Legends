@@ -99,10 +99,19 @@ func _ready() -> void:
 	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	status.visible = false
 	status.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
-	status.offset_top = -32
+	status.offset_top = -64
+	status.offset_bottom = -12
 	status.offset_left = 24
 	status.offset_right = -24
 	status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	status.add_theme_font_size_override("font_size", 24)
+	status.add_theme_color_override("font_color", Color.WHITE)
+	status.add_theme_color_override("font_outline_color", Color.BLACK)
+	status.add_theme_constant_override("outline_size", 4)
+	status.add_theme_color_override("font_shadow_color", Color.BLACK)
+	status.add_theme_constant_override("shadow_offset_x", 2)
+	status.add_theme_constant_override("shadow_offset_y", 2)
 	title.add_child(status)
 	var pause_page: Control = pages["pause"].get_meta("content")
 	_button(pause_page, "Resume", _resume)
@@ -243,7 +252,7 @@ func _threaded_scene(path: String) -> PackedScene:
 		await get_tree().process_frame
 		status = ResourceLoader.load_threaded_get_status(path)
 	return ResourceLoader.load_threaded_get(path) as PackedScene if status == ResourceLoader.THREAD_LOAD_LOADED else null
-func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0) -> void:
+func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0, context: Dictionary = {}) -> void:
 	if session_loading or opening_loading: return
 	session_loading = true
 	if not state.is_empty():
@@ -305,7 +314,7 @@ func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0) ->
 	candidate.entry_route = state.get("entry_route", {}).duplicate(true)
 	var entry_fade_code := int(candidate.entry_route.get("native_entry_fade", 0x02))
 	candidate.parked_location = state.get("parked_location", {}).duplicate(true)
-	candidate.native_context = state.get("native_context", {"native_save_byte14": 0, "native_save_byte16": 0, "native_save_word40": 0, "native_save_byte44": 1, "event_flags": {}}).duplicate(true)
+	candidate.native_context = state.get("native_context", context if not context.is_empty() else {"native_save_byte14": 0, "native_save_byte16": 0, "native_save_word40": 0, "native_save_byte44": 1, "event_flags": {}}).duplicate(true)
 	candidate.initial_player_state = state.get("player", {}).duplicate(true) if candidate.entry_route.is_empty() else {}
 	candidate.audio_preparing = true
 	candidate.process_mode = Node.PROCESS_MODE_PAUSABLE
@@ -354,7 +363,8 @@ func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0) ->
 	gameplay.player.set_physics_process(true); session_loading = false
 	if pending_custom_menu: pending_custom_menu = false; _toggle_custom_menu()
 func _load_location(stage: String, area: int) -> void:
-	await _start_session({}, stage, area)
+	var context: Dictionary = gameplay.native_context.duplicate(true) if is_instance_valid(gameplay) else {}
+	await _start_session({}, stage, area, context)
 func _stage_transition(route: Dictionary) -> void:
 	if session_loading or not is_instance_valid(gameplay): return
 	var previous := gameplay

@@ -394,14 +394,14 @@ def native_audio_sections(path):
 	return result
 @lru_cache(maxsize=128)
 def music_program(path):
-	data = Path(path).read_bytes(); base = u32(data, 12); end = min(len(data), 48 + u32(data, 4)); words = {base + offset - 48: u32(data, offset) for offset in range(48, end - 3, 4)}; calls = [address for address, word in words.items() if word == 0x0c0075f1]
-	return data, base, end, words, calls
+	data = Path(path).read_bytes(); base = u32(data, 12); end = min(len(data), 48 + u32(data, 4)); words = {base + offset - 48: u32(data, offset) for offset in range(48, end - 3, 4)}; calls = [address for address, word in words.items() if word in (0x0c0075f1, 0x0c00806c)]; executable = (Path(path).parent.parent / "SLES_035.56").read_bytes(); music_cues = {cue for cue in range(0x310) if native_descriptor(executable, cue)[1][0] >> 4 in (1, 2, 3)}
+	return data, base, end, words, calls, music_cues
 def trace_music_initializer(path, area, save_byte14):
-	data, base, end, words, calls = music_program(Path(path))
+	data, base, end, words, calls, music_cues = music_program(Path(path))
 	if not calls: return []
-	call = calls[0]; starts = [address for address, word in words.items() if call - 1024 <= address <= call and word >> 16 == 0x27bd and word & 0x8000]
+	starts = sorted({max(candidates) for call in calls if (candidates := [address for address, word in words.items() if call - 1024 <= address <= call and word >> 16 == 0x27bd and word & 0x8000])})
 	if not starts: return []
-	registers = [None] * 32; registers[0] = 0; registers[29] = 0x1f801000; pending = [(max(starts), registers, {}, {}, 0)]; result = []
+	registers = [None] * 32; registers[0] = 0; registers[29] = 0x1f801000; pending = [(start, registers.copy(), {}, {}, 0) for start in starts]; result = []
 	def read(address, size, memory):
 		if address is None: return None
 		if address in memory: return memory[address]
@@ -432,8 +432,8 @@ def trace_music_initializer(path, area, save_byte14):
 			ticks += 1; word = words[pc]; op = word >> 26
 			if op in (2, 3):
 				target = ((pc + 4) & 0xf0000000) | ((word & 0x3ffffff) << 2); step(words.get(pc + 4, 0), registers, memory)
-				if target == 0x8001d7c4:
-					if registers[4] is not None: result.append({"cue": registers[4] & 255, "flags": flags, "source_call": hex(pc)})
+				if target in (0x8001d7c4, 0x800201b0):
+					if registers[4] is not None and (registers[4] & 255 in music_cues or target == 0x8001d7c4 and registers[4] == 255): result.append({"cue": registers[4] & 255, "flags": flags, "source_call": hex(pc)})
 					break
 				if op == 2: pc = target; continue
 				if target == 0x800c05b4 and registers[4] is not None:
@@ -466,7 +466,7 @@ def stage_music_rules(path, areas):
 			for variant in variants[1:] + [257]:
 				if variant != previous + 1: result.append({"cue": entry["cue"], "flags": entry["flags"], "source_call": entry["source_call"], "area": area, "native_save_byte14": [start, previous]}); start = variant
 				previous = variant
-	return result
+	return sorted(result, key=lambda entry: entry["cue"] == 255)
 def export_audio(cue=None):
 	ffmpeg = shutil.which("ffmpeg")
 	if not ffmpeg: raise RuntimeError("FFmpeg is required to decode the original PS1 ADPCM samples")

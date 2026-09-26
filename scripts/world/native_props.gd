@@ -36,29 +36,38 @@ static func load_into(parent: Node3D, stage: String, area: int, native_context: 
 			if enabled_set_ids.has(spawn_set_id) or not _spawn_set_enabled(spawn_sets_by_id[spawn_set_id], script_context, area, enabled_set_ids): continue
 			enabled_set_ids[spawn_set_id] = true; enabled_sets.append(spawn_set_id); found_enabled = true
 		if not found_enabled: break
-	var registry_key := "native_scripted_actor_registry_%s_%d" % [stage, area]; var registry: Dictionary = parent.get_meta(registry_key, {}); var action_sets := {}; var deferred_pose := false
+	var registry_key := "native_scripted_actor_registry_%s_%d" % [stage, area]; var registry: Dictionary = parent.get_meta(registry_key, {}); var slot_pointers: Dictionary = parent.get_meta(registry_key + "_slots", {}); var action_sets := {}; var deferred_pose := false
 	for entry: Dictionary in scripted.get("instances", []):
 		var spawn_set_id := str(entry.get("spawn_set", "")); var spawn_set: Dictionary = spawn_sets_by_id.get(spawn_set_id, {}); var spawn_source: Dictionary = spawn_set.get("source", {}); var direct: bool = spawn_source.has("controller")
 		if not active and (direct or entry.has("native_pose_resolver")): continue
 		if active and entry.has("native_pose_resolver") and not script_context.has(str(entry["native_pose_resolver"]["player_pose_key"])):
 			deferred_pose = deferred_pose or enabled_sets.has(spawn_set_id)
 			continue
-		var record_id := int(entry.get("record_id", -1)); var record_key := "controller:" + str(entry["source_record_ram"]) if direct else str(record_id); var source_bytes := str(entry.get("source_bytes_hex", entry.get("source_bytes", ""))); var prior: Variant = registry.get(record_key, null)
+		var record_id := int(entry.get("record_id", -1)); var observed_registration: bool = scripted.get("source", {}).has("registration_observation"); var record_key := "controller:" + str(entry["source_record_ram"]) if direct else "record:%s:%s:%d" % [str(entry["source_record_ram"]), str(entry.get("native_registration_call_pc", "")), int(entry.get("record_ordinal", 0))] if observed_registration else str(record_id); var source_bytes := str(entry.get("source_bytes_hex", entry.get("source_bytes", ""))); var prior: Variant = registry.get(record_key, null)
 		var role := str(entry.get("role", ""))
 		if excluded_roles.has(role):
 			if is_instance_valid(prior) and str(prior.get_meta("native_role", "")) == role: prior.queue_free(); registry.erase(record_key)
 			continue
 		if not enabled_sets.has(str(entry.get("spawn_set", ""))): continue
 		if is_instance_valid(prior) and str(prior.get_meta("native_source_bytes", "")) == source_bytes:
+			slot_pointers[record_id] = prior
 			if active: _attach_spawn_actions(prior, spawn_set_id, spawn_source, action_sets)
 			continue
 		if is_instance_valid(prior): prior.queue_free()
 		var node := await _load_actor(parent, "res://assets/levels/%s/%s" % [stage, str(entry.get("model_file", ""))], entry, scripted_models.get(int(entry.get("model_index", -1)), {}), script_context)
 		if node != null:
-			_attach_native_source(node, stage, area, entry); node.set_meta("native_record_id", record_id); node.set_meta("native_source_bytes", source_bytes); node.set_meta("native_identity", str(entry.get("identity", ""))); node.set_meta("native_role", role); created.append(node); registry[record_key] = node
+			_attach_native_source(node, stage, area, entry); node.set_meta("native_record_id", record_id); node.set_meta("native_source_bytes", source_bytes); node.set_meta("native_identity", str(entry.get("identity", ""))); node.set_meta("native_role", role); created.append(node); registry[record_key] = node; slot_pointers[record_id] = node
 			if active: _attach_spawn_actions(node, spawn_set_id, spawn_source, action_sets)
 		if not is_instance_valid(parent): return created
-	parent.set_meta(registry_key, registry)
+	if active:
+		for id: String in enabled_sets:
+			if action_sets.has(id): continue
+			var script_source: Dictionary = spawn_sets_by_id[id].get("source", {})
+			if script_source.get("native_side_effects", []).is_empty() and script_source.get("native_local_state_mutations", []).is_empty(): continue
+			var name := "NativeScriptActions_" + id; var controller := parent.get_node_or_null(name) as Node3D
+			if controller == null: controller = Node3D.new(); controller.name = name; parent.add_child(controller); controller.set_meta("native_stage", stage); controller.set_meta("native_area", area)
+			_attach_spawn_actions(controller, id, script_source, action_sets)
+	parent.set_meta(registry_key, registry); parent.set_meta(registry_key + "_slots", slot_pointers)
 	if active: parent.set_meta("native_deferred_pose", deferred_pose)
 	return created
 static func _attach_spawn_actions(node: Node3D, id: String, source: Dictionary, owners: Dictionary) -> void:
@@ -81,7 +90,22 @@ static func initialize_into(parent: Node3D, stage: String, area: int, native_con
 	if is_instance_valid(parent): parent.set_meta("native_initialization_result", {"flags_changed": flags_changed, "state_changed": state_changed, "pending_scene_requests": pending_scene_requests(parent)})
 	return created
 static func initialization_result(parent: Node3D) -> Dictionary: return parent.get_meta("native_initialization_result", {}) if is_instance_valid(parent) else {}
+static func spawn_entry(parent: Node3D, stage: String, area: int, entry: Dictionary, model: Dictionary, context: Dictionary = {}) -> Node3D:
+	var file := str(entry.get("model_file", model.get("model_file", ""))); var path := file if file.begins_with("res://") else "res://" + file if file.begins_with("assets/") else "res://assets/levels/%s/%s" % [stage, file]; var node := await _load_actor(parent, path, entry, model, context)
+	if node != null: _attach_native_source(node, stage, area, entry)
+	return node
 static func pending_scene_requests(parent: Node3D) -> Array: return parent.get_meta("native_pending_scene_requests", []) if is_instance_valid(parent) else []
+static func pending_audio_requests(parent: Node3D) -> Array: return parent.get_meta("native_pending_audio_requests", []) if is_instance_valid(parent) else []
+static func drain_audio_requests(parent: Node3D, audio: Node, stage: String, area: int) -> void:
+	if not is_instance_valid(parent) or not is_instance_valid(audio): return
+	var retained: Array = []
+	for request: Dictionary in pending_audio_requests(parent):
+		if str(request["stage"]) != stage or int(request["area"]) != area: retained.append(request); continue
+		var controller: Node = request.get("controller", null)
+		audio.play_sound(int(request["sound_id"]))
+		if is_instance_valid(controller):
+			var status: Dictionary = controller.get_meta("native_action_status", {}); status[str(request["action_key"])] = "done"; controller.set_meta("native_action_status", status)
+	parent.set_meta("native_pending_audio_requests", retained)
 static func _native_action_nodes(parent: Node3D, stage: String, area: int) -> Array[Node3D]:
 	var result: Array[Node3D] = []
 	for node: Node3D in parent.find_children("*", "Node3D", true, false):
@@ -105,6 +129,8 @@ static func process_spawn_actions(parent: Node3D, stage: String, area: int, nati
 						native_context["event_flags"] = flags; status[action_key] = "done"
 				"increment_stage_script_state_byte":
 					var changed := _apply_local_state_mutation(parent, stage, native_context, action); state_changed = state_changed or changed; status[action_key] = "done"
+				"native_audio_cue":
+					var requests: Array = pending_audio_requests(parent); requests.append({"stage": stage, "area": area, "sound_id": int(action["sound_id"]), "source_pc": str(action.get("source_pc", "")), "controller": node, "action_key": action_key}); parent.set_meta("native_pending_audio_requests", requests); status[action_key] = "pending"
 				"call":
 					var request_key := "%s:%d:%s:%d" % [stage, area, spawn_set_id, index]; var exists := false
 					for request: Dictionary in pending:
@@ -157,6 +183,10 @@ static func _spawn_set_enabled(spawn_set: Dictionary, native_context: Dictionary
 				if not native_context.has("native_save_byte14") or int(native_context["native_save_byte14"]) != int(condition.get("value", -1)): return false
 			"stage_area_byte_equals":
 				if area != int(condition.get("value", -1)): return false
+			"native_save_word40_range":
+				if not native_context.has("native_save_word40"): return false
+				var value := int(native_context["native_save_word40"])
+				if value < int(condition["minimum"]) or value > int(condition["maximum"]): return false
 			"stage_script_state_byte_equals":
 				var function_key := str(condition.get("source_function", "")); var owner_key := str(condition.get("owner_ram", "")); var state_byte := _script_state_byte(native_context, function_key, int(condition.get("script_slot", 0)), owner_key, int(condition.get("offset", 0)), -1)
 				if state_byte != int(condition.get("value", -1)): return false
@@ -230,7 +260,7 @@ static func _load_actor(parent: Node3D, path: String, entry: Dictionary, model: 
 		var follower := preload("res://scripts/world/native_follower.gd").new(); follower.name = "NativeFollower"; node.add_child(follower)
 		if not follower.configure(node, entry, native_context): follower.queue_free()
 	preload("res://scripts/world/native_material.gd").apply(node, 255.0 if bool(model.get("native_vertex_colors", false)) else 128.0)
-	if entry.has("native_broadphase"):
+	if entry.has("native_broadphase") or entry.has("pc_source_mesh_collision"):
 		var meshes: Array[MeshInstance3D] = []
 		if node is MeshInstance3D: meshes.append(node as MeshInstance3D)
 		else:
@@ -240,8 +270,11 @@ static func _load_actor(parent: Node3D, path: String, entry: Dictionary, model: 
 			if mesh_node.mesh == null: continue
 			var mesh_shape: Shape3D = mesh_node.mesh.create_trimesh_shape()
 			if mesh_shape == null: continue
-			if mesh_shape is ConcavePolygonShape3D: (mesh_shape as ConcavePolygonShape3D).backface_collision = true
-			var body := StaticBody3D.new(); body.name = "NativeMeshCollision"; body.collision_layer = 1; body.collision_mask = 0; var shape := CollisionShape3D.new(); shape.shape = mesh_shape; body.add_child(shape); mesh_node.add_child(body)
+			var layers: Array = entry.get("pc_source_mesh_collision", {}).get("layers", [1])
+			for layer: int in layers:
+				var geometry: Shape3D = mesh_shape.duplicate() if layer == 4 else mesh_shape
+				if geometry is ConcavePolygonShape3D: (geometry as ConcavePolygonShape3D).backface_collision = layer == 4 or entry.has("native_broadphase")
+				var body := StaticBody3D.new(); body.name = "NativeMeshCollision_%d" % layer; body.collision_layer = layer; body.collision_mask = 0; var shape := CollisionShape3D.new(); shape.shape = geometry; body.add_child(shape); mesh_node.add_child(body)
 	return node
 static func _threaded_scene(path: String) -> PackedScene:
 	var status := ResourceLoader.load_threaded_get_status(path)

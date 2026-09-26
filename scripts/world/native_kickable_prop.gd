@@ -62,6 +62,7 @@ func _native_tick() -> void:
 		vertical_speed -= 48; _move_can()
 		if spinning: pitch = (pitch + 320) & 4095; visual_heading = (visual_heading + 16) & 4095; roll = (roll + 160) & 4095
 		actor.rotation = Vector3(-float(pitch), -float(visual_heading), float(roll)) * TAU / 4096.0
+	else: _move_can()
 	if _can_goal(): actor.visible = false; collision_layer = 0; goal_timer = 15; _sound(0x299)
 	if hit_queued: pending_hit = true; hit_queued = false
 	_sync()
@@ -110,11 +111,13 @@ func _move_can() -> void:
 	if not floor.is_empty() and (floor["normal"] as Vector3).y > 0.0:
 		var resting_y := float(floor["position"].y) + 8.0 / 256.0
 		if vertical_speed <= 0 and next.y <= resting_y:
-			next.y = resting_y; vertical_speed = -((vertical_speed * (7 + (RandomSource.next_random(context) & 3))) >> 4); forward_speed = (forward_speed * (7 + (RandomSource.next_random(context) & 3))) >> 4
-			if absi(vertical_speed) <= 32:
-				vertical_speed = 0; forward_speed = 0
-				if spinning: spinning = false; pitch = (pitch + 512) & 0xC00; roll = (roll + 512) & 0xC00; _sound(0x299)
-			else: _sound(0x298)
+			next.y = resting_y
+			if spinning or vertical_speed != 0 or forward_speed != 0:
+				vertical_speed = -((vertical_speed * (7 + (RandomSource.next_random(context) & 3))) >> 4); forward_speed = (forward_speed * (7 + (RandomSource.next_random(context) & 3))) >> 4
+				if absi(vertical_speed) <= 32:
+					vertical_speed = 0; forward_speed = 0
+					if spinning: spinning = false; pitch = (pitch + 512) & 0xC00; roll = (roll + 512) & 0xC00; _sound(0x299)
+				else: _sound(0x298)
 	actor.global_position = next
 func _can_goal() -> bool:
 	var source := Vector3i(roundi(-actor.global_position.x * 256.0), roundi(-actor.global_position.y * 256.0), roundi(actor.global_position.z * 256.0))
