@@ -15,19 +15,33 @@ var active_tail_commands: Array[Dictionary] = []
 var active_window_state: Dictionary = {}
 var preflight_results: Dictionary = {}
 var preflight_context_hash := 0
+var catalog: Dictionary = {}
+static var catalogs: Dictionary = {}
 func configure(dialogue_node: Control, manifest_path := "res://assets/dialogue/manifest.json", context: Dictionary = {}) -> bool:
 	dialogue = dialogue_node; native_context = context
 	preflight_results.clear()
 	var page_callable := Callable(self, "_on_native_page_started")
 	if dialogue.has_signal("native_page_started") and not dialogue.is_connected("native_page_started", page_callable): dialogue.connect("native_page_started", page_callable)
-	var data: Variant = JSON.parse_string(FileAccess.get_file_as_string(manifest_path)) if FileAccess.file_exists(manifest_path) else null
-	if not data is Dictionary or not data.has("banks"): push_error("Missing extracted native dialogue catalog: " + manifest_path); return false
-	if dialogue.has_method("configure_native_presentation"): dialogue.configure_native_presentation(data.get("presentation", {}))
-	banks = data["banks"]
-	for stage in banks:
-		entries[stage] = {}
-		for entry: Dictionary in banks[stage].get("messages", []): entries[stage][int(entry["index"])] = entry
+	var loaded := catalog_for(manifest_path)
+	if loaded.is_empty(): push_error("Missing extracted native dialogue catalog: " + manifest_path); return false
+	if dialogue.has_method("configure_native_presentation"): dialogue.configure_native_presentation(loaded["data"].get("presentation", {}))
+	catalog = loaded; banks = catalog["banks"]; entries = catalog["entries"]
 	return true
+static func catalog_for(manifest_path: String) -> Dictionary:
+	if catalogs.has(manifest_path): return catalogs[manifest_path]
+	var data: Variant = JSON.parse_string(FileAccess.get_file_as_string(manifest_path)) if FileAccess.file_exists(manifest_path) else null
+	if not data is Dictionary or not data.has("banks"): return {}
+	catalogs[manifest_path] = {"data": data, "directory": manifest_path.get_base_dir(), "banks": {}, "entries": {}, "missing": {}}; return catalogs[manifest_path]
+static func load_bank(loaded: Dictionary, stage: String) -> bool:
+	if loaded.is_empty() or loaded["missing"].has(stage): return false
+	if loaded["banks"].has(stage): return true
+	var source: Variant = loaded["data"]["banks"].get(stage, null); var path := str(loaded["directory"]).path_join(str(source.get("file", ""))) if source is Dictionary else ""
+	var bank: Variant = JSON.parse_string(FileAccess.get_file_as_string(path)) if not path.is_empty() and FileAccess.file_exists(path) else null
+	if not bank is Dictionary: loaded["missing"][stage] = true; return false
+	var indexed := {}
+	for entry: Dictionary in bank.get("messages", []): indexed[int(entry["index"])] = entry
+	loaded["banks"][stage] = bank; loaded["entries"][stage] = indexed; return true
+func prepare_stage(stage: String) -> bool: return load_bank(catalog, stage)
 func update_native_context(context: Dictionary) -> void: native_context = context
 static func native_stat_mutation(context: Dictionary, delta: int) -> Dictionary:
 	if not context.has("native_save_word40") or not context.has("native_save_byte44"): return {}
@@ -41,6 +55,7 @@ func apply_native_stat_delta(delta: int, stage: String) -> bool:
 	if mutation.is_empty(): return false
 	native_context.merge(mutation, true); native_context_changed.emit(stage, native_context); return true
 func play_message(stage: String, index: int, source_address := "", source_actor: Node3D = null) -> bool:
+	prepare_stage(stage)
 	if dialogue == null or not entries.has(stage) or not entries[stage].has(index): push_error("No source dialogue entry for %s:%02X" % [stage, index]); return false
 	return await _present_entry(stage, index, source_address, source_actor)
 func can_play_native_call(stage: String, address: String, runtime_index := -1) -> bool:
@@ -51,6 +66,7 @@ func play_native_call(stage: String, address: String, runtime_index := -1, sourc
 	if entry.is_empty(): push_error("Native dialogue call %s:%s has no unique resolved text entry" % [stage, address]); return false
 	return await _present_entry(stage, int(entry["index"]), address, source_actor)
 func can_play_bound_message(stage: String, bank: String, runtime_index: int) -> bool:
+	prepare_stage(stage)
 	if dialogue == null or bool(dialogue.get("active")) or not _bound_bank_matches(stage, bank) or not entries.has(stage) or not entries[stage].has(runtime_index): return false
 	return _can_display_program(stage, runtime_index)
 func _can_display_program(stage: String, index: int) -> bool:
@@ -63,6 +79,7 @@ func play_bound_message(stage: String, bank: String, runtime_index: int, source_
 	if not can_play_bound_message(stage, bank, runtime_index): push_error("Native message %s:%02X has no resolved page in bank %s" % [stage, runtime_index, bank]); return false
 	return await _present_entry(stage, runtime_index, source_address, source_actor, window)
 func _native_call_entry(stage: String, address: String, runtime_index: int) -> Dictionary:
+	prepare_stage(stage)
 	if not banks.has(stage) or not entries.has(stage): return {}
 	var matches: Array[Dictionary] = []
 	for call: Dictionary in banks[stage].get("message_calls", []):
@@ -74,12 +91,14 @@ func _native_call_entry(stage: String, address: String, runtime_index: int) -> D
 	if index < 0 or not entries[stage].has(index): return {}
 	return entries[stage][index]
 func _bound_bank_matches(stage: String, bank: String) -> bool:
+	prepare_stage(stage)
 	if not banks.has(stage): return false
 	var runtime_bank := str(banks[stage].get("source", {}).get("runtime_message_base", "")); return _normalize_bank(runtime_bank) == _normalize_bank(bank)
 func _normalize_bank(value: String) -> String:
 	var normalized := value.strip_edges().to_lower()
 	return "0x%08x" % normalized.substr(2).hex_to_int() if normalized.begins_with("0x") else normalized
 func _present_entry(stage: String, index: int, source_address: String, source_actor: Node3D = null, window: int = 0) -> bool:
+	prepare_stage(stage)
 	if dialogue == null or not entries.has(stage) or not entries[stage].has(index) or bool(dialogue.get("active")): return false
 	if source_address != "": source_call_started.emit(stage, source_address, index)
 	active_program_stage = stage; active_program_index = index; active_source_actor = source_actor; active_window_state = {"window": window, "flags": 0x00010083, "byte23": 2, "choice_index": 0, "text_speed": 2, "origin_x": 32, "origin_y": 176, "window_width": 144, "window_lines": 3}; var program_index := index; var program_offset := -1; var continuation := false; var choice_cancelled := false
@@ -95,7 +114,9 @@ func _present_entry(stage: String, index: int, source_address: String, source_ac
 			push_error("Native message %s:%02X resolves to no displayable text" % [stage, index]); active_program_stage = ""; active_program_index = -1; active_source_actor = null; active_page_commands.clear(); active_tail_commands.clear(); active_window_state.clear(); return false
 		active_program_index = int(resolved.get("program_index", program_index)); active_page_commands = resolved.get("page_commands", []); active_tail_commands = resolved.get("tail_commands", [])
 		if not has_text and not bool(resolved.get("needs_choice", false)):
-			_on_native_page_started(stage, active_program_index, active_page_commands.size()); break
+			_on_native_page_started(stage, active_program_index, active_page_commands.size())
+			if continuation and dialogue.has_method("finish_native_message"): dialogue.finish_native_message()
+			break
 		var entry: Dictionary = {"index": active_program_index, "text": "\n".join(pages), "native_pages": pages, "native_page_speeds": resolved.get("page_speeds", []), "native_page_wait_updates": resolved.get("page_wait_updates", []), "native_page_choices": resolved.get("page_choices", []), "native_page_commands": active_page_commands, "native_tail_commands": active_tail_commands, "continue_window": bool(resolved.get("needs_choice", false))}
 		var result: Dictionary = await dialogue.present_message(stage, entry)
 		if not bool(resolved.get("needs_choice", false)): break
@@ -125,9 +146,10 @@ func _resolved_displayable(resolved: Dictionary) -> bool:
 	if not bool(resolved.get("supported", false)): return false
 	for page: String in resolved.get("pages", []):
 		if not page.strip_edges().is_empty(): return true
-	return not resolved.get("tail_commands", []).is_empty()
+	return bool(resolved.get("needs_choice", false)) or not resolved.get("tail_commands", []).is_empty()
 func _resolve_program(stage: String, initial_index: int, window_state: Dictionary = {}, initial_offset := -1) -> Dictionary:
 	if window_state.is_empty(): window_state = {"flags": 0x00010083, "byte23": 2, "choice_index": 0, "text_speed": 2, "origin_x": 32, "origin_y": 176, "window_width": 144, "window_lines": 3}
+	prepare_stage(stage)
 	if not entries.has(stage): return {"supported": false}
 	var pages: Array[String] = []; var page_speeds: Array[Array] = []; var page_wait_updates: Array[int] = []; var page_choices: Array[Dictionary] = []; var page_commands: Array = []; var current_page_commands: Array[Dictionary] = []; var tail_commands: Array[Dictionary] = []; var visited := {}; var simulated_context: Dictionary = native_context.duplicate(true); var message_index := initial_index; var start_offset := initial_offset; var page_text := ""; var page_speed := int(window_state.get("text_speed", 2)); var page_speed_counts: Array[int] = []; var choice_text_offsets := {}
 	for _step in range(128):
@@ -236,6 +258,10 @@ func _resolve_program(stage: String, initial_index: int, window_state: Dictionar
 					if opcode in [0x26, 0x27]:
 						if not simulated_context.has("event_flags") or not simulated_context["event_flags"] is Dictionary: return {"supported": false}
 						var event_id := (int(arguments[0]) << 8) | int(arguments[1]); var simulated_flags: Dictionary = simulated_context["event_flags"]; var event_key: Variant = event_id if simulated_flags.has(event_id) or not simulated_flags.has(str(event_id)) else str(event_id); simulated_flags[event_key] = opcode == 0x26; simulated_context["event_flags"] = simulated_flags
+					current_page_commands.append({"opcode": opcode, "arguments": arguments, "source_command": command.duplicate(true)})
+				0x0A, 0x22:
+					pass
+				0x0C, 0x1A:
 					current_page_commands.append({"opcode": opcode, "arguments": arguments, "source_command": command.duplicate(true)})
 				0x31:
 					pass

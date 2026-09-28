@@ -12,7 +12,6 @@ var music_signature := ""
 var footsteps: AudioStreamPlayer3D
 var shots: AudioStreamPlayer3D
 var movement: AudioStreamPlayer3D
-var ui_effects: AudioStreamPlayer
 var base_manifest: Dictionary = {}
 var audio_catalog: Dictionary = {}
 var zone_manifests: Dictionary = {}
@@ -23,26 +22,34 @@ var requested_music_cue := -1
 var requested_music_signature := ""
 var native_context: Dictionary = {}
 var preparing := false
+var listener: Node3D
+var mono := false
+var voices: Dictionary = {}
+var voice_players: Dictionary = {}
+static var parsed_manifests: Dictionary = {}
+static func _parsed_manifest(path: String) -> Variant:
+	if not parsed_manifests.has(path):
+		var data: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+		if not data is Dictionary: return data
+		parsed_manifests[path] = data
+	return parsed_manifests[path]
 func set_preparing(value: bool) -> void:
 	preparing = value
 	if music != null: music.stream_paused = value
 func configure(player: Node3D, path: String, music_role: String = "music") -> void:
 	_ensure_buses()
-	var data: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var data: Variant = _parsed_manifest(path)
 	if not data is Dictionary: return
-	manifest = data
-	base_manifest = data.duplicate(true)
+	manifest = data.duplicate()
+	base_manifest = data
 	audio_catalog = data.get("audio_catalog", {})
 	manifest_directory = path.get_base_dir()
 	stage = str(manifest.get("stage", "")) if player != null else ""
+	listener = player
 	music = AudioStreamPlayer.new()
 	music.bus = "BGM"
 	music.process_mode = Node.PROCESS_MODE_ALWAYS
 	add_child(music)
-	ui_effects = AudioStreamPlayer.new()
-	ui_effects.bus = "SE"
-	ui_effects.max_polyphony = 8
-	add_child(ui_effects)
 	if player == null:
 		play_music("title_music", path)
 		return
@@ -88,7 +95,9 @@ func capture_music() -> Dictionary:
 func adopt_music(state: Dictionary) -> void:
 	if music == null or not state.get("stream") is AudioStream: return
 	var key := str(state.get("key", ""))
-	if requested_music_cue >= 0 and requested_music_cue != 255 and key != "0x%04X" % requested_music_cue: return
+	# A stage load reloads the SPU banks; cue 0xFF (0x8001D7C4) starts no sequence, so the previous stage's music does not carry over.
+	if requested_music_cue == 255: return
+	if requested_music_cue >= 0 and key != "0x%04X" % requested_music_cue: return
 	if requested_music_cue >= 0 and requested_music_cue != 255 and not requested_music_signature.is_empty() and requested_music_signature != str(state.get("signature", "")): return
 	music.stream = state["stream"]
 	music_key = key
@@ -164,7 +173,8 @@ func _effect(node: AudioStreamPlayer3D, role: String) -> void:
 		target.max_polyphony = maxi(1, int(ceil(float(entry.get("duration_seconds", 0)) / interval)) + 1)
 	var stream: AudioStream = _sound_stream(key, entry)
 	if target.stream != stream: target.stream = stream
-	target.volume_db = float(entry.get("volume_db", 0)); target.play()
+	var source: Dictionary = manifest["effects"][key]; var strength := int(source.get("voice_volume", 0)); var level := float(strength if mono else strength * 10812 / 16383) / 16384.0
+	target.volume_db = linear_to_db(level) + float(entry.get("volume_db", 0)) - float(source.get("volume_db", 0)) if level > 0.0 else -80.0; target.play()
 func set_stage(value: String, target_area: int = 0, context: Dictionary = {}) -> bool:
 	var changed_stage := stage != value.to_upper()
 	stage = value.to_upper(); area = target_area
@@ -176,7 +186,7 @@ func set_stage(value: String, target_area: int = 0, context: Dictionary = {}) ->
 	if entry.is_empty(): return false
 	if not await AssetStore.ensure_group("audio-" + stage) or request != zone_request: return false
 	if not zone_manifests.has(stage):
-		var data: Variant = JSON.parse_string(FileAccess.get_file_as_string(str(entry["manifest"])))
+		var data: Variant = _parsed_manifest(str(entry["manifest"]))
 		if not data is Dictionary: return false
 		zone_manifests[stage] = data
 	if request != zone_request: return false
@@ -218,34 +228,71 @@ func _sound_stream(key: String, entry: Dictionary) -> AudioStream:
 	return wet_streams[path] as AudioStream
 func play_ui(role: String) -> void:
 	var key := str(manifest.get("roles", {}).get(role, ""))
-	if ui_effects == null or not manifest.get("effects", {}).has(key): return
-	ui_effects.stream = _sound_stream(key, manifest["effects"][key])
-	ui_effects.volume_db = float(manifest["effects"][key].get("volume_db", 0))
-	ui_effects.play()
+	if not manifest.get("effects", {}).has(key): return
+	play_sound(key.hex_to_int())
 func _footstep(sound_id: int = 0x91) -> void:
 	_effect(footsteps, "footstep_alternate" if sound_id == 0x90 else "footstep")
 func _fire(_projectile: Node3D) -> void:
 	_effect(shots, "buster")
 func play_at(sound_id: int, point: Vector3) -> void:
+	_voice_request(sound_id, point, 2)
+func _voice_request(sound_id: int, point: Vector3, mode: int) -> void:
 	var key := _cue_key(sound_id)
 	if _cue_music(sound_id): _request_music(sound_id); return
 	if not await _prepare_effect(key): return
-	var emitter := AudioStreamPlayer3D.new()
-	emitter.bus = "SE"
-	get_parent().add_child(emitter)
-	emitter.global_position = point
-	var entry: Dictionary = _sound_entry(key)
-	emitter.stream = _sound_stream(key, entry)
-	emitter.volume_db = float(entry.get("volume_db", 0))
-	emitter.finished.connect(emitter.queue_free)
-	emitter.play()
+	if mode == 2 and not is_instance_valid(listener): return
+	var source: Dictionary = manifest["effects"][key]; var descriptor := str(source.get("descriptor", "")).hex_decode()
+	if descriptor.size() < 8: return
+	var strength := int(source.get("voice_volume", 0)); var distance := -1; var levels := Vector2i.ZERO
+	if descriptor[0] & 2 or mode == 0:
+		var pan := str(source.get("raw_tone", "")).hex_decode()[7] if str(source.get("raw_tone", "")).length() >= 16 else 64
+		levels = Vector2i(strength, strength) if mono else Vector2i(strength * pan >> 7, strength * (128 - pan) >> 7)
+	else:
+		var ear := Vector3(-listener.global_position.x, -listener.global_position.y, listener.global_position.z) * 256.0; var origin := Vector3(roundi(-point.x * 256.0), roundi(-point.y * 256.0), roundi(point.z * 256.0))
+		var delta := Vector3i(floori(origin.x - ear.x), floori(origin.y - ear.y), floori(origin.z - ear.z)); distance = _native_sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z)
+		if distance > 7000: return
+		var model := listener.get("player_model") as Node3D; var yaw := roundi(-(model if model != null else listener).global_rotation.y * 4096.0 / TAU)
+		levels = _native_levels(strength, (roundi(atan2(origin.x - ear.x, origin.z - ear.z) * 2048.0 / PI) - yaw + 0x1000) & 0xFFF, distance)
+	var now := Time.get_ticks_msec(); var priority := descriptor[3] & 7; var voice := -1
+	if descriptor[4] & 0x20:
+		var mask := (descriptor[5] << (descriptor[4] & 31)) >> 16
+		for index in range(16, 24):
+			if mask >> (index - 16) & 1 and int(voices.get(index, {}).get("until", 0)) <= now: voice = index; break
+		if voice < 0: return
+	else:
+		voice = descriptor[4] & 31
+		var held: Dictionary = voices.get(voice, {})
+		if int(held.get("until", 0)) > now and int(held["priority"]) >= priority:
+			if int(held["priority"]) > priority or descriptor[3] & 8: return
+			if distance >= 0:
+				if distance - int(held.get("distance", 0)) >= 0x9C5: return
+				held["distance"] = distance
+	var entry: Dictionary = _sound_entry(key); var player := _voice_player(voice)
+	var scale := db_to_linear(float(entry.get("volume_db", 0)) - float(source.get("volume_db", 0))) / 16384.0; var left := float(levels.x) * scale; var right := float(levels.y) * scale
+	player.stream = _sound_stream(key, entry); player.volume_db = linear_to_db((left + right) * 0.5) if left + right > 0.0 else -80.0
+	(AudioServer.get_bus_effect(AudioServer.get_bus_index(player.bus), 0) as AudioEffectPanner).pan = (right - left) / (right + left) if left + right > 0.0 else 0.0
+	voices[voice] = {"until": now + int(float(source.get("duration_seconds", 0.0)) * 1000.0), "priority": priority, "distance": int(voices.get(voice, {}).get("distance", 0)), "levels": levels, "native_distance": distance, "sound": sound_id}
+	player.play()
+func _native_sqrt(value: int) -> int:
+	if value <= 0: return 0
+	var zeros := 0
+	while (value << zeros) & 0x80000000 == 0: zeros += 1
+	var even := zeros & ~1; var index := value << (even - 24) if even >= 24 else value >> (24 - even)
+	return ((int(sqrt(float(index * 262144))) << ((31 - even) >> 1)) & 0xFFFFFFFF) >> 12
+func _native_levels(strength: int, angle: int, distance: int) -> Vector2i:
+	var levels := Vector2i(strength, strength) if mono else Vector2i.ONE * (strength * 10812 / 16383)
+	if distance > 0 and not mono:
+		var step := roundi(sin(float(angle >> 6) * TAU / 64.0) * 4096.0) >> 6; var loud := strength * (absi(step) * 5571 / 64 + 10812) / 16383; var quiet := strength * ((64 - absi(step)) * 10812 / 64) / 16383
+		levels = Vector2i(loud, quiet) if step > 0 else Vector2i(quiet, loud)
+	return levels * (7000 - distance) / 7000 if distance > 0 and distance < 7000 else Vector2i.ZERO if distance >= 7000 else levels
+func _voice_player(voice: int) -> AudioStreamPlayer:
+	if voice_players.has(voice): return voice_players[voice]
+	var bus := "SE Voice %02d" % voice
+	if AudioServer.get_bus_index(bus) < 0: AudioServer.add_bus(); AudioServer.set_bus_name(AudioServer.bus_count - 1, bus); AudioServer.set_bus_send(AudioServer.bus_count - 1, "SE"); AudioServer.add_bus_effect(AudioServer.bus_count - 1, AudioEffectPanner.new())
+	var player := AudioStreamPlayer.new(); player.bus = bus; add_child(player); voice_players[voice] = player
+	return player
 func play_sound(sound_id: int) -> void:
-	var key := _cue_key(sound_id)
-	if _cue_music(sound_id): _request_music(sound_id); return
-	if ui_effects == null or not await _prepare_effect(key): return
-	ui_effects.stream = _sound_stream(key, manifest["effects"][key])
-	ui_effects.volume_db = float(manifest["effects"][key].get("volume_db", 0))
-	ui_effects.play()
+	_voice_request(sound_id, Vector3.ZERO, 0)
 func _ensure_buses() -> void:
 	for name in ["BGM", "SE"]:
 		if AudioServer.get_bus_index(name) >= 0: continue
@@ -269,3 +316,4 @@ func apply_options(bgm: int, se: int, sound: int) -> void:
 		stereo = AudioEffectStereoEnhance.new()
 		AudioServer.add_bus_effect(0, stereo)
 	stereo.pan_pullout = 0.0 if sound == 1 else 1.0
+	mono = sound == 1

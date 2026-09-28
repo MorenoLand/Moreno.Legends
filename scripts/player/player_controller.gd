@@ -20,6 +20,8 @@ signal special_sound_requested(sound_id: int)
 @onready var camera: Camera3D = $CameraPivot/Camera3D
 @onready var player_model: Node3D = $PlayerModel
 var locked_target: Node3D
+var lock_on: Node3D
+var input_blocker: Callable
 var health := 80
 var zenny := 0
 var inventory: Dictionary = {"items": {}, "key_items": {}, "special_weapons": {"0": 1}, "body_parts": {}, "buster_parts": {}}
@@ -63,6 +65,10 @@ var interaction_movement_ticks := 0
 var scripted_walk: Dictionary = {}
 var special_actions: Dictionary = {}
 var equipped_special := 0
+# player +0x19F: specials may become active (GAME 0x800CF4A8); stage mode from STxxT area load: 0 none, 1 equipped, 2 force 0x0F.
+var special_usable := true
+var special_mode := 1
+var hose: Node3D
 var carried_actor: CharacterBody3D
 var special_action := ""
 var special_action_time := 0.0
@@ -116,6 +122,9 @@ func _ready() -> void:
 		interaction_roles = metadata.get("interactionRoleProvenance", {})
 		special_actions = metadata.get("specialActions", {})
 	_configure_animation_tree(metadata if metadata is Dictionary else {})
+	hose = preload("res://scripts/player/special_hose.gd").new(); hose.name = "SpecialHose"; add_child(hose)
+	if not hose.configure(self): hose.queue_free(); hose = null
+	lock_on = preload("res://scripts/player/lock_on.gd").new(); lock_on.name = "LockOn"; add_child(lock_on); lock_on.configure(self)
 	if metadata is Dictionary:
 		for clip: Dictionary in metadata.get("clips", []):
 			native_clips[str(clip["name"])] = clip
@@ -196,8 +205,10 @@ func _unhandled_input(event: InputEvent) -> void:
 func _physics_process(delta: float) -> void:
 	if not scripted_walk.is_empty(): _update_scripted_walk(delta); return
 	if not interaction_role.is_empty(): return
-	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and Input.is_action_just_pressed("special"): use_special()
+	if input_blocker.is_valid() and input_blocker.call(): velocity = Vector3.ZERO; return
+	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and (Input.is_action_just_pressed("special") or active_special() == 15 and Input.is_action_just_pressed("fire")): use_special()
 	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and Input.is_action_just_pressed("kick"): kick()
+	lock_on.update(delta, combat_allowed and hurt_phase.is_empty() and not is_instance_valid(carried_actor) and Input.is_action_pressed("lock_on"))
 	if not special_action.is_empty(): return
 	if locked_target != null and not is_instance_valid(locked_target): locked_target = null
 	shot_timer = maxf(shot_timer - delta, 0.0)
@@ -205,7 +216,7 @@ func _physics_process(delta: float) -> void:
 	hurt_immunity = maxf(hurt_immunity - delta, 0.0)
 	_update_hurt(delta)
 	aiming = combat_allowed and buster_allowed and not is_instance_valid(carried_actor) and hurt_phase.is_empty() and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and Input.is_action_pressed("aim")
-	var firing := combat_allowed and buster_allowed and not is_instance_valid(carried_actor) and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and Input.is_action_pressed("fire")
+	var firing := combat_allowed and buster_allowed and active_special() != 15 and not is_instance_valid(carried_actor) and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and Input.is_action_pressed("fire")
 	if not hurt_phase.is_empty(): firing = false
 	if firing and Input.is_action_just_pressed("fire"): pending_shot = true
 	if firing or pending_shot:
@@ -245,7 +256,7 @@ func _physics_process(delta: float) -> void:
 		landed.emit()
 	_update_camera(delta)
 	if aiming: player_model.rotation.y += clampf(wrapf(camera.global_rotation.y - player_model.rotation.y, -PI, PI), -4.5 * delta, 4.5 * delta)
-	elif direction.length_squared() > 0.001: player_model.rotation.y = lerp_angle(player_model.rotation.y, atan2(-direction.x, -direction.z), minf(delta * 12.0, 1.0))
+	elif direction.length_squared() > 0.001 and not lock_on.locked(): player_model.rotation.y = lerp_angle(player_model.rotation.y, atan2(-direction.x, -direction.z), minf(delta * 12.0, 1.0))
 	var arm_role := "shoot_alternate_upper" if not grounded or (direction.length_squared() > 0.001 and not slow_walking) else "shoot_upper"
 	var arm_name := str(animation_roles.get(arm_role, animation_roles.get("shoot_upper", "")))
 	if is_instance_valid(carried_actor): arm_name = str(animation_roles["lift_hold"])
@@ -286,8 +297,12 @@ func lift_anchor(height: float) -> Vector3:
 	var point := Vector3.ZERO
 	for bone in [4, 7]: point += skeleton.global_transform * skeleton.get_bone_global_pose(skeleton.find_bone("Bone_%02d" % bone)).origin
 	return point * 0.5 - Vector3.UP * height * 0.5
+func active_special() -> int:
+	if special_mode == 2: equipped_special = 15
+	return equipped_special if special_mode != 0 and special_usable else 0
 func use_special() -> bool:
-	if not combat_allowed or not hurt_phase.is_empty() or not interaction_role.is_empty() or not special_action.is_empty() or special_actions.is_empty() or equipped_special != 0 or not is_on_floor(): return false
+	if active_special() == 15: return is_instance_valid(hose) and combat_allowed and hurt_phase.is_empty() and interaction_role.is_empty() and special_action.is_empty() and not is_instance_valid(carried_actor) and hose.begin()
+	if not combat_allowed or not hurt_phase.is_empty() or not interaction_role.is_empty() or not special_action.is_empty() or special_actions.is_empty() or active_special() != 0 or not is_on_floor(): return false
 	if is_instance_valid(carried_actor): return _start_special_action("lift_throw", float(special_actions["throw"]["start_pose"]) / 30.0)
 	var nearest := get_lift_target()
 	if nearest != null and nearest.begin_lift(self):
@@ -296,7 +311,7 @@ func use_special() -> bool:
 		return _start_special_action("lift_grab")
 	return false
 func get_lift_target() -> CharacterBody3D:
-	if not combat_allowed or special_actions.is_empty() or equipped_special != 0 or is_instance_valid(carried_actor): return null
+	if not combat_allowed or special_actions.is_empty() or active_special() != 0 or is_instance_valid(carried_actor): return null
 	var nearest: CharacterBody3D
 	var score := INF
 	var forward := -player_model.global_basis.z
@@ -310,6 +325,9 @@ func get_lift_target() -> CharacterBody3D:
 		var candidate := horizontal + angle * 4096.0 / TAU / 4.0 / 256.0
 		if candidate < score: nearest = actor; score = candidate
 	return nearest
+func _native_look_pitch() -> int:
+	if lock_on.locked() or Input.is_action_pressed("lock_on"): return lock_on.pitch
+	return clampi(roundi(-(camera_pivot.rotation.x - deg_to_rad(-12.0)) * 4096.0 / TAU), -0x200, 0x200)
 func kick() -> bool:
 	if not combat_allowed or not hurt_phase.is_empty() or not interaction_role.is_empty() or not special_action.is_empty() or special_actions.is_empty() or is_instance_valid(carried_actor) or not is_on_floor(): return false
 	return _start_special_action("kick")
@@ -339,6 +357,7 @@ func _update_special_action(delta: float) -> void:
 	special_action_time += delta
 	if special_action == "kick":
 		if special_action_time >= float(special_actions["kick"]["emit_pose"]) / 30.0 and previous_time < float(special_actions["kick"]["hit_ticks"]) / 30.0: _kick_contact()
+	elif special_action == "hose": hose.action_tick(previous_time)
 	elif special_action == "lift_throw" and not special_hit_started and special_action_time >= float(special_actions["throw"]["release_pose"]) / 30.0:
 		special_hit_started = true
 		if is_instance_valid(carried_actor): carried_actor.release_lift(-player_model.global_basis.z, int(special_actions["throw"]["vertical_raw"]), int(special_actions["throw"]["forward_raw"])); carried_actor = null

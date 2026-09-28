@@ -60,6 +60,8 @@ def export(source_dir=None, output_dir=None):
 				code = base + family + rate
 				if rate == 0 and (family == 0 or base == 8): continue
 				profiles[f"0x{code:02X}"] = {"kind": "uniform", "blend": blend, "direction": direction, "initial_rgb8": 255 if direction == "reveal" else 0, "step_rgb8": -speeds[rate] if direction == "reveal" else speeds[rate], "endpoint_rgb8": 0 if direction == "reveal" else 255, "visible_ticks": (255 + speeds[rate] - 1) // speeds[rate], "busy_settle_ticks": 3, "tick_rate": 25, "source_controller": "SLES0x80013C40", "source_renderer": "SLES0x80013614"}
+	for subtype in range(4):
+		step = 16 if subtype & 2 else 8; profiles[f"0x{0x20 + subtype:02X}"] = {"kind": "uniform", "blend": "add" if subtype & 1 else "subtract", "direction": "cover", "initial_rgb8": 0, "step_rgb8": step, "endpoint_rgb8": 255, "visible_ticks": 0x1F if subtype & 2 else 0x3F, "busy_settle_ticks": 3, "tick_rate": 25, "source_controller": "SLES0x80013D8C state table 0x80068228 -> 0x800143CC", "native": "per frame GP0 0x62 full-screen rect colour 0x101010|0x080808 over the retained frame, tpage 0x140 subtract | 0x120 add (0x80063DD4); frames 0x1F|0x3F at -0x7104"}
 	for code, kind in [(0x26, "circle"), (0x28, "bands")]:
 		atlas = _atlas(kind, trig, output_dir / (kind + ".png"))
 		atlases[kind] = atlas

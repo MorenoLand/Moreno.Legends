@@ -73,7 +73,9 @@ static func draw(control: Control, layout: Dictionary, key: String, rectangle: R
 		var rectangles: Dictionary = control.get_meta("native_panel_rectangles", {}); rectangles[instance] = rectangle; control.set_meta("native_panel_rectangles", rectangles)
 	if not animation.is_empty():
 		var windows: Dictionary = animation["windows"]
-		if not windows.has(instance) or windows[instance]["target"] != Rect2(rectangle.position.round(), rectangle.size.round()): windows[instance] = _window_state(rectangle, str(animation["phase"])); animation["complete"] = false
+		if not windows.has(instance) or windows[instance]["target"] != Rect2(rectangle.position.round(), rectangle.size.round()):
+			if str(animation["phase"]) == "opening" and bool(animation["complete"]): windows[instance] = _window_state(rectangle, "closing")
+			else: windows[instance] = _window_state(rectangle, str(animation["phase"])); animation["complete"] = false
 		rectangle = windows[instance]["current"]
 		if rectangle.size.x <= 0.0 or rectangle.size.y <= 0.0: return
 	for primitive: Dictionary in window["frame_primitives"]:

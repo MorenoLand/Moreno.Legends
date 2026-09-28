@@ -5,7 +5,9 @@ signal room_changed(stage: String, area: int)
 signal stage_transition_requested(route: Dictionary)
 signal location_requested(stage: String, area: int)
 signal native_scene_failed(reason: String)
+signal achievement_earned(id: String)
 var room_transfer_pending := false
+var prop_reward_message := ""
 @export_file("*.json") var manifest_path := "res://assets/levels/ST04/manifest.json":
 	set(value):
 		manifest_path = value
@@ -29,6 +31,9 @@ var nearest_door: Dictionary = {}
 var nearest_map_interaction: Dictionary = {}
 var map_interaction_cache: Dictionary = {}
 var scene_trigger_cache: Dictionary = {}
+var entry_scene_latch: Dictionary = {}
+var scene_ui_state: Dictionary = {}
+var fire_mission: Node
 var nearest_npc: Variant
 var transition_overlay: Node
 var actor_manifest: Dictionary = {}
@@ -70,12 +75,16 @@ var entry_route: Dictionary = {}
 var initial_player_state: Dictionary = {}
 var parked_location: Dictionary = {}
 var audio_preparing := false
-var native_context: Dictionary = {"native_save_byte14": 0, "native_save_byte16": 0, "native_save_word40": 0, "native_save_byte44": 1, "event_flags": {}}
+var voice: AudioStreamPlayer
+var voice_manifests: Dictionary = {}
+var voice_hold := false
+var native_context: Dictionary = {"native_save_byte14": 0, "native_save_byte16": 0, "native_save_word40": 0, "native_save_byte44": 1, "native_save_byte45": 1, "event_flags": {}}
 func _enter_tree() -> void:
 	if Engine.is_editor_hint():
 		set_physics_process(false)
 		return
 	$Player.combat_allowed = manifest_path.get_base_dir().get_file() not in ["ST04", "ST05", "ST06", "ST07"]
+	$Player.special_mode = _special_mode(manifest_path.get_base_dir().get_file())
 	var source: Variant = JSON.parse_string(FileAccess.get_file_as_string(manifest_path))
 	var weapon_policy: Variant = source.get("native_combat_policy", null) if source is Dictionary else null
 	$Player.buster_allowed = bool(weapon_policy.get("buster_allowed", true)) if weapon_policy is Dictionary else true
@@ -107,7 +116,9 @@ func _ready() -> void:
 	audio.configure(player, "res://assets/audio/ST0F/manifest.json", "music" if stage == "ST0F" else "")
 	dialogue_box = Control.new(); dialogue_box.name = "DialogueBox"; dialogue_box.set_script(preload("res://scripts/ui/dialogue_box.gd")); $HUD.add_child(dialogue_box)
 	dialogue_box.typing_sound_requested.connect(audio.play_sound)
-	event_script = Node.new(); event_script.name = "EventScript"; event_script.set_script(preload("res://scripts/world/event_script.gd")); add_child(event_script); event_script.configure(dialogue_box, "res://assets/dialogue/manifest.json", native_context)
+	dialogue_box.advance_blocker = _voice_holds_page
+	player.input_blocker = func() -> bool: return bool(dialogue_box.get("active"))
+	event_script = Node.new(); event_script.name = "EventScript"; event_script.set_script(preload("res://scripts/world/event_script.gd")); add_child(event_script); event_script.configure(dialogue_box, "res://assets/dialogue/manifest.json", native_context); event_script.prepare_stage(stage)
 	event_script.native_context_changed.connect(_dialogue_context_changed)
 	event_script.native_command_requested.connect(_native_dialogue_command)
 	native_scenes = preload("res://scripts/cinematics/native_scene_dispatcher.gd").new(); add_child(native_scenes); native_scenes.configure(self)
@@ -189,6 +200,7 @@ func _ready() -> void:
 	player.health_changed.connect(game_hud.set_health)
 	player.fired.connect(_on_player_fired)
 	player.special_sound_requested.connect(audio.play_sound)
+	if is_instance_valid(player.hose): player.hose.gauge_changed.connect(_special_gauge)
 	playable = await _select_area(initial_area)
 	preparation_finished = true
 	prepared.emit(playable)
@@ -320,6 +332,12 @@ func _prepare_area(transition: bool = false) -> bool:
 	if is_instance_valid(audio):
 		var audio_stage := manifest_path.get_base_dir().get_file(); var audio_area := int(areas[area_picker.selected]["index"])
 		if await audio.set_stage(audio_stage, audio_area, native_context): _drain_native_actor_audio(audio_stage, audio_area)
+	_queue_entry_scenes(level, manifest_path.get_base_dir().get_file(), int(areas[area_picker.selected]["index"]))
+	if manifest_path.get_base_dir().get_file() == "ST1E":
+		if fire_mission == null:
+			fire_mission = preload("res://scripts/world/fire_mission.gd").new(); fire_mission.name = "FireMission"; add_child(fire_mission)
+			if not fire_mission.configure(self): fire_mission.queue_free(); fire_mission = null
+		if fire_mission != null: fire_mission.enter_area(level, int(areas[area_picker.selected]["index"]))
 	_run_native_scene_requests.call_deferred(level, manifest_path.get_base_dir().get_file(), int(areas[area_picker.selected]["index"]))
 	player.set_physics_process(not transition)
 	game_hud.set_health(player.health, player.max_health)
@@ -331,7 +349,8 @@ func _run_native_scene_requests(parent: Node3D, stage: String, area: int) -> voi
 	if parent != (room_stream.room_root(stage, area) if streaming_rooms else level): return
 	loading = true; area_picker.disabled = true; player.set_physics_process(false)
 	var success: bool = await native_scenes.run_pending(parent, stage, area)
-	if not is_inside_tree() or not is_instance_valid(parent): return
+	if not is_inside_tree(): return
+	if not is_instance_valid(parent): parent = room_stream.room_root(stage, area) if streaming_rooms else level
 	if not success:
 		var reason := str(native_scenes.last_error); push_error(reason); native_scene_failed.emit(reason); loading = false; area_picker.disabled = false; player.set_physics_process(true); return
 	if native_scenes.transition_requested: return
@@ -354,7 +373,7 @@ func save_state(allow_loading: bool = false) -> Dictionary:
 		events[saved_stage] = ids
 	events[stage] = defeated
 	var explored := explored_stages.duplicate(true); explored[stage] = cells
-	return {"stage": stage, "area": int(areas[area_picker.selected]["index"]), "location_name": get_location_names()["main"], "player": {"position": [point.x, point.y, point.z], "yaw": player.player_model.rotation.y, "camera_rotation": [camera_rotation.x, camera_rotation.y, camera_rotation.z], "health": player.health, "max_health": player.max_health, "zenny": player.zenny, "inventory": player.inventory.duplicate(true), "equipment": player.equipment.duplicate(true), "equipped_special": player.equipped_special}, "play_time_seconds": play_time_seconds, "defeated_actors": defeated, "minimap": cells, "stage_events": events, "explored_stages": explored, "parked_location": parked_location.duplicate(true), "native_context": native_context.duplicate(true)}
+	return {"stage": stage, "area": int(areas[area_picker.selected]["index"]), "location_name": get_location_names()["main"], "player": {"position": [point.x, point.y, point.z], "yaw": player.player_model.rotation.y, "camera_rotation": [camera_rotation.x, camera_rotation.y, camera_rotation.z], "health": player.health, "max_health": player.max_health, "zenny": player.zenny, "inventory": player.inventory.duplicate(true), "equipment": player.equipment.duplicate(true), "equipped_special": player.equipped_special, "special_usable": player.special_usable}, "play_time_seconds": play_time_seconds, "defeated_actors": defeated, "minimap": cells, "stage_events": events, "explored_stages": explored, "parked_location": parked_location.duplicate(true), "native_context": native_context.duplicate(true)}
 func get_location_names() -> Dictionary:
 	var stage := manifest_path.get_base_dir().get_file()
 	var main_name := stage
@@ -367,9 +386,30 @@ func set_minimap_visible(value: bool) -> void:
 func _update_native_player_pose() -> void:
 	var point := _room_local_position()
 	native_context["native_player_pose_raw"] = [roundi(-point.x * 256.0), roundi(-point.y * 256.0), roundi(point.z * 256.0), roundi(-player.player_model.rotation.y * 4096.0 / TAU) & 4095]
+func _special_mode(stage: String) -> int:
+	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://assets/player/special_modes.json")) if FileAccess.file_exists("res://assets/player/special_modes.json") else null
+	var entry: Dictionary = parsed.get("stages", {}).get(stage, {}) if parsed is Dictionary else {}
+	# Stages whose area handler picks the mode at runtime (several candidates) default to 1 (unverified).
+	return int(entry["mode"]) if entry.get("mode") != null else 1
+func _special_gauge(charge: int, capacity: int, segment: int, power: int, power_max: int) -> void:
+	var active: bool = player.active_special() == 15
+	if not active and game_hud.special_capacity == 0: return
+	game_hud.special_capacity = capacity if active else 0; game_hud.special_charge = charge; game_hud.special_segment = segment; game_hud.special_power = power; game_hud.special_power_max = power_max; game_hud.queue_redraw()
+func _apply_fog(area: int) -> void:
+	if is_instance_valid(sky): sky.set_fog(scene_ui_state.is_empty() and sky.flying and (not streaming_rooms or room_stream.is_exterior_room(manifest_path.get_base_dir().get_file(), area)))
+func set_scene_presentation(active: bool) -> void:
+	if active and scene_ui_state.is_empty():
+		for node: Control in [game_hud, area_picker, stage_picker, zone_notice]:
+			if is_instance_valid(node): scene_ui_state[node] = node.visible; node.visible = false
+		player.player_model.visible = false
+	elif not active:
+		for node: Control in scene_ui_state:
+			if is_instance_valid(node): node.visible = scene_ui_state[node]
+		scene_ui_state.clear()
+	if not areas.is_empty(): _apply_fog(int(areas[area_picker.selected]["index"]))
 func _set_current_area(area: int) -> void:
 	_update_native_player_pose()
-	if is_instance_valid(sky): sky.set_fog(sky.flying and (not streaming_rooms or room_stream.is_exterior_room(manifest_path.get_base_dir().get_file(), area)))
+	_apply_fog(area)
 	game_hud.set_area(area)
 	if is_instance_valid(weather): weather.configure(manifest_path.get_base_dir().get_file(), area, player.camera, native_context)
 func _limit_location_popup(picker: OptionButton) -> void:
@@ -404,7 +444,7 @@ func restore_state(state: Dictionary) -> bool:
 	player.zenny = int(saved.get("zenny", 0))
 	player.inventory = saved.get("inventory", player.inventory).duplicate(true)
 	player.equipment = saved.get("equipment", player.equipment).duplicate(true)
-	player.equipped_special = int(saved.get("equipped_special", 0))
+	player.equipped_special = int(saved.get("equipped_special", 0)); player.special_usable = bool(saved.get("special_usable", true))
 	play_time_seconds = float(state.get("play_time_seconds", 0.0))
 	if not entry_route.is_empty() and not apply_native_arrival(entry_route): return false
 	game_hud.minimap.explored.clear()
@@ -513,12 +553,32 @@ func _drain_native_actor_audio(stage: String, area: int) -> void:
 func _native_prop_message(index: int, window: int, stage: String) -> void:
 	while is_inside_tree() and (loading or bool(dialogue_box.get("active"))): await get_tree().process_frame
 	if not is_inside_tree() or manifest_path.get_base_dir().get_file() != stage: return
-	native_context["native_wallet"] = player.zenny
+	native_context["native_wallet"] = player.zenny; prop_reward_message = "%s:%d" % [stage, index]
 	await event_script.play_bound_message(stage, "0x8010C000", index, "0x80048474", null, window)
-func _native_dialogue_command(_stage: String, _index: int, _opcode: int, _arguments: Array, source: Dictionary, _actor: Node3D) -> void:
+	prop_reward_message = ""
+func _native_dialogue_command(stage: String, index: int, opcode: int, arguments: Array, source: Dictionary, _actor: Node3D) -> void:
 	if str(source.get("effect", "")) == "native_sound_cue": audio.play_sound(int(source["sound_id"]))
+	if opcode == 0x1A and source.has("xa_id"): play_voice(stage, int(source["xa_id"]) & 0xFFFF)
+	if opcode == 0x0C: voice_hold = true
 	var mutation: Dictionary = source.get("native_context_mutation", {})
 	if mutation.has("native_wallet"): player.zenny = int(mutation["native_wallet"])
+	if opcode == 0x37 and prop_reward_message == "ST09:100" and "%s:%d" % [stage, index] == prop_reward_message and arguments.size() == 5 and int(arguments[0]) == 0 and ((int(arguments[1]) << 24) | (int(arguments[2]) << 16) | (int(arguments[3]) << 8) | int(arguments[4])) == 200: achievement_earned.emit("83149")
+func _voice_holds_page() -> bool:
+	voice_hold = voice_hold and is_instance_valid(voice) and voice.playing
+	return voice_hold
+func play_voice(stage: String, id: int) -> void:
+	if (id & 0x7FFF) >= 0x7F00: stage = "COMMON"
+	if not voice_manifests.has(stage):
+		var path := "res://assets/audio/common_voices/manifest.json" if stage == "COMMON" else "res://assets/levels/%s/audio/manifest.json" % stage; var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path)) if FileAccess.file_exists(path) else null; var entries: Dictionary = {}
+		if parsed is Dictionary:
+			for item: Dictionary in parsed.get("entries", []): entries[int(item["id"])] = str(item["file"])
+		voice_manifests[stage] = entries
+	var file := str(voice_manifests[stage].get(id, ""))
+	if file.is_empty(): push_warning("Missing native voice %s:%04X" % [stage, id]); return
+	var stream: AudioStream = await audio._load_stream(file)
+	if stream == null or not is_inside_tree(): return
+	if not is_instance_valid(voice): voice = AudioStreamPlayer.new(); voice.bus = "SFX" if AudioServer.get_bus_index("SFX") >= 0 else "Master"; add_child(voice)
+	voice.stream = stream; voice.play()
 func _update_nearest_map_interaction() -> void:
 	nearest_map_interaction = {}
 	if loading or areas.is_empty() or player.health <= 0 or not player.special_action.is_empty() or not player.hurt_phase.is_empty() or not player.interaction_role.is_empty(): return
@@ -535,6 +595,22 @@ func _use_map_interaction(interaction: Dictionary) -> void:
 	if not is_inside_tree(): return
 	if not success: push_error("Native map interaction did not execute in %s:%d" % [stage, int(interaction["runtime_index"])])
 	loading = false; area_picker.disabled = false; player.set_physics_process(true)
+func native_scene_area(area: int, position_raw: Array, facing_raw: int) -> bool:
+	var index := -1
+	for candidate in range(areas.size()):
+		if int(areas[candidate]["index"]) == area: index = candidate
+	if index < 0 or not await _select_area(index, true): return false
+	player.reset_at(level.to_global(Vector3(-float(position_raw[0]), -float(position_raw[1]), float(position_raw[2])) / 256.0)); player.player_model.rotation.y = -float(facing_raw) * TAU / 4096.0; player.set_physics_process(false); player.velocity = Vector3.ZERO
+	return true
+func _scene_triggers(stage: String) -> Array:
+	if not scene_trigger_cache.has(stage):
+		var path := "res://assets/levels/%s/scene_triggers.json" % stage; var value: Variant = JSON.parse_string(FileAccess.get_file_as_string(path)) if FileAccess.file_exists(path) else null; scene_trigger_cache[stage] = value.get("triggers", []) if value is Dictionary else []
+	return scene_trigger_cache[stage]
+func _queue_entry_scenes(parent: Node3D, stage: String, area: int) -> void:
+	for trigger: Dictionary in _scene_triggers(stage):
+		var key := "%s:%d" % [stage, int(trigger["scene_id"])]
+		if not trigger.has("entry_area") or not trigger.has("native_save_byte14") or int(trigger["entry_area"]) != area or int(native_context.get("native_save_byte14", 0)) != int(trigger["native_save_byte14"]) or entry_scene_latch.has(key): continue
+		entry_scene_latch[key] = true; set_scene_presentation(true); var pending: Array = preload("res://scripts/world/native_props.gd").pending_scene_requests(parent); pending.append({"key": "%s:%d:entry:%d" % [stage, area, int(trigger["scene_id"])], "stage": stage, "area": area, "source_function": str(trigger["source_function"]), "argument": int(trigger["scene_id"]), "status": "pending_native_scene"}); parent.set_meta("native_pending_scene_requests", pending)
 func _native_context_changed(stage: String, area: int) -> void:
 	if stage == manifest_path.get_base_dir().get_file() and not areas.is_empty() and area == int(areas[area_picker.selected]["index"]) and is_instance_valid(audio):
 		if await audio.set_stage(stage, area, native_context): _drain_native_actor_audio(stage, area)
@@ -542,9 +618,8 @@ func _native_context_changed(stage: String, area: int) -> void:
 	if area != int(areas[area_picker.selected]["index"]): return
 	var scene_parent: Node3D = room_stream.room_root(stage, area) if streaming_rooms else level
 	if not is_instance_valid(scene_parent): return
-	if not scene_trigger_cache.has(stage):
-		var path := "res://assets/levels/%s/scene_triggers.json" % stage; var value: Variant = JSON.parse_string(FileAccess.get_file_as_string(path)) if FileAccess.file_exists(path) else null; scene_trigger_cache[stage] = value.get("triggers", []) if value is Dictionary else []
-	for trigger: Dictionary in scene_trigger_cache[stage]:
+	for trigger: Dictionary in _scene_triggers(stage):
+		if not trigger.has("event_flag"): continue
 		var flags: Dictionary = native_context.get("event_flags", {}); var id := int(trigger["event_flag"])
 		if not bool(flags.get(id, flags.get(str(id), false))): continue
 		flags[id] = false; flags[str(id)] = false; native_context["event_flags"] = flags
@@ -850,7 +925,7 @@ func _ensure_room_stage_data(stage: String) -> bool:
 	var route_path := "res://assets/levels/%s/doors.json" % stage; var route_data: Variant = JSON.parse_string(FileAccess.get_file_as_string(route_path)) if FileAccess.file_exists(route_path) else null; var actor_path := "res://assets/levels/%s/npcs.json" % stage; var actor_data: Variant = JSON.parse_string(FileAccess.get_file_as_string(actor_path)) if FileAccess.file_exists(actor_path) else null; var models := {}
 	if actor_data is Dictionary:
 		for model: Dictionary in actor_data.get("models", []): models[int(model.get("model_index", model.get("source_model_index", -1)))] = model
-	room_stage_data[stage] = {"manifest": stage_manifest, "routes": route_data.get("area_transitions", []) if route_data is Dictionary else [], "actor_manifest": actor_data if actor_data is Dictionary else {}, "actor_models": models}
+	event_script.prepare_stage(stage); room_stage_data[stage] = {"manifest": stage_manifest, "routes": route_data.get("area_transitions", []) if route_data is Dictionary else [], "actor_manifest": actor_data if actor_data is Dictionary else {}, "actor_models": models}
 	return true
 func _clear_stream_door_los(portal: Dictionary, stage: String, area: int, origin: Vector3, target: Vector3) -> bool:
 	var query := PhysicsRayQueryParameters3D.create(origin, target, 1); query.exclude = [player.get_rid()]; var hit := get_world_3d().direct_space_state.intersect_ray(query)
@@ -876,7 +951,14 @@ func _native_event_set(id: int) -> bool:
 func _use_door(route: Dictionary, automatic: bool = false) -> void:
 	automatic = automatic or preload("res://scripts/world/native_transition.gd").is_automatic(route)
 	if loading: return
-	if _door_locked(route): audio.play_ui("menu_cancel"); return
+	if _door_locked(route):
+		# GAME0x800B89E4: a locked door shows its record message (+4, s16) through 0x800BE330; -1 shows nothing.
+		var message := int(route.get("blocked_message", -1))
+		if message >= 0 and not automatic and not bool(dialogue_box.get("active")):
+			loading = true; player.velocity = Vector3.ZERO; player.set_physics_process(false)
+			await event_script.play_message(manifest_path.get_base_dir().get_file(), message)
+			loading = false; player.set_physics_process(true)
+		return
 	var elevator := preload("res://scripts/world/native_transition.gd").is_elevator(route)
 	var ladder: bool = streaming_rooms and room_stream.is_ladder_route(manifest_path.get_base_dir().get_file(), int(areas[area_picker.selected]["index"]), route)
 	if streaming_rooms and not automatic:

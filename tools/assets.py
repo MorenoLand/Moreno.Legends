@@ -9,6 +9,14 @@ import audio
 import scenes
 import area_roofs
 import cinematics
+import intro_scene
+import scene_player
+import special_weapons
+import fire_mission
+import flight_scene
+import landing_scene
+import flutter_scene
+import yosyonke_scene
 import disc
 import models
 import native_fades
@@ -45,6 +53,8 @@ def export_models(source, stages, report):
 					try:
 						target = destination / ("model_%03d.glb" % model["index"])
 						metadata = models.export_actor_model(payload, model["index"], texture_path, target) if model["mesh"]["bone_count"] else models.export_static_actor(payload, model["index"], texture_path, target, entry["file"])
+						if model["mesh"]["bone_count"]: metadata["source_surfaces"] = cinematics.record_source(target, entry["file"], model["index"], payload); metadata["face_dims"] = list(payload[model["mesh_offset"] + 0x38:model["mesh_offset"] + 0x3C])
+						metadata["native_scale_raw"] = list(struct.unpack_from("<3h", payload, model["mesh_offset"] + 0x30))
 						item.update(status="exported", file=target.relative_to(ROOT).as_posix(), export=metadata)
 					except (ValueError, IndexError, KeyError, struct.error, OverflowError) as error: item.update(status="unsupported", error=str(error))
 					entry["models"].append(item)
@@ -84,16 +94,16 @@ def prepare(cue, source, stages, only, report_path=None):
 		except (OSError, ValueError, RuntimeError, IndexError, KeyError, struct.error, OverflowError) as error: report["tasks"].append({"name": name, "status": "unsupported", "error": str(error)})
 	if "world" in only: export_world(source, stages, report)
 	if "textures" in only: task("textures", lambda: world.export_texture_library(source, ROOT / "assets/library/textures"))
-	if "models" in only: export_models(source, stages, report); task("player", models.export_player); task("player_library", lambda: models.export_player_library(ROOT / "assets/library/players"))
+	if "models" in only: export_models(source, stages, report); task("player", models.export_player); task("special_weapon_0f", special_weapons.export_extinguisher); task("player_library", lambda: models.export_player_library(ROOT / "assets/library/players"))
 	if "ui" in only:
-		for name, function in [("hud", ui.hud_cli), ("projectile", ui.export_projectile), ("menu", ui.export_menu), ("dialogue", ui.export_dialogue)]: task(name, function)
+		for name, function in [("hud", ui.hud_cli), ("projectile", ui.export_projectile), ("menu", ui.export_menu), ("dialogue", ui.export_dialogue), ("mission_banner", ui.export_mission_banner)]: task(name, function)
 		task("fades", lambda: native_fades.export(source, ROOT / "assets/fades"))
 	if "audio" in only: task("audio", lambda: audio.export_audio(cue)); task("audio_library", lambda: audio.export_library(source, ROOT / "assets/library/audio")); task("zone_audio", lambda: audio.export_zone_audio(source))
 	if "audio" in only and (not stages or "ST0B" in stages): task("scene_audio", lambda: scenes.export_scene_audio(cue, source / "DAT", ROOT / "assets/levels/ST0B/audio"))
-	if "cinematics" in only: task("opening", cinematics.export_opening); task("opening_effects", cinematics.export_opening_effects)
+	if "cinematics" in only: task("opening", cinematics.export_opening); task("opening_effects", cinematics.export_opening_effects); task("intro_scene", intro_scene.main); task("intro_player", lambda: scene_player.export_scene_player_clips("ST39"))
 	if "media" in only:
 		if cue is None: report["tasks"].append({"name": "disc_media", "status": "requires_disc", "error": "The original CUE is required for raw XA and STR sectors"})
-		else: task("opening_audio", lambda: audio.export_opening_audio(cue)); task("xa_library", lambda: audio.export_xa_library(cue, ROOT / "assets/library/voices")); task("movies", lambda: disc.export_movies(cue))
+		else: task("opening_audio", lambda: audio.export_opening_audio(cue)); task("intro_audio", lambda: intro_scene.export_audio(cue)); task("stage_voices", lambda: [audio.export_stage_voices(cue, "COMMON")] + [audio.export_stage_voices(cue, path.name) for path in sorted((ROOT / "assets/levels").glob("ST??")) if (not stages or path.name in stages) and audio.stage_voice_tables(path.name)[1]]);task("xa_library", lambda: audio.export_xa_library(cue, ROOT / "assets/library/voices")); task("movies", lambda: disc.export_movies(cue))
 	if "world" in only and (not stages or "ST0F" in stages): task("mine_doors", lambda: models.export_doors(source / "DAT", ROOT / "build/maps", ROOT / "assets/levels/ST0F")); task("minimap", lambda: world.export_minimap(source / "DAT", ROOT / "build/maps", ROOT / "assets/minimap/ST0F"))
 	if "world" in only:
 		for npc_stage in ["ST0F", *models.NPC_STAGE_BINDINGS]:
@@ -101,6 +111,11 @@ def prepare(cue, source, stages, only, report_path=None):
 	if "world" in only:
 		for scripted_stage in ["ST04", "ST08", *models.INTERIOR_SCRIPT_BINDINGS]:
 			if not stages or scripted_stage in stages: task("scripted_actors_" + scripted_stage, lambda scripted_stage=scripted_stage: models.export_stage_scripted_actors(source / "DAT", ROOT / "assets/levels" / scripted_stage, scripted_stage))
+	if "world" in only and (not stages or "ST1E" in stages): task("fire_mission", fire_mission.export)
+	if "world" in only and (not stages or "ST3A" in stages): task("flight_scene", flight_scene.export)
+	if "world" in only and (not stages or "ST08" in stages): task("landing_scene", landing_scene.export)
+	if "world" in only and (not stages or "ST04" in stages): task("flutter_scene", flutter_scene.export)
+	if "world" in only and (not stages or "ST09" in stages): task("yosyonke_scene", yosyonke_scene.export)
 	if "world" in only: task("lighting", world.lighting_cli); task("depth_cue", lambda: world.export_depth_cue(source / "DAT", ROOT / "assets/levels")); task("weather", lambda: world.export_weather(source / "DAT", ROOT / "assets/weather"))
 	if "world" in only: task("area_roofs", lambda: area_roofs.export(source / "DAT", ROOT / "assets/levels"))
 	if "world" in only and all((ROOT / "assets/levels" / stage / "doors.json").is_file() for stage in world.STAGES): task("room_layout", lambda: world.export_room_layout(ROOT / "assets/levels", ROOT / "assets/locations/room_layout.json"))

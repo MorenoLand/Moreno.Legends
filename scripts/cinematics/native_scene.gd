@@ -42,6 +42,23 @@ var trig: Array = []
 var xa: AudioStreamPlayer
 var transition_route: Dictionary = {}
 var suppressed: Array[Node3D] = []
+var owns_root := false
+var answer := 0
+var skip_locked := false
+var sound_latched := false
+var faces: Dictionary = {}
+var interpolations: Dictionary = {}
+var shake := 0
+var shake_decay := 0
+var roll := 0
+var callback_advanced := false
+var area_loading := false
+var fade_busy := false
+var faded := false
+var xa_ready_tick := -1
+var xa_answer := -1
+var player_faces: Array = []
+var player_face_page: Texture2D
 func configure(gameplay: Node3D, level: Node3D, path: String, requested_area: int = -1) -> bool:
 	host = gameplay; scene_root = level; directory = path.get_base_dir()
 	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
@@ -60,6 +77,7 @@ func configure(gameplay: Node3D, level: Node3D, path: String, requested_area: in
 	for record: Dictionary in data.get("actors", []): records[str(record["source_ram"]).to_lower()] = record
 	for entry: Dictionary in data.get("timeline", []):
 		if not callbacks.get("segments", {}).has("%d:%d" % [int(entry["phase"]), int(entry["step"])]): return false
+	if JSON.stringify(callbacks.get("segments", {})).contains("\"area_change\""): scene_root = Node3D.new(); scene_root.name = "NativeSceneRoot"; host.add_child(scene_root); scene_root.global_transform = level.global_transform; owns_root = true
 	camera = Camera3D.new(); camera.name = "NativeSceneCamera"; camera.near = host.player.camera.near; camera.far = host.player.camera.far; camera.fov = rad_to_deg(2.0 * atan(120.0 / 384.0)); scene_root.add_child(camera)
 	player_clock = preload("res://scripts/world/native_animation.gd").new(); player_clock.automatic = false; add_child(player_clock)
 	var clips: Array = []
@@ -69,16 +87,43 @@ func configure(gameplay: Node3D, level: Node3D, path: String, requested_area: in
 		for name: StringName in host.player.animation_player.get_animation_list():
 			if str(name).get_file() == str(clip["name"]): adapted["name"] = str(name); break
 		clips.append(adapted)
-	if not player_clock.configure(host.player.animation_player, clips): camera.queue_free(); return false
+	var bank_path := directory.path_join("player_scene.json")
+	if FileAccess.file_exists(bank_path):
+		var bank: Variant = JSON.parse_string(FileAccess.get_file_as_string(bank_path))
+		if not bank is Dictionary: camera.queue_free(); _release_root(); return false
+		var library_name := str(bank["library"])
+		if not host.player.animation_player.has_animation_library(library_name):
+			var packed := load(directory.path_join(str(bank["model"]))) as PackedScene
+			if packed == null: camera.queue_free(); _release_root(); return false
+			var instance := packed.instantiate(); var players: Array[Node] = instance.find_children("*", "AnimationPlayer", true, false)
+			if players.is_empty(): instance.free(); camera.queue_free(); _release_root(); return false
+			host.player.animation_player.add_animation_library(library_name, (players[0] as AnimationPlayer).get_animation_library("").duplicate(true)); instance.free()
+		for clip: Dictionary in bank["clips"]:
+			var adapted: Dictionary = clip.duplicate(true); adapted["name"] = library_name + "/" + str(clip["name"]); clips.append(adapted)
+	if not player_clock.configure(host.player.animation_player, clips): camera.queue_free(); _release_root(); return false
 	return true
 func run() -> bool:
+	if host.has_method("set_scene_presentation"): host.set_scene_presentation(true)
+	host.player.player_model.visible = true
+	_player_face_setup()
 	saved_motion_active = host.player.motion_tree.active if host.player.motion_tree != null else false
 	if host.player.motion_tree != null: host.player.motion_tree.active = false
 	host.player.velocity = Vector3.ZERO; host.player.set_physics_process(false)
-	var initial: Dictionary = callbacks["initialization"]; host.player.global_position = scene_root.to_global(_world(initial["player_position_raw"])); _set_yaw(host.player.player_model, int(initial["player_yaw_raw"])); head_units = 0
+	if bool(host.get("streaming_rooms")) and is_instance_valid(host.room_stream):
+		for key in host.room_stream.opened_portals.keys():
+			var leaf: Node3D = host.room_stream.portal_leaves.get(key)
+			if is_instance_valid(leaf): leaf.rotation.y = float(leaf.get_meta("closed_yaw"))
+			await host.room_stream._close_portal(str(key))
+	var initial: Dictionary = callbacks["initialization"]; head_units = 0
+	if not bool(initial.get("player_keep_transform", false)): host.player.global_position = scene_root.to_global(_world(initial["player_position_raw"])); _set_yaw(host.player.player_model, int(initial["player_yaw_raw"]))
 	if initial.has("music_cue"): host.audio.play_sound(int(initial["music_cue"]))
 	for placement: int in initial.get("suppress_placements", []):
 		for node: Node3D in scene_root.find_children("placement_%03d_*" % placement, "Node3D", true, false): node.hide(); suppressed.append(node)
+	var suppress_props: Array = initial.get("suppress_props", [])
+	if not suppress_props.is_empty() and is_instance_valid(host.level):
+		for node: Node3D in host.level.find_children("*", "Node3D", true, false):
+			for rule: Dictionary in suppress_props:
+				if str(node.get_meta("native_spawn_set", "")) == str(rule["spawn_set"]) and str(node.get_meta("native_identity", "")) == str(rule.get("identity", node.get_meta("native_identity", ""))): node.hide(); suppressed.append(node)
 	if host.player.upper_modifier != null: host.player.upper_modifier.track_target = false; host.player.upper_modifier.set_source_aim_angles(0, 0)
 	for record: Dictionary in records.values():
 		if str(record["source_ram"]).to_lower() == str(callbacks["finish"].get("registration_record", "")): continue
@@ -86,8 +131,17 @@ func run() -> bool:
 		if node == null: _restore(); return false
 		var clock := node.get_node_or_null("NativeAnimationClock") as NativeAnimation
 		if clock != null: clock.automatic = false
-		var direct: bool = str(record["source_ram"]) in initial.get("spawn_records", []); node.visible = direct; actors[int(record["slot"])] = {"node": node, "clock": clock, "record": record, "active": direct, "head_target": 0, "head_speed": 0, "head_enabled": false, "flag_started": false}
-	if callbacks.has("xa"):
+		var direct: bool = str(record["source_ram"]) in initial.get("spawn_records", []); node.visible = direct; actors[int(record["slot"])] = {"node": node, "clock": clock, "record": record, "active": direct, "head_target": 0, "head_speed": 0, "head_enabled": false, "flag_started": false, "fields": {}, "face_tables": {}, "face_dims": record["model"].get("face_dims", [0, 0, 0, 0]), "face_surfaces": _face_surfaces(node, record["model"].get("source_surfaces", []))}
+	for operation: Dictionary in initial.get("init_ops", []):
+		if str(operation["op"]) == "play_xa":
+			await _play_xa(int(operation["descriptor"]))
+			while is_inside_tree() and is_instance_valid(xa) and xa.get_playback_position() <= 0.0: await get_tree().process_frame
+			if message_failed: _restore(); return false
+		elif str(operation["op"]) == "fade":
+			if bool(operation.get("wait", true)): await _fade(int(operation["type"]))
+			else: _fade(int(operation["type"]), false)
+		else: _action(operation)
+	if callbacks.has("xa") and not initial.has("init_ops"):
 		var audio_path := directory.path_join("audio/manifest.json")
 		if not FileAccess.file_exists(audio_path): _restore(); return false
 		var audio: Variant = JSON.parse_string(FileAccess.get_file_as_string(audio_path))
@@ -106,20 +160,31 @@ func _process(delta: float) -> void:
 		elapsed -= 1.0; native_tick()
 func native_tick() -> void:
 	if message_failed: running = false; completed.emit(false); return
+	if area_loading: return
 	var profile: Dictionary = _profile()
 	for sound: Dictionary in profile.get("sounds", []):
 		if int(sound["tick"]) == segment_tick: host.audio.play_at(int(sound["id"]), scene_root.to_global(_world(sound["position_raw"])))
 	for action: Dictionary in profile.get("actions", []):
-		if int(action["tick"]) == segment_tick: _action(action)
+		if action.has("from_tick"):
+			if segment_tick >= int(action["from_tick"]) and segment_tick <= int(action["through_tick"]): _action(action)
+		elif int(action["tick"]) == segment_tick: _action(action)
+	if profile.has("camera_roll"):
+		var curve: Dictionary = profile["camera_roll"]; var offset := segment_tick - int(curve["from_tick"])
+		roll = int(curve["values_raw"][offset]) if offset >= 0 and offset < curve["values_raw"].size() else int(curve.get("otherwise", 0))
 	for motion: Dictionary in profile.get("motion", []):
-		if _motion_active(motion): _motion(host.player, host.player.player_model, motion)
+		if not _motion_active(motion): continue
+		if str(motion.get("op", "")) == "player_axis_set": _action(motion)
+		else: _motion(host.player, host.player.player_model, motion)
 	_program(profile.get("program", []))
-	if not running or finishing: return
-	_commands(); _head_tick(); player_clock.native_tick(); segment_tick += 1; phase_tick += 1; total_tick += 1
-	var duration := int(data["timeline"][segment]["duration"])
-	if duration >= 0 and segment_tick == duration: _advance()
-	if not running or finishing: return
-	_actor_tick(); _camera_update()
+	if not running or finishing or area_loading: return
+	if callback_advanced: callback_advanced = false
+	else:
+		_commands(); _interpolate(); segment_tick += 1; phase_tick += 1; total_tick += 1
+		var duration := int(data["timeline"][segment]["duration"])
+		if duration >= 0 and segment_tick == duration: _advance()
+		if not running or finishing: return
+	_head_tick(); player_clock.native_tick(); _xa_tick(); _actor_tick(); _face_tick(); _camera_update()
+	if camera.has_node("NativeBackdrop"): camera.get_node("NativeBackdrop").native_tick()
 func _profile() -> Dictionary:
 	var entry: Dictionary = data["timeline"][segment]; return callbacks["segments"]["%d:%d" % [int(entry["phase"]), int(entry["step"])]]
 func _program(program: Array) -> void:
@@ -129,29 +194,76 @@ func _program(program: Array) -> void:
 			operation_started = true; operation_tick = segment_tick
 			if operation.has("state"): director_state = int(operation["state"])
 			if op in ["message", "message_start"]: _message(int(operation["index"]))
-			elif op not in ["message_wait", "minimum_tick", "delay", "turn_wait", "advance", "finish"]: _action(operation)
+			elif op == "area_change": _area_change(operation)
+			elif op == "fade": _fade(int(operation["type"]), bool(operation.get("wait", true)))
+			elif op == "jump" or (op == "jump_if" and answer == int(operation["answer"])): program_index = _label(program, str(operation["to"])); operation_started = false; continue
+			elif op not in ["message_wait", "minimum_tick", "delay", "turn_wait", "advance", "finish", "label", "jump_if", "wait_flag_clear", "wait_xa_idle"]: _action(operation)
 		if message_failed: return
+		if op == "area_change" and area_loading: return
+		if op == "fade" and fade_busy: return
+		if op == "wait_flag_clear" and _flag(_flag_id(operation["flag"])): return
+		if op == "wait_xa_idle" and is_instance_valid(xa) and xa.playing: return
 		if op in ["message", "message_wait"] and message_busy: return
 		if op == "delay" and segment_tick - operation_tick < int(operation["ticks"]): return
 		if op == "minimum_tick" and segment_tick < int(operation["tick"]): return
 		if op == "turn_wait" and _turn(host.player.player_model, int(operation["heading"]), int(operation["speed"])) != 0: return
-		if op == "advance": _advance(); return
+		if op == "advance": _advance(callbacks.has("tick_basis")); return
 		if op == "finish": _finish_scene(); return
 		program_index += 1; operation_started = false
 func _message(index: int) -> void:
 	message_busy = true
 	var success: bool = await host.event_script.play_bound_message(stage, "0x8010C000", index, "0x80048474")
 	message_busy = false; message_failed = message_failed or not success
+func _mission_banner() -> Control:
+	var hud: Node = host.get_node("HUD"); var banner := hud.get_node_or_null("MissionBanner") as Control
+	if banner == null: banner = preload("res://scripts/ui/mission_banner.gd").new(); banner.name = "MissionBanner"; hud.add_child(banner); hud.move_child(banner, host.dialogue_box.get_index())
+	return banner
 func _action(action: Dictionary) -> void:
 	match str(action["op"]):
 		"player_control": player_clock.play_control(int(action["control"]), int(action.get("start_record", 0)))
+		"result_banner": _mission_banner().show_banner(int(action["args_raw"][0]), int(action["args_raw"][1]), int(action["args_raw"][2]))
+		"result_banner_hide": _mission_banner().hide_banner()
+		"player_special_usable":
+			host.player.special_usable = int(action["value"]) != 0
 		"head_target": head_target = int(action["target"]); head_speed = int(action["speed"])
 		"event_set":
 			var flags: Dictionary = host.native_context.get("event_flags", {}); flags[int(action["id"])] = true; host.native_context["event_flags"] = flags
 		"despawn":
 			var record: Dictionary = records.get(str(action["record"]).to_lower(), {})
 			if not record.is_empty(): _remove(int(record["slot"]))
-func _advance() -> void:
+		"player_face_init": faces.erase(host.player.player_model.get_instance_id())
+		"player_face": _set_face(host.player.player_model, "player_" + str(action["channel"]), str(action["channel"]), int(action["sequence"]))
+		"player_face_frame":
+			var node: Node3D = host.player.player_model; faces.erase("%d:%s" % [node.get_instance_id(), str(action["channel"])]); node.set_meta("native_face_" + str(action["channel"]), int(action["frame"])); _apply_face(node, str(action["channel"]), int(action["frame"]))
+		"player_render_flag": host.player.player_model.visible = bool(action["set"])
+		"player_axis_set":
+			var value := _expression(action["value_raw"]); var local: Vector3 = scene_root.to_local(host.player.global_position); local[{"x": 0, "y": 1, "z": 2}[str(action["axis"])]] = (-1.0 if str(action["axis"]) != "z" else 1.0) * float(value) / 256.0; host.player.global_position = scene_root.to_global(local)
+		"player_yaw_set": _set_yaw(host.player.player_model, int(action["yaw_raw"]))
+		"player_yaw_add": _set_yaw(host.player.player_model, (_yaw(host.player.player_model) + int(action["delta_raw"])) & 4095)
+		"play_sound": host.audio.play_sound(int(action["id"]))
+		"sound_latch": sound_latched = int(action["value"]) != 0
+		"pool_clear":
+			if (int(action["mask"]) & 0xFFE) != 0:
+				for slot: int in actors.keys():
+					if bool(actors[slot]["active"]): _remove(slot)
+				for node: Node in get_tree().get_nodes_in_group("native_pool_actors"): node.queue_free()
+		"actor_state":
+			if actors.has(int(action["slot"])): actors[int(action["slot"])]["fields"]["0x0C"] = int(action["field_0x0C"])
+		"camera_shake": shake = int(action["magnitude_raw"]); shake_decay = int(action["decay_raw"])
+		"skip_lock": skip_locked = bool(action["set"])
+		"select_by_flags":
+			var ids: Array = action["flags"]
+			for index in range(ids.size()):
+				if _flag(int(ids[index])): answer = index
+		"play_xa": _play_xa(int(action["descriptor_by_answer"][answer]) if action.has("descriptor_by_answer") else int(action["descriptor"]))
+		"xa_fade_out": _fade_xa(int(action["speed"]))
+		"sky_gradient": camera.set_meta("native_sky_gradient", [int(action.get("horizon_raw", 0)), int(action.get("param_18_raw", 0))])
+		"scrolling_backdrop":
+			if not camera.has_node("NativeBackdrop"):
+				var backdrop := preload("res://scripts/cinematics/native_backdrop.gd").new(); backdrop.name = "NativeBackdrop"; camera.add_child(backdrop); backdrop.configure(load(directory.path_join(str(action["texture"]))))
+			camera.get_node("NativeBackdrop").set_state(action)
+func _advance(from_callback: bool = false) -> void:
+	callback_advanced = from_callback
 	var old_phase := int(data["timeline"][segment]["phase"]); segment += 1
 	if segment >= data["timeline"].size(): _finish_scene(); return
 	segment_tick = 0; program_index = 0; operation_started = false; director_state = 0
@@ -190,6 +302,8 @@ func _actor_tick() -> void:
 			if event.has("tick") and int(event["tick"]) != segment_tick: continue
 			if event.has("state") and int(event["state"]) != director_state: continue
 			match str(event["op"]):
+				"actor_face_init": actor["face_tables"] = {"eyes": str(event["eye_table_ram"]).to_lower() if event["eye_table_ram"] != null else "", "mouth": str(event["mouth_table_ram"]).to_lower() if event["mouth_table_ram"] != null else ""}
+				"actor_face": _set_face(node, str(actor["face_tables"].get(str(event["channel"]), "")), str(event["channel"]), int(event["sequence"]))
 				"control":
 					if clock != null: clock.play_control(int(event["control"]), int(event.get("start_record", 0)))
 				"position": node.position = _world(event["position_raw"])
@@ -202,6 +316,14 @@ func _actor_tick() -> void:
 				if clock != null: clock.play_control(int(flag_start["control"]))
 		for motion: Dictionary in profile.get("motion", []):
 			if _motion_active(motion): _motion(node, node, motion)
+		if profile.has("track"):
+			var reference := node.global_position.y; _track(node, profile["track"]["keyframes"], step)
+			if bool(profile["track"].get("floor_follow", false)): _floor_follow(node, reference, actor["record"]["entry"].get("native_hitbox", {}).get("bounds_raw", []))
+		if xa_answer >= 0 and xa_ready_tick >= 0:
+			for reaction: Dictionary in profile.get("answer_reactions", {}).get("by_answer", {}).get(str(xa_answer), []):
+				if int(reaction["after_xa_ready_ticks"]) != total_tick - xa_ready_tick: continue
+				if str(reaction["op"]) == "event_clear": _clear_flag(int(reaction["id"]))
+				elif str(reaction["op"]) == "actor_face": _set_face(node, str(actor["face_tables"].get(str(reaction["channel"]), "")), str(reaction["channel"]), int(reaction["sequence"]))
 		if clock != null: clock.native_tick()
 func _head_tick() -> void:
 	var difference := ((_yaw(host.player.player_model) + head_units - head_target + 2048) & 4095) - 2048
@@ -241,6 +363,11 @@ func _commands() -> void:
 			65:
 				var record: Dictionary = records.get("0x%08x" % int(words[1]), {})
 				if not record.is_empty(): _remove(int(record["slot"]))
+			66:
+				host.player.global_position = scene_root.to_global(_world([_fixed(words).x, _fixed(words).y, _fixed(words).z])); _set_yaw(host.player.player_model, int(words[4]) & 4095)
+			24, 25:
+				var channel := "orbit" if opcode == 25 else ("relative_focus" if target_mode != 0 else "focus"); var origin: Vector3 = orbit if channel == "orbit" else relative_focus if channel == "relative_focus" else focus
+				interpolations[channel] = {"from": origin, "to": _fixed(words), "ticks": maxi(header & 65535, 1), "ease": (header >> 16) & 7, "elapsed": 0}
 			255: return
 			_: message_failed = true; return
 func _fixed(words: Array) -> Vector3: return Vector3(_s32(int(words[1])), _s32(int(words[2])), _s32(int(words[3]))) / 65536.0
@@ -249,13 +376,16 @@ func _camera_update() -> void:
 	var target := focus
 	if target_mode == 1 and actors.has(target_slot): target = Vector3(-actors[target_slot]["node"].position.x, -actors[target_slot]["node"].position.y, actors[target_slot]["node"].position.z) * 256.0 + relative_focus
 	elif target_mode == 2: var local: Vector3 = scene_root.to_local(host.player.global_position); target = Vector3(-local.x, -local.y, local.z) * 256.0 + relative_focus
+	target.y -= float(shake >> 8); shake = maxi(shake - shake_decay, 0)
 	if eye_mode != 0:
 		camera.position = _world([eye.x, eye.y, eye.z]); var point := _world([target.x, target.y, target.z])
 		if point.distance_squared_to(camera.position) > 0.000001: camera.look_at(scene_root.to_global(point), Vector3.UP)
+		if roll != 0: camera.rotate_object_local(Vector3.BACK, -float(roll) * TAU / 4096.0)
 		return
 	var yaw := float(orbit.x) * TAU / 4096.0; var pitch := float(orbit.y) * TAU / 4096.0; var offset := Vector3(sin(yaw) * cos(pitch), sin(pitch), cos(yaw) * cos(pitch)) * orbit.z; var rotation := Basis(Vector3.RIGHT, pitch) * Basis(Vector3.UP, -yaw)
 	var rows: Array[Vector3] = [Vector3(rotation.x.x, rotation.y.x, rotation.z.x), Vector3(rotation.x.y, rotation.y.y, rotation.z.y), Vector3(rotation.x.z, rotation.y.z, rotation.z.z)]
 	camera.basis = Basis(Vector3(-rows[0].x, rows[1].x, rows[2].x), Vector3(-rows[0].y, rows[1].y, rows[2].y), Vector3(rows[0].z, -rows[1].z, -rows[2].z)).inverse(); camera.position = _world([target.x - offset.x, target.y - offset.y, target.z - offset.z])
+	if roll != 0: camera.rotate_object_local(Vector3.BACK, -float(roll) * TAU / 4096.0)
 func _remove(slot: int) -> void:
 	if not actors.has(slot): return
 	var node: Node3D = actors[slot]["node"]
@@ -265,24 +395,167 @@ func _finish_scene() -> void:
 	if finishing: return
 	finishing = true
 	var finish: Dictionary = callbacks["finish"]
-	if finish.has("fade_exit"): await host.transition_overlay.request(int(finish["fade_exit"]))
+	for operation: Dictionary in finish.get("ops", []):
+		match str(operation["op"]):
+			"play_sound_if_latched":
+				if sound_latched: host.audio.play_sound(int(operation["id"]))
+			"wait_xa_idle":
+				while is_inside_tree() and is_instance_valid(xa) and xa.playing: await get_tree().process_frame
+			"fade":
+				if bool(operation.get("wait", true)): await _fade(int(operation["type"]))
+				else: _fade(int(operation["type"]), false)
+			_: _action(operation)
+	if finish.has("fade_exit") and not faded: await host.transition_overlay.request(int(finish["fade_exit"]))
 	for slot: int in actors.keys(): _remove(slot)
 	if finish.has("registration_record"):
 		var record: Dictionary = records.get(str(finish["registration_record"]).to_lower(), {})
 		if record.is_empty(): running = false; completed.emit(false); return
 		var vendor: Node3D = await Props.spawn_entry(scene_root, stage, area, record["entry"], record["model"], host.native_context)
 		if vendor == null: running = false; completed.emit(false); return
+		vendor.set_meta("native_scene_registration", true)
 		preload("res://scripts/world/native_material.gd").depth_cue(vendor, host.depth_cue_parameters)
 	if finish.has("player_yaw_raw"): _set_yaw(host.player.player_model, int(finish["player_yaw_raw"]))
 	host.player.camera.make_current(); camera.current = false
 	if finish.has("fade_entry"): await host.transition_overlay.request(int(finish["fade_entry"]))
 	transition_route = finish.get("transition", {}).duplicate(true)
+	if transition_route.has("destination_transform_raw"):
+		var raw: Array = transition_route["destination_transform_raw"]; transition_route["destination_transform"] = {"position": [float(raw[0]) / 256.0, float(raw[1]) / 256.0, float(raw[2]) / 256.0], "yaw_raw": int(raw[3]), "floor_height": int(raw[1]) == -1}
 	running = false; completed.emit(true)
 func _restore() -> void:
 	if host.player.motion_tree != null: host.player.motion_tree.active = saved_motion_active
 	if host.player.upper_modifier != null: host.player.upper_modifier.set_source_aim_angles(0, 0)
-	host.player.camera.make_current()
+	host.player.camera.make_current(); host.player.player_model.visible = true
+	for surface: Dictionary in player_faces: (surface["material"] as ShaderMaterial).set_shader_parameter("uv_word", 0); (surface["material"] as ShaderMaterial).set_shader_parameter("albedo_texture", surface["texture"])
+	if host.has_method("set_scene_presentation"): host.set_scene_presentation(false)
 	for slot: int in actors.keys(): _remove(slot)
 	if is_instance_valid(camera): camera.queue_free()
+	_release_root()
 	for node: Node3D in suppressed:
 		if is_instance_valid(node): node.show()
+func _release_root() -> void:
+	if owns_root and is_instance_valid(scene_root): scene_root.queue_free()
+	owns_root = false
+func _area_change(operation: Dictionary) -> void:
+	area_loading = true
+	var success: bool = await host.native_scene_area(int(operation["area"]), operation["position_raw"], int(operation["facing_raw"]))
+	area = int(operation["area"]); area_loading = false; message_failed = message_failed or not success
+	if success: camera.make_current()
+func _fade(code: int, wait := true) -> void:
+	fade_busy = wait; faded = true
+	await host.transition_overlay.request(code)
+	if wait: fade_busy = false
+func _label(program: Array, name: String) -> int:
+	for index in range(program.size()):
+		if str(program[index]["op"]) == "label" and str(program[index]["name"]) == name: return index
+	message_failed = true; return program.size()
+func _expression(value: Variant) -> int:
+	if not value is String: return int(value)
+	var total := 0; var sign := 1
+	for token: String in str(value).replace("+", " + ").replace("-", " - ").split(" ", false):
+		if token in ["+", "-"]: sign = 1 if token == "+" else -1; continue
+		total += sign * (segment_tick if token == "tick" else answer if token == "answer" else token.hex_to_int() if token.begins_with("0x") else int(token))
+	return total
+func _flag_id(value: Variant) -> int: return _expression(value)
+func _flag(id: int) -> bool:
+	var flags: Dictionary = host.native_context.get("event_flags", {}); return bool(flags.get(id, flags.get(str(id), false)))
+func _clear_flag(id: int) -> void:
+	var flags: Dictionary = host.native_context.get("event_flags", {}); flags[id] = false; flags.erase(str(id)); host.native_context["event_flags"] = flags
+func _play_xa(id: int) -> void:
+	var manifest: Variant = JSON.parse_string(FileAccess.get_file_as_string(directory.path_join("audio/manifest.json")))
+	var entry: Dictionary = {}
+	if manifest is Dictionary:
+		for item: Dictionary in manifest.get("entries", []):
+			if int(item["id"]) == id: entry = item
+	if entry.is_empty(): message_failed = true; return
+	var stream: AudioStream = await host.audio._load_stream(str(entry["file"]))
+	if stream == null: message_failed = true; return
+	if not is_instance_valid(xa): xa = AudioStreamPlayer.new(); xa.bus = "SFX" if AudioServer.get_bus_index("SFX") >= 0 else "Master"; add_child(xa)
+	xa.stream = stream; xa.volume_db = 0.0; xa.play(); xa_ready_tick = -1; xa_answer = answer if id != int(callbacks.get("xa", {}).get("descriptor_index", -1)) else -1
+func _fade_xa(speed: int) -> void:
+	if not is_instance_valid(xa) or not xa.playing or speed <= 0: return
+	var tween := create_tween(); tween.tween_property(xa, "volume_db", -60.0, 127.0 / float(speed) / float(data.get("native_tick_hz", 25))); tween.tween_callback(xa.stop)
+func _xa_tick() -> void:
+	if is_instance_valid(xa) and xa.playing and xa_ready_tick < 0 and xa.get_playback_position() > 0.0: xa_ready_tick = total_tick
+func _interpolate() -> void:
+	for channel: String in interpolations.keys():
+		var state: Dictionary = interpolations[channel]; state["elapsed"] = int(state["elapsed"]) + 1; var t := minf(float(state["elapsed"]) / float(state["ticks"]), 1.0)
+		var eased := (1.0 - cos(PI * t)) * 0.5 if int(state["ease"]) == 1 else 1.0 - (1.0 - t) * (1.0 - t) if int(state["ease"]) == 2 else t * t if int(state["ease"]) == 3 else t
+		var value: Vector3 = (state["from"] as Vector3).lerp(state["to"], eased)
+		if channel == "orbit": orbit = value
+		elif channel == "focus": focus = value
+		else: relative_focus = value
+		if int(state["elapsed"]) >= int(state["ticks"]): interpolations.erase(channel)
+func _set_face(node: Node3D, table: String, channel: String, sequence: int) -> void:
+	var source: Dictionary = data.get("face_tables", {}).get(table, {}); var sequences: Array = source.get("sequences", [])
+	if sequence < 0 or sequence >= sequences.size(): return
+	faces["%d:%s" % [node.get_instance_id(), channel]] = {"node": node, "channel": channel, "entries": sequences[sequence]["entries"], "index": 0, "ticks": 0, "held": false}
+func _face_tick() -> void:
+	for key: String in faces.keys():
+		var state: Dictionary = faces[key]
+		if not is_instance_valid(state["node"]): faces.erase(key); continue
+		var node: Node3D = state["node"]
+		if bool(state["held"]): continue
+		var entries: Array = state["entries"]; var entry: Dictionary = entries[int(state["index"])]
+		node.set_meta("native_face_" + str(state["channel"]), int(entry["frame"])); _apply_face(node, str(state["channel"]), int(entry["frame"])); state["ticks"] = int(state["ticks"]) + 1
+		if int(state["ticks"]) < int(entry["ticks"]): continue
+		state["ticks"] = 0
+		match int(entry["op"]):
+			1: state["held"] = true
+			2: state["index"] = 0
+			4: state["index"] = clampi(int(state["index"]) + int(entry["arg"]), 0, entries.size() - 1)
+			_: state["index"] = mini(int(state["index"]) + 1, entries.size() - 1)
+func _track(node: Node3D, keyframes: Array, step: int) -> void:
+	var previous: Dictionary = {}; var following: Dictionary = {}
+	for frame: Dictionary in keyframes:
+		if int(frame["step"]) < step or (int(frame["step"]) == step and int(frame["tick"]) <= segment_tick): previous = frame
+		elif following.is_empty(): following = frame
+	if previous.is_empty(): return
+	var position: Array = previous["position_raw"]; var yaw := int(previous["yaw_raw"])
+	if not following.is_empty() and int(following["step"]) == step and int(previous["step"]) == step and int(following["tick"]) > int(previous["tick"]):
+		var t := float(segment_tick - int(previous["tick"])) / float(int(following["tick"]) - int(previous["tick"])); var target: Array = following["position_raw"]
+		position = [lerpf(float(position[0]), float(target[0]), t), lerpf(float(position[1]), float(target[1]), t), lerpf(float(position[2]), float(target[2]), t)]
+		yaw = (yaw + roundi(float(((int(following["yaw_raw"]) - yaw + 2048) & 4095) - 2048) * t)) & 4095
+	node.position = _world(position); _set_yaw(node, yaw)
+func _floor_follow(node: Node3D, reference: float, bounds: Array) -> void:
+	if bounds.size() != 6: return
+	var origin := Vector3(node.global_position.x, reference, node.global_position.z); var hit: Dictionary = preload("res://scripts/world/native_actor_motion.gd").ray(node, origin + Vector3.UP * (-float(bounds[2]) / 256.0 + 0.125), Vector3(origin.x, minf(host.bounds.position.y, origin.y) - 0.125, origin.z))
+	if not hit.is_empty() and (hit["normal"] as Vector3).y > 0.0: node.global_position.y = (hit["position"] as Vector3).y
+func _unhandled_input(event: InputEvent) -> void:
+	if not running or finishing or not event.is_action_pressed("ui_cancel"): return
+	get_viewport().set_input_as_handled()
+	var skip: Dictionary = callbacks.get("finish", {}).get("skip_path", {})
+	if skip.is_empty() or skip_locked or area_loading or fade_busy or bool(host.dialogue_box.get("active")): return
+	faded = true; finishing = true; await host.transition_overlay.request(int(skip["fade"])); finishing = false; _finish_scene()
+func _face_surfaces(node: Node3D, definitions: Array) -> Array:
+	var result: Array = []; var meshes: Array[Node] = node.find_children("*", "MeshInstance3D", true, false)
+	if meshes.is_empty(): return result
+	var mesh := meshes[0] as MeshInstance3D
+	for source: Dictionary in definitions:
+		if not int(source["uv_stream"]) in [1, 2] or int(source["surface"]) >= mesh.mesh.get_surface_count(): continue
+		var material := mesh.get_active_material(int(source["surface"])) as ShaderMaterial
+		if material != null: result.append({"stream": int(source["uv_stream"]), "material": material})
+	return result
+func _player_face_setup() -> void:
+	var manifest: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://assets/player/manifest.json")); var page_path := directory.path_join("player_face_page1.png")
+	player_face_page = load(page_path) as Texture2D if ResourceLoader.exists(page_path) else null
+	var meshes: Array[Node] = host.player.player_model.find_children("*", "MeshInstance3D", true, false)
+	if not manifest is Dictionary or meshes.is_empty(): return
+	var mesh := meshes[0] as MeshInstance3D
+	for source: Dictionary in manifest.get("faceSurfaces", []):
+		var material := mesh.get_surface_override_material(int(source["surface"])) as ShaderMaterial if int(source["surface"]) < mesh.mesh.get_surface_count() else null
+		if material != null: player_faces.append({"stream": int(source["uv_stream"]), "material": material, "texture": material.get_shader_parameter("albedo_texture")})
+func _apply_face(node: Node3D, channel: String, frame: int) -> void:
+	if node == host.player.player_model:
+		var cell := frame % 20; var page := frame / 20
+		for surface: Dictionary in player_faces:
+			if int(surface["stream"]) != (1 if channel == "eyes" else 2): continue
+			var material: ShaderMaterial = surface["material"]; material.set_shader_parameter("uv_word", (cell % 4) * 64 | ((cell / 4) * 51) << 8); material.set_shader_parameter("albedo_texture", player_face_page if page == 1 and player_face_page != null else surface["texture"])
+		return
+	for actor: Dictionary in actors.values():
+		if actor["node"] != node: continue
+		var stream := 1 if channel == "eyes" else 2; var dims: Array = actor["face_dims"]; var width := int(dims[0 if stream == 1 else 2]); var height := int(dims[1 if stream == 1 else 3])
+		if width <= 0 or height <= 0: return
+		var columns := 256 / width; var cell := frame % (columns * (256 / height))
+		for surface: Dictionary in actor["face_surfaces"]:
+			if int(surface["stream"]) == stream: (surface["material"] as ShaderMaterial).set_shader_parameter("uv_word", (cell % columns) * width | ((cell / columns) * height) << 8)
+		return

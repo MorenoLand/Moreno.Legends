@@ -12,7 +12,7 @@ SLES `0x8001F000` selects eight-byte sound descriptors. Direct sound `0x95` is d
 
 Original driver execution for `0x95` produced requested note 65, tone center 89 and SPU pitch 1024 (11025 Hz). The source waveform is file `0x18260`, 1056 encoded bytes and 1848 decoded frames. Constructor/uploader execution confirmed SPU base `0x1010`, original tone bytes and waveform upload beginning at file `0xA000`; no sample-offset correction is applied. Capture provenance is generated at `build/audio/buster-native-pitch.json` and `build/audio/buster-native-upload.json`.
 
-Effects use the reference SPU integer ADPCM predictor/history/clamp, four-tap Gaussian table and ADSR divider/rate stepping at 44100 Hz. Native pitch advances the source counter; it does not become a Godot interpolation rate. Cue `0x95` produces a 44100-Hz WAV with 7392 frames and the same 0.167619-second duration. This cue belongs to the kick/melee actor, not the Buster. Dry effects retain bank/program/tone gain in manifest `volume_db`; wet variants bake that gain before processing the native reverb registers. The exporter preserves existing effect import settings except for setting `compress/mode=0`, keeping the rendered PCM instead of QOA. The actual Buster uses cue `0x9A`.
+Effects use the reference SPU integer ADPCM predictor/history/clamp, four-tap Gaussian table and ADSR divider/rate stepping at 44100 Hz. Native pitch advances the source counter; it does not become a Godot interpolation rate. Cue `0x95` produces a 44100-Hz WAV with 7392 frames and the same 0.167619-second duration. This cue belongs to the kick/melee actor, not the Buster. Dry effects retain the native non-positional level in manifest `gain`/`volume_db` (see Effect mixer); wet variants bake that gain before processing the native reverb registers. The exporter preserves existing effect import settings except for setting `compress/mode=0`, keeping the rendered PCM instead of QOA. The actual Buster uses cue `0x9A`.
 
 ## Actor sound events
 
@@ -30,6 +30,42 @@ Effects use the reference SPU integer ADPCM predictor/history/clamp, four-tap Ga
 Run control one has footstep records three and eleven; walk control two has records six and twenty-two. Both action dispatchers `0x800CE5D4` and `0x800CE6F0` allocate actor subtype zero for action ID one, the kick. SLES actor dispatch table `0x8006B3A0[0]` selects GAME `0x800D0194`; state zero selects `0x800D01F4`, which plays `0x95` at the cached player root coordinates `+0x490/+0x492/+0x494`. Weapon ID two selects the Buster actor `0x800D03D0`, sound `0x9A`, and cached bone-seven muzzle at `+0x4C8/+0x4CA/+0x4CC`. Underwater flags select cue `0xF4` instead.
 
 The class-eight dungeon attack uses cue `0xD4`. Its descriptor at SLES `0x80069C1C` is `0001045230280000`, selecting physical bank one, program four, tone five. That bank is stored in `DAT/ST0F.BIN` at section `0x1C800`; exporting only INIT's bank zero omits this sound.
+
+## Effect mixer
+
+Sound requests are queued and played back in the same frame.
+- **Queue:** SLES `0x800200AC` appends a 16-byte request to `0x8009E058` (count `0x80078D04`, 24 maximum; a full queue drops the request).
+- **Request variants:**
+  - `0x80020160` writes request mode zero, used by menus.
+  - `0x800203F4(id, actor)` writes mode two with the actor's integer position, or mode three with no position.
+  - `0x80020480(id)` passes the player when the listener is elsewhere; when the player is the listener it passes no position, giving mode three.
+- **Dispatch:** the sound update `0x8001D858` pops each request (`0x8001FEC8`). Request kind one (`0x8001DABC`) selects the descriptor through `0x8001F000`; descriptor type zero continues to `0x8001DCD0` / `0x8001DD3C`. Descriptor byte zero bit one forces mode zero.
+
+**Level.** `0x8001EB4C` computes the level `v = bank_volume(bank header +0x1E, slot table 0x80097B10+2) × program byte 1 × (tone byte 6 + descriptor volume delta) / 16129` (0–127). It then squares it: `s = v² × 16383 / 16129` (SPU voice volume, 0x3FFF ≈ unity).
+
+**Pan and distance, by mode:**
+- **Mode zero** (`0x8001F348`): left = `s × pan >> 7`, right = `s × (128 − pan) >> 7`, where pan is tone byte 7. A centred tone gives each channel `s/2`.
+- **Modes two and three** (`0x8001F7D8`):
+  - **Centre:** each channel gets `s × 10812/16383` (0.66).
+  - **Off-centre:** let `a` be `ratan2(dx, dz)` minus the listener yaw and `t` = `sin_table[a >> 6] >> 6` (±64). The loud side gets `s × (|t| × 5571/64 + 10812)/16383` and the quiet side `s × (64 − |t|) × 10812/64/16383`; positive `t` makes the left side loud.
+  - **Falloff:** both channels scale by `(7000 − d)/7000`. Distance `d` = SquareRoot0 (`0x8005EDC4`) of the 3D integer delta. In mode two, `0x8001FBD0` drops the request outright when `d` ≥ 7001.
+- **Listener:** `0x80020E1C` sets it (pointer `0x80078DA4`, yaw pointer `0x80078D7C`). During gameplay the listener is the player (`0x8008C0A0+0x10`, yaw `+0x2A`).
+- **Mono:** the mono flag `0x8009C830` replaces every pan law with left = right = `s`, attenuated by distance.
+
+**Output.** `0x8001F044` scales both channels by the SE master byte `0x8007CFB0`/127 and writes them through `SpuSetVoiceVolume` (`0x80056B20`). Volume is fixed when the voice starts.
+
+**Voice allocation.** Descriptor byte 4 bit 5 selects a voice mask, `byte5 << (byte4 & 31)`. For example, `0x152` uses voices 19–23. The mixer starts the lowest voice that is neither keyed on nor releasing (`0x8001EE08`). If none is free, the request is dropped. Otherwise the request uses fixed voice `byte4 & 31`, checked by `0x8001EA64`:
+- higher priority (`byte3 & 7`) steals the voice;
+- lower priority is dropped;
+- equal priority is dropped when `byte3 & 8` is set;
+- otherwise equal priority retriggers in mode zero, and in modes two and three only when the new distance is less than 2501 units beyond the stored distance.
+
+**Manifest fields.** Each effect stores:
+- `native_level` (`v`) and `voice_volume` (`s`);
+- `gain` = mean mode-zero channel level `(left + right)/2/16384`, with `volume_db` = 20·log10 of it;
+- `pan` = `(right − left)/(right + left)`.
+
+**Runtime.** `GameAudio.play_sound` uses mode zero and `play_at` uses mode two; both follow these voice rules. Player-centred `_effect` cues use the mode-three centre level.
 
 ## Footsteps and stage acoustics
 

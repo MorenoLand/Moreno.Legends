@@ -2,6 +2,7 @@ extends RefCounted
 const PLANE_SCALE := 10000.0
 const DISTANCE_EPSILON := 0.0001
 static var mesh_cache: Dictionary = {}
+static var scan_cache: Dictionary = {}
 static func apply(root: Node3D) -> void:
 	for node: MeshInstance3D in root.find_children("*", "MeshInstance3D", true, false):
 		if node.mesh != null and mesh_cache.has(node.mesh.get_instance_id()): node.mesh = mesh_cache[node.mesh.get_instance_id()]
@@ -57,6 +58,10 @@ static func collect(root: Node3D) -> Array[Dictionary]:
 			var material := node.get_active_material(surface) as ShaderMaterial
 			skinned = skinned or (node.mesh.surface_get_format(surface) & Mesh.ARRAY_FORMAT_BONES) != 0 or (material != null and material.shader != null and material.shader.resource_path != "res://shaders/native_model.gdshader")
 		if skinned: continue
+		var scan_key := "%s|%s|%s" % [node.mesh.resource_path, var_to_str(node.global_transform), bool(root.get_meta("native_map_face_flags", false))] if node.mesh.resource_path.contains("::") else ""; var scan_start := result.size()
+		if scan_cache.has(scan_key):
+			for cached: Dictionary in scan_cache[scan_key]: var entry := cached.duplicate(true); entry["node"] = node; result.append(entry)
+			continue
 		var planes := {}
 		for surface in range(node.mesh.get_surface_count()):
 			if node.mesh.surface_get_primitive_type(surface) != Mesh.PRIMITIVE_TRIANGLES: continue
@@ -92,6 +97,10 @@ static func collect(root: Node3D) -> Array[Dictionary]:
 				if not by_surface.has(surface_index): by_surface[surface_index] = {"node": node, "surface_index": surface_index, "triangle_indices": PackedInt32Array(), "layers": PackedInt32Array(), "render_normals": PackedVector3Array(), "parent_surfaces": PackedInt32Array(), "parent_triangles": PackedInt32Array()}
 				var entry: Dictionary = by_surface[surface_index]; entry["triangle_indices"].append(int(overlay["triangle"])); entry["layers"].append(int(overlay["layer"])); entry["render_normals"].append(parent["normal"]); entry["parent_surfaces"].append(int(parent["surface"])); entry["parent_triangles"].append(int(parent["triangle"]))
 			for surface_index: int in by_surface: result.append(by_surface[surface_index])
+		if not scan_key.is_empty():
+			var stored: Array = []
+			for index in range(scan_start, result.size()): var entry: Dictionary = result[index].duplicate(true); entry.erase("node"); stored.append(entry)
+			scan_cache[scan_key] = stored
 	return result
 static func _source_decorator(face: Dictionary) -> bool: return int(face["source_flags"]) >= 0 and (int(face["source_flags"]) & 0xC0) == 0xC0
 static func _face_before(first: Dictionary, second: Dictionary) -> bool:

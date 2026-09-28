@@ -178,10 +178,7 @@ func _ensure_room_loaded(stage: String, area: int) -> bool:
 		loading_rooms.erase(key)
 		return false
 	if not props_loaded:
-		var props_path := "res://assets/stage_props/manifest.json"
-		if FileAccess.file_exists(props_path):
-			var props_data: Variant = JSON.parse_string(FileAccess.get_file_as_string(props_path))
-			if props_data is Dictionary: props = props_data.get("stages", {})
+		props = preload("res://scripts/world/native_props.gd")._read_manifest("res://assets/stage_props/manifest.json").get("stages", {})
 		props_loaded = true
 	var entry: Dictionary = room_info[key]; var scene_path := "res://assets/levels/%s/%s" % [stage, str(entry["file"])]; var scene: PackedScene = await _threaded_scene(scene_path)
 	if scene == null:

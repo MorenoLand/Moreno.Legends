@@ -10,6 +10,15 @@ static func load_into(parent: Node3D, stage: String, area: int, native_context: 
 	var props_manifest := _read_manifest("res://assets/stage_props/manifest.json")
 	var source: Dictionary = props_manifest.get("stages", {}).get(stage, {}); var npc_manifest := _read_manifest("res://assets/levels/%s/npcs.json" % stage); var npc_models := _models_by_index(npc_manifest.get("models", []))
 	var model_by_index := _models_by_index(source.get("models", [])); var npc_sources := _npc_source_offsets(stage); var base_key := "native_props_base_%s_%d" % [stage, area]
+	var static_key := "native_static_actor_props_%s_%d" % [stage, area]; var prefetch: Array[String] = []
+	if not bool(parent.get_meta(base_key, false)):
+		for entry: Dictionary in source.get("instances", []):
+			if int(entry.get("area", -1)) == area and not npc_sources.has(_source_key(area, int(entry.get("source_file_offset_value", -1)), str(entry.get("source_bytes", "")))) and _prefetchable(entry): prefetch.append("res://assets/stage_props/" + str(entry.get("model_file", "")))
+	if not bool(parent.get_meta(static_key, false)):
+		for entry: Dictionary in npc_manifest.get("static_actor_instances", []):
+			var listed_areas: Variant = entry.get("global_area_indices", null)
+			if area in (listed_areas if listed_areas is Array else [entry.get("area_index", entry.get("area", -1))]) and _prefetchable(entry): prefetch.append("res://assets/levels/%s/%s" % [stage, str(entry.get("model_file", ""))])
+	_prefetch(prefetch)
 	if not bool(parent.get_meta(base_key, false)):
 		for entry: Dictionary in source.get("instances", []):
 			var source_offset := int(entry.get("source_file_offset_value", -1)); var source_raw := str(entry.get("source_bytes", ""))
@@ -18,7 +27,6 @@ static func load_into(parent: Node3D, stage: String, area: int, native_context: 
 			if node != null: _attach_native_source(node, stage, area, entry); created.append(node)
 			if not is_instance_valid(parent): return created
 		parent.set_meta(base_key, true)
-	var static_key := "native_static_actor_props_%s_%d" % [stage, area]
 	if not bool(parent.get_meta(static_key, false)):
 		for entry: Dictionary in npc_manifest.get("static_actor_instances", []):
 			var listed_areas: Variant = entry.get("global_area_indices", null); var entry_areas: Array = listed_areas if listed_areas is Array else [entry.get("area_index", entry.get("area", -1))]
@@ -27,7 +35,7 @@ static func load_into(parent: Node3D, stage: String, area: int, native_context: 
 			if node != null: _attach_native_source(node, stage, area, entry); node.name = "NativeStaticActor_%s_%d" % [stage, int(entry.get("file_offset", -1))]; created.append(node)
 			if not is_instance_valid(parent): return created
 		parent.set_meta(static_key, true)
-	var scripted := _read_manifest("res://assets/levels/%s/scripted_actors.json" % stage); var script_context := _scene_local_state_context(parent, stage, scripted, native_context, active); var scripted_models := _models_by_index(scripted.get("models", [])); var enabled_sets: Array[String] = []; var enabled_set_ids := {}; var spawn_sets_by_id := {}
+	var scripted := _read_manifest("res://assets/levels/%s/scripted_actors.json" % stage); var flag_context := native_context if active else native_context.duplicate(true); _run_pre_spawn_scripts(parent, stage, scripted, flag_context, area); var script_context := _scene_local_state_context(parent, stage, scripted, flag_context, active); var scripted_models := _models_by_index(scripted.get("models", [])); var enabled_sets: Array[String] = []; var enabled_set_ids := {}; var spawn_sets_by_id := {}
 	for spawn_set: Dictionary in scripted.get("spawn_sets", []):
 		spawn_sets_by_id[str(spawn_set.get("id", ""))] = spawn_set
 	while true:
@@ -37,6 +45,10 @@ static func load_into(parent: Node3D, stage: String, area: int, native_context: 
 			enabled_set_ids[spawn_set_id] = true; enabled_sets.append(spawn_set_id); found_enabled = true
 		if not found_enabled: break
 	var registry_key := "native_scripted_actor_registry_%s_%d" % [stage, area]; var registry: Dictionary = parent.get_meta(registry_key, {}); var slot_pointers: Dictionary = parent.get_meta(registry_key + "_slots", {}); var action_sets := {}; var deferred_pose := false
+	prefetch.clear()
+	for entry: Dictionary in scripted.get("instances", []):
+		if enabled_set_ids.has(str(entry.get("spawn_set", ""))) and not excluded_roles.has(str(entry.get("role", ""))) and (active or not spawn_sets_by_id.get(str(entry.get("spawn_set", "")), {}).get("source", {}).has("controller")) and _prefetchable(entry): prefetch.append("res://assets/levels/%s/%s" % [stage, str(entry.get("model_file", ""))])
+	_prefetch(prefetch)
 	for entry: Dictionary in scripted.get("instances", []):
 		var spawn_set_id := str(entry.get("spawn_set", "")); var spawn_set: Dictionary = spawn_sets_by_id.get(spawn_set_id, {}); var spawn_source: Dictionary = spawn_set.get("source", {}); var direct: bool = spawn_source.has("controller")
 		if not active and (direct or entry.has("native_pose_resolver")): continue
@@ -56,7 +68,7 @@ static func load_into(parent: Node3D, stage: String, area: int, native_context: 
 		if is_instance_valid(prior): prior.queue_free()
 		var node := await _load_actor(parent, "res://assets/levels/%s/%s" % [stage, str(entry.get("model_file", ""))], entry, scripted_models.get(int(entry.get("model_index", -1)), {}), script_context)
 		if node != null:
-			_attach_native_source(node, stage, area, entry); node.set_meta("native_record_id", record_id); node.set_meta("native_source_bytes", source_bytes); node.set_meta("native_identity", str(entry.get("identity", ""))); node.set_meta("native_role", role); created.append(node); registry[record_key] = node; slot_pointers[record_id] = node
+			_attach_native_source(node, stage, area, entry); node.set_meta("native_spawn_set", spawn_set_id); node.set_meta("native_record_id", record_id); node.set_meta("native_source_bytes", source_bytes); node.set_meta("native_identity", str(entry.get("identity", ""))); node.set_meta("native_role", role); created.append(node); registry[record_key] = node; slot_pointers[record_id] = node
 			if active: _attach_spawn_actions(node, spawn_set_id, spawn_source, action_sets)
 		if not is_instance_valid(parent): return created
 	if active:
@@ -77,6 +89,20 @@ static func _attach_spawn_actions(node: Node3D, id: String, source: Dictionary, 
 	node.set_meta("native_spawn_set", id); node.set_meta("native_actions", actions); owners[id] = true
 static func initialize_into(parent: Node3D, stage: String, area: int, native_context: Dictionary = {}, excluded_roles: Array[String] = []) -> Array[Node3D]:
 	var created: Array[Node3D] = []; var tree := Engine.get_main_loop() as SceneTree; var flags_changed := false; var state_changed := false
+	if is_instance_valid(parent):
+		# GAME0x800BA408 -> 0x800C02D0(0) on every area load clears the area-local flags 0x680-0x6DF and 0x710-0x74F before the area handlers run.
+		if native_context.get("event_flags", null) is Dictionary:
+			var flags: Dictionary = (native_context["event_flags"] as Dictionary).duplicate()
+			for key in flags.keys():
+				var id := int(key)
+				if (id >= 0x680 and id < 0x6E0) or (id >= 0x710 and id < 0x750): flags.erase(key)
+			native_context["event_flags"] = flags
+		parent.remove_meta("native_script_state_owner")
+		for node: Node in parent.find_children("*", "Node3D", true, false):
+			if is_instance_valid(node) and node.has_meta("native_scene_registration"): node.get_parent().remove_child(node); node.free()
+		for node: Node3D in _native_action_nodes(parent, stage, area):
+			if str(node.name).begins_with("NativeScriptActions_"): node.get_parent().remove_child(node); node.free()
+			else: node.remove_meta("native_actions"); node.remove_meta("native_action_status")
 	while true:
 		var loaded: Array[Node3D] = await load_into(parent, stage, area, native_context, excluded_roles, true); created.append_array(loaded)
 		if not is_instance_valid(parent): return created
@@ -174,13 +200,30 @@ static func _apply_local_state_mutation(parent: Node3D, stage: String, context: 
 	if reset.is_empty() or not (owner is Dictionary) or str(owner.get("owner_id", "")) != owner_id: return false
 	var function_key := str(mutation.get("source_function", "")); var slot := int(mutation.get("script_slot", 0)); var offset := int(mutation.get("offset", 0)); var offset_key := str(offset); var states: Dictionary = owner.get("states", {}); var local_fields: Dictionary = states.get(owner_key, {}); var current := _script_state_byte(context, function_key, slot, owner_key, offset, int(local_fields.get(offset_key, 0)))
 	var previous := int(local_fields.get(offset_key, current)); var value := current + int(mutation.get("amount", 1)); local_fields[offset_key] = value; states[owner_key] = local_fields; owner["states"] = states; parent.set_meta("native_script_state_owner", owner); return previous != value
+static func _run_pre_spawn_scripts(parent: Node3D, stage: String, manifest: Dictionary, context: Dictionary, area: int) -> void:
+	for script: Dictionary in manifest.get("pre_spawn_scripts", []):
+		if int(script.get("area_index", -1)) != area or not _conditions_met(script.get("predicate", {}).get("all", []), _scene_local_state_context(parent, stage, manifest, context, false), area): continue
+		for action: Dictionary in script.get("actions", []):
+			if not _conditions_met(action.get("when", {}).get("all", []), context, area): continue
+			match str(action.get("kind", "")):
+				"set_event_flag", "clear_event_flag":
+					var flags: Variant = context.get("event_flags", {}); if not (flags is Dictionary): flags = {}
+					var id := int(action["id"]); flags.erase(str(id)); flags[id] = str(action["kind"]) == "set_event_flag"; context["event_flags"] = flags
+				"set_save_byte": context[str(action["key"])] = int(action["value"])
 static func _spawn_set_enabled(spawn_set: Dictionary, native_context: Dictionary, area: int, enabled_sets: Dictionary = {}) -> bool:
 	var parent_set := str(spawn_set.get("parent_spawn_set", "")); if not parent_set.is_empty() and not enabled_sets.has(parent_set): return false
-	var predicate: Dictionary = spawn_set.get("predicate", {}); var conditions: Array = predicate.get("all", [])
+	var conditions: Array = spawn_set.get("predicate", {}).get("all", [])
+	if not _conditions_met(conditions, native_context, area): return false
+	return not conditions.is_empty() or not parent_set.is_empty()
+static func _conditions_met(conditions: Array, native_context: Dictionary, area: int) -> bool:
 	for condition: Dictionary in conditions:
 		match str(condition.get("kind", "")):
 			"stage_state_byte_equals":
 				if not native_context.has("native_save_byte14") or int(native_context["native_save_byte14"]) != int(condition.get("value", -1)): return false
+			"stage_state_byte_range":
+				if not native_context.has("native_save_byte14") or int(native_context["native_save_byte14"]) < int(condition["minimum"]) or int(native_context["native_save_byte14"]) > int(condition["maximum"]): return false
+			"native_save_byte_equals":
+				if (int(native_context.get(str(condition["key"]), condition["default"])) == int(condition["value"])) == bool(condition.get("negate", false)): return false
 			"stage_area_byte_equals":
 				if area != int(condition.get("value", -1)): return false
 			"native_save_word40_range":
@@ -199,7 +242,7 @@ static func _spawn_set_enabled(spawn_set: Dictionary, native_context: Dictionary
 				if is_set != bool(condition.get("set", false)): return false
 			_:
 				return false
-	return not conditions.is_empty() or not parent_set.is_empty()
+	return true
 static func _read_manifest(path: String) -> Dictionary:
 	if _manifest_cache.has(path): return _manifest_cache[path]
 	if not FileAccess.file_exists(path): return {}
@@ -276,6 +319,10 @@ static func _load_actor(parent: Node3D, path: String, entry: Dictionary, model: 
 				if geometry is ConcavePolygonShape3D: (geometry as ConcavePolygonShape3D).backface_collision = layer == 4 or entry.has("native_broadphase")
 				var body := StaticBody3D.new(); body.name = "NativeMeshCollision_%d" % layer; body.collision_layer = layer; body.collision_mask = 0; var shape := CollisionShape3D.new(); shape.shape = geometry; body.add_child(shape); mesh_node.add_child(body)
 	return node
+static func _prefetchable(entry: Dictionary) -> bool: return str(entry.get("model_file", "")).ends_with(".glb") and not entry.has("native_kickable") and not entry.has("native_pose_resolver")
+static func _prefetch(paths: Array[String]) -> void:
+	for path in paths:
+		if not ResourceLoader.has_cached(path) and ResourceLoader.load_threaded_get_status(path) == ResourceLoader.THREAD_LOAD_INVALID_RESOURCE: ResourceLoader.load_threaded_request(path, "PackedScene", true, ResourceLoader.CACHE_MODE_REUSE)
 static func _threaded_scene(path: String) -> PackedScene:
 	var status := ResourceLoader.load_threaded_get_status(path)
 	if status == ResourceLoader.THREAD_LOAD_INVALID_RESOURCE:

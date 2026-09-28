@@ -20,6 +20,10 @@ var opening_loading := false
 var locations: Array = []
 var pending_custom_menu := false
 var menu_transitioning := false
+var achievements := ConfigFile.new()
+var achievement_catalog: Dictionary = {}
+var achievement_notice: Control
+var achievement_menu: Control
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	session_loading = true
@@ -29,6 +33,10 @@ func _ready() -> void:
 		key.physical_keycode = menu_keys[action]
 		if not InputMap.action_has_event(action, key): InputMap.action_add_event(action, key)
 	settings.load("user://settings.cfg")
+	achievements.load("user://achievements.cfg")
+	var achievement_source: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://assets/achievements/catalog.json")) if FileAccess.file_exists("res://assets/achievements/catalog.json") else null
+	if achievement_source is Dictionary:
+		for definition: Dictionary in achievement_source.get("achievements", []): achievement_catalog[str(int(definition["id"]))] = definition
 	if not InputMap.has_action("status_menu"): InputMap.add_action("status_menu")
 	var status_key := InputEventKey.new()
 	status_key.physical_keycode = KEY_Z
@@ -56,6 +64,8 @@ func _ready() -> void:
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	background.color = Color.TRANSPARENT
 	overlay.add_child(background)
+	achievement_notice = preload("res://scripts/ui/achievement_notice.gd").new()
+	overlay.add_child(achievement_notice)
 	var pause_menu := preload("res://scripts/ui/pause_menu.gd").new()
 	overlay.add_child(pause_menu)
 	pause_menu.configure()
@@ -87,6 +97,11 @@ func _ready() -> void:
 	status_menu.options_requested.connect(func(): _options("status"))
 	status_menu.closed.connect(_resume)
 	pages["status"] = status_menu
+	achievement_menu = preload("res://scripts/ui/achievement_menu.gd").new()
+	overlay.add_child(achievement_menu)
+	achievement_menu.configure(self)
+	achievement_menu.closed.connect(func(): audio.play_ui("menu_cancel"); _show("pause"))
+	pages["achievements"] = achievement_menu
 	title = preload("res://scripts/ui/title_menu.gd").new()
 	overlay.add_child(title)
 	pages["main"] = title
@@ -117,6 +132,7 @@ func _ready() -> void:
 	_button(pause_page, "Resume", _resume)
 	_button(pause_page, "Save Game", _save_game)
 	_button(pause_page, "Options", func(): _open_custom("extra"))
+	_button(pause_page, "Achievements", func(): achievement_menu.refresh(); _show("achievements"))
 	_button(pause_page, "Cheats", func(): _open_custom("cheats"))
 	_button(pause_page, "Main Menu", _confirm_main_menu)
 	var confirmation := preload("res://scripts/ui/confirmation_menu.gd").new(); overlay.add_child(confirmation); confirmation.configure("Return to Title Screen?"); confirmation.confirmed.connect(func(): audio.play_ui("menu_confirm"); _main_menu()); confirmation.cancelled.connect(func(): audio.play_ui("menu_cancel"); _show("pause")); confirmation.moved.connect(func(): audio.play_ui("menu_move")); pages["title_confirm"] = confirmation
@@ -241,7 +257,7 @@ func _show(name: String) -> void:
 			child.grab_focus()
 			break
 func _new_game() -> void:
-	await _start_session({})
+	await _start_session({}, "ST39", 0, {"native_save_byte14": 0, "native_save_byte16": 1, "native_save_word40": 0, "native_save_byte44": 1, "native_save_byte45": 1, "event_flags": {}})
 func _threaded_scene(path: String) -> PackedScene:
 	var status := ResourceLoader.load_threaded_get_status(path)
 	if status in [ResourceLoader.THREAD_LOAD_INVALID_RESOURCE, ResourceLoader.THREAD_LOAD_FAILED]:
@@ -314,7 +330,7 @@ func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0, co
 	candidate.entry_route = state.get("entry_route", {}).duplicate(true)
 	var entry_fade_code := int(candidate.entry_route.get("native_entry_fade", 0x02))
 	candidate.parked_location = state.get("parked_location", {}).duplicate(true)
-	candidate.native_context = state.get("native_context", context if not context.is_empty() else {"native_save_byte14": 0, "native_save_byte16": 0, "native_save_word40": 0, "native_save_byte44": 1, "event_flags": {}}).duplicate(true)
+	candidate.native_context = state.get("native_context", context if not context.is_empty() else {"native_save_byte14": 0, "native_save_byte16": 0, "native_save_word40": 0, "native_save_byte44": 1, "native_save_byte45": 1, "event_flags": {}}).duplicate(true)
 	candidate.initial_player_state = state.get("player", {}).duplicate(true) if candidate.entry_route.is_empty() else {}
 	candidate.audio_preparing = true
 	candidate.process_mode = Node.PROCESS_MODE_PAUSABLE
@@ -348,6 +364,8 @@ func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0, co
 	gameplay = candidate
 	gameplay.stage_transition_requested.connect(_stage_transition)
 	gameplay.location_requested.connect(_load_location)
+	gameplay.achievement_earned.connect(_unlock_achievement)
+	var achievement_blockers: Array[Control] = [pages["pause"], options, save_menu, custom, status_menu, achievement_menu, gameplay.dialogue_box, gameplay.transition_overlay]; achievement_notice.configure(achievement_blockers)
 	gameplay.show()
 	gameplay.get_node("HUD").show()
 	gameplay.player.mouse_sensitivity = float(settings.get_value("controls", "mouse_sensitivity", 0.003))
@@ -553,3 +571,9 @@ func _screen_node_added(node: Node) -> void:
 func _apply_screen_offset(node: Node) -> void:
 	if node is CanvasLayer: node.offset = Vector2(float(options.values.get("screen_x", 0)), float(options.values.get("screen_y", 0))) * get_viewport().get_visible_rect().size.y / 240.0
 	for child in node.get_children(): _apply_screen_offset(child)
+func achievement_badge(id: String) -> String:
+	return "res://assets/achievements/" + str(achievement_catalog[id]["icon_file" if achievements.has_section_key("unlocked", id) else "locked_icon_file"]) if achievement_catalog.has(id) else ""
+func _unlock_achievement(id: String) -> void:
+	if not achievement_catalog.has(id) or achievements.has_section_key("unlocked", id): return
+	achievements.set_value("unlocked", id, int(Time.get_unix_time_from_system())); achievements.save("user://achievements.cfg")
+	var definition: Dictionary = achievement_catalog[id]; achievement_notice.enqueue({"id": id, "title": definition["title"], "description": definition["description"], "icon": achievement_badge(id)})

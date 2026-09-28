@@ -41,6 +41,7 @@ var arrow_texture: Texture2D
 var glyph_delay := 0
 var pending_typing_sound := false
 var page_ready := false
+var advance_blocker: Callable
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); mouse_filter = Control.MOUSE_FILTER_IGNORE; texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST; visible = false
 	var manifest: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://assets/menu/manifest.json"))
@@ -127,14 +128,15 @@ func _unhandled_input(event: InputEvent) -> void:
 		if event.is_action_pressed("ui_down"): _move_native_choice(0, 1); get_viewport().set_input_as_handled(); return
 		if event.is_action_pressed("ui_left"): _move_native_choice(-1, 0); get_viewport().set_input_as_handled(); return
 		if event.is_action_pressed("ui_right"): _move_native_choice(1, 0); get_viewport().set_input_as_handled(); return
-		if not (event.is_action_pressed("interact") or event.is_action_pressed("ui_accept") or event.is_action_pressed("ui_cancel") or event.is_action_pressed("cancel")): return
+		if not (event.is_action_pressed("interact") or event.is_action_pressed("ui_accept") or event.is_action_pressed("ui_cancel")): return
 		get_viewport().set_input_as_handled()
-		if event.is_action_pressed("ui_cancel") or event.is_action_pressed("cancel"): current_choice_index = count
+		if event.is_action_pressed("ui_cancel"): current_choice_index = count
 		choice_completed.emit(current_choice_index); return
 	if not (event.is_action_pressed("interact") or event.is_action_pressed("ui_accept")): return
 	get_viewport().set_input_as_handled()
 	if not text_complete: pending_typing_sound = not "\n".join(pages[page_index]).substr(visible_glyphs).strip_edges().is_empty(); visible_glyphs = _page_glyph_count(pages[page_index]); text_complete = true; queue_redraw(); return
 	if not current_native_choice.is_empty(): choice_completed.emit(current_choice_index); return
+	if advance_blocker.is_valid() and advance_blocker.call(): return
 	advance_requested.emit()
 func _process(delta: float) -> void:
 	if is_instance_valid(choice_pointer) and not (active and FRAME.content_visible(self) and not current_native_choice.is_empty() and current_choice_index >= 0 and current_choice_index < int(current_native_choice.get("rows", []).size())): choice_pointer.hide()

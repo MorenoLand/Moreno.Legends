@@ -56,7 +56,7 @@ func _native_tick() -> void:
 		_sync(); return
 	if cooldown > 0: cooldown -= 1; pending_hit = false
 	elif pending_hit:
-		pending_hit = false; cooldown = 10; forward_speed = 768; vertical_speed = 640 - (int(context.get("native_camera_pitch_raw", 0)) & 0xFFFF); spinning = true; kick_count += 1; motion_heading = _player_heading()
+		pending_hit = false; cooldown = 10; forward_speed = 768; vertical_speed = 640 - _look_offset(); spinning = true; kick_count += 1; motion_heading = _player_heading()
 		stat_delta_requested.emit(-16); _sound(0x297)
 	if spinning or forward_speed != 0 or vertical_speed != 0:
 		vertical_speed -= 48; _move_can()
@@ -66,6 +66,9 @@ func _native_tick() -> void:
 	if _can_goal(): actor.visible = false; collision_layer = 0; goal_timer = 15; _sound(0x299)
 	if hit_queued: pending_hit = true; hit_queued = false
 	_sync()
+func _look_offset() -> int:
+	var pivot: Node3D = player.get("camera_pivot") as Node3D if is_instance_valid(player) else null
+	return clampi(roundi(-(pivot.rotation.x - deg_to_rad(-12.0)) * 4096.0 / TAU), -0x200, 0x200) if is_instance_valid(pivot) else 0
 func _player_heading() -> int:
 	if not is_instance_valid(player): return motion_heading
 	var model: Node3D = player.get("player_model") as Node3D
@@ -103,9 +106,12 @@ func _ray(first: Vector3, second: Vector3) -> Dictionary:
 	var query := PhysicsRayQueryParameters3D.create(first, second, 1, excluded); query.hit_back_faces = true
 	return get_world_3d().direct_space_state.intersect_ray(query)
 func _move_can() -> void:
-	var yaw := float(motion_heading) * TAU / 4096.0; var movement := Vector3(sin(yaw) * forward_speed, vertical_speed, -cos(yaw) * forward_speed) / 4096.0; var previous := actor.global_position; var next := previous + movement; var wall := _ray(previous + Vector3.UP * (8.0 / 256.0), next + Vector3.UP * (8.0 / 256.0))
+	var yaw := float(motion_heading) * TAU / 4096.0; var movement := Vector3(sin(yaw) * forward_speed, vertical_speed, -cos(yaw) * forward_speed) / 4096.0; var previous := actor.global_position; var next := previous + movement; var extent := 16.0 / 256.0; var sweep := Vector3(movement.x, 0.0, movement.z); var wall := _ray(previous + Vector3.UP * (8.0 / 256.0), next + Vector3.UP * (8.0 / 256.0) + (sweep.normalized() * extent if sweep.length_squared() > 0.0 else Vector3.ZERO))
 	if not wall.is_empty() and absf((wall["normal"] as Vector3).y) < 0.5:
-		var normal: Vector3 = wall["normal"]; var direction := Vector3(sin(yaw), 0.0, -cos(yaw)).bounce(normal); motion_heading = roundi(atan2(direction.x, -direction.z) * 4096.0 / TAU) & 4095; next.x = previous.x; next.z = previous.z; _sound(0x29A)
+		var normal: Vector3 = wall["normal"]; var contact: Vector3 = wall["position"]
+		if absf(normal.x) >= absf(normal.z): next.x = contact.x + signf(normal.x) * extent; motion_heading = (0x1000 - motion_heading) & 4095
+		else: next.z = contact.z + signf(normal.z) * extent; motion_heading = (0x800 - motion_heading) & 4095
+		_sound(0x29A)
 	elif not wall.is_empty() and (wall["normal"] as Vector3).y <= -0.5 and vertical_speed > 0: next.y = previous.y; vertical_speed = -vertical_speed; _sound(0x29A)
 	var floor := _ray(Vector3(next.x, maxf(previous.y, next.y) + 0.25, next.z), next - Vector3.UP * 0.25)
 	if not floor.is_empty() and (floor["normal"] as Vector3).y > 0.0:
