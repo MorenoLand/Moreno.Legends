@@ -39,6 +39,7 @@ var flame_ticks := 0
 var elapsed := 0.0
 var hit_center := Vector3.ZERO
 var spray_radius := 0.125
+var talk_registered := false
 func configure(source: Dictionary, node: Node3D, owner_node: Node, target: Node3D, table: Array, texture: Texture2D) -> void:
 	mission = source; profile = source["kitchen_data"]; model = node; controller = owner_node; player = target; trig = table; atlas = texture
 	var raw: Array = profile["actor"]["entry"]["position_raw"]; pos = Vector3i(int(raw[0]), int(raw[1]), int(raw[2])); previous = pos; yaw = int(profile["actor"]["entry"]["yaw_raw"])
@@ -54,9 +55,15 @@ func receive_ember(word: int) -> void: hit_word |= word
 func burning() -> bool: return (flags & 2) != 0
 func _physics_process(delta: float) -> void:
 	if not is_instance_valid(model): queue_free(); return
+	if is_instance_valid(controller) and bool(controller.get("data_rescued")):
+		_register_talk_target(); _draw_flame(); return
 	elapsed += delta * float(mission.get("native_tick_hz", 25))
 	while elapsed >= 1.0: elapsed -= 1.0; _tick()
 	_draw_flame()
+func _register_talk_target() -> void:
+	if talk_registered: return
+	var entry: Dictionary = profile["actor"]["entry"]
+	model.set_meta("native_stage", str(entry.get("stage", "ST1E"))); model.set_meta("native_area", int(entry.get("area", 2))); model.set_meta("native_actor_source", entry.duplicate(true)); model.set_meta("native_interaction", {"stage": "ST1E", "actor_class": 99, "request_kind": 0, "message_call": "0x80048474", "message_index": int(mission["messages"]["success"][0]), "bank_id": "0x8010C000", "data_menu": true, "service_stage": "ST04", "service_bank_id": "0x8010C000", "service_message_call": "0x800BDCF8", "service_message_index": 180}); model.add_to_group("native_interaction_targets"); talk_registered = true
 func _rand() -> int: return Npc.next_random(controller.host.native_context)
 func _tick() -> void:
 	previous = pos

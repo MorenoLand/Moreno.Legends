@@ -27,10 +27,13 @@ func run_pending(parent: Node3D, stage: String, area: int) -> bool:
 			if str(node.get_meta("native_spawn_set", "")) != str(request.get("spawn_set", "")): continue
 			var status: Dictionary = node.get_meta("native_action_status", {}); var action_key := str(request["key"]).get_slice(":", str(request["key"]).get_slice_count(":") - 1); status[action_key] = "done"; node.set_meta("native_action_status", status)
 	return true
-func run_scene(parent: Node3D, path: String, area: int) -> bool:
+func run_scene(parent: Node3D, path: String, area: int, camera_collision: bool = false, actor_models: Dictionary = {}) -> bool:
 	last_error = ""; transition_requested = false
 	var runtime: Node = Runtime.new(); add_child(runtime)
 	if not runtime.configure(host, parent, path, area): last_error = "Incomplete native scene assets: " + path; runtime.queue_free(); return false
+	runtime.camera_collision = camera_collision
+	for record: String in actor_models:
+		if runtime.records.has(record): runtime.records[record]["entry"]["model_file"] = str(actor_models[record])
 	active = true; var success: bool = await runtime.run(); var transition: Dictionary = runtime.transition_route.duplicate(true); runtime.queue_free(); active = false
 	if not success: last_error = "Native scene execution failed: " + path; return false
 	if not transition.is_empty(): transition_requested = true; host.stage_transition_requested.emit(transition)

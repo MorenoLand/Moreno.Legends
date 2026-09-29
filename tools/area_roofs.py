@@ -213,7 +213,9 @@ def export(dat_dir=None, output_dir=None, stages=None):
             values = struct.unpack_from("<BB5h", data, offset); record = {"area": index, "native_camera_record": list(values), "fixed_pitch": values[1] == 2, "source_offset": hex(offset), "roof": {"reason": "camera_allows_pitch", "vertices": []}}; mesh_path = output_dir / stage / ("area_%02d.glb" % index)
             if record["fixed_pitch"] and mesh_path.is_file():
                 triangles = geometry(mesh_path, area_flags.get(index, False)); record["roof"] = roof_geometry(triangles); close_raised_roof(triangles, record["roof"])
-            if stage == "ST04" and index == 0 and record["roof"]["reason"] == "existing_ceiling": record["roof"]["blackouts"] = ceiling_holes(geometry(mesh_path, area_flags.get(index, False)), record["roof"]["height"])
+            if stage in ("ST04", "ST06", "ST07") and index == 0 and mesh_path.is_file():
+                triangles = geometry(mesh_path, area_flags.get(index, False)); ceiling = roof_geometry(triangles)
+                if ceiling["reason"] == "existing_ceiling": record["roof"]["blackouts"] = ceiling_holes(triangles, ceiling["height"])
             summary[record["roof"]["reason"]] += 1; records.append(record)
         manifest = {"stage": stage, "source": {"archive": "DAT/" + path.name, "camera_table": hex(table), "record_stride": 12, "loader": "SLES80016270", "fixed_pitch_branch": "SLES800163EC..80016404; mode2 ignores look offset", "classification": "Fixed pitch is a roof candidate hint, not an indoor flag; generated geometry is a Godot adaptation"}, "areas": records}; write_if_changed(output_dir / stage / "area_roofs.json", json.dumps(manifest, separators=(",", ":")) + "\n", encoding="utf-8")
     return dict(summary)

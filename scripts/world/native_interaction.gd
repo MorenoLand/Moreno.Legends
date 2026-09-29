@@ -7,6 +7,10 @@ static func attach(node: Node3D, record: Dictionary) -> bool:
 	return true
 static func binding(node: Node3D) -> Dictionary:
 	return node.get_meta("native_interaction", {}) if is_instance_valid(node) else {}
+static func is_data_service(node: Node3D) -> bool:
+	var source := binding(node)
+	var record: Dictionary = node.get_meta("native_actor_source", {}) if is_instance_valid(node) else {}
+	return bool(source.get("data_menu", false)) or int(source.get("actor_class", -1)) == 1 and int(source.get("request_kind", -1)) == 2 and (int(record.get("native_resource_flags", -1)) & 0xFFFFFF) == 0x120
 static func has_target_profile(node: Node3D) -> bool:
 	var source := binding(node); var descriptor: Array = source.get("target_descriptor_raw", []); var criteria: Dictionary = source.get("target_criteria", {})
 	return descriptor.size() == 6 and source.has("target_flags60") and criteria.has("range_extra_raw") and criteria.has("yaw_half_cone_raw") and criteria.has("line_of_sight") and not bool(criteria["line_of_sight"])
@@ -32,6 +36,7 @@ static func player_faces_target(player: Node3D, target: Node3D) -> bool:
 	return mini(difference, 4096 - difference) < 512
 static func begin_facing(node: Node3D, player: Node3D) -> Node:
 	if not is_instance_valid(node) or not is_instance_valid(player): return null
+	if node.has_meta("native_item_controller"): return null
 	var source := binding(node)
 	if source.is_empty():
 		var entry: Variant = node.get("source") if node is StaticBody3D else null
@@ -50,16 +55,24 @@ static func resolve_pose(record: Dictionary, native_context: Dictionary) -> Dict
 	if not player is Array or player.size() < 3: push_error("Missing original player pose for native NPC position resolver"); return {}
 	var selected: Dictionary = resolver["default"]
 	for candidate: Dictionary in resolver["cases"]:
+		var guard := int(candidate.get("when_event_flag_clear", -1)); var flags: Dictionary = native_context.get("event_flags", {})
+		if guard >= 0 and bool(flags.get(guard, flags.get(str(guard), false))): continue
 		if int(player[0]) == int(candidate["player_xz"][0]) and int(player[2]) == int(candidate["player_xz"][1]): selected = candidate; break
 	var raw: Array = record["transform_raw"]
-	return {"position": [-float(selected["actor_xz"][0]) / 256.0, -float(raw[1]) / 256.0, float(selected["actor_xz"][1]) / 256.0], "yaw_raw": int(selected["yaw_raw"]), "yaw_turns": -float(selected["yaw_raw"]) / 4096.0, "floor_height": bool(record["transform"].get("floor_height", false)), "native_resolver_result": int(selected["result"])}
+	return {"position": [-float(selected["actor_xz"][0]) / 256.0, -float(raw[1]) / 256.0, float(selected["actor_xz"][1]) / 256.0], "yaw_raw": int(selected["yaw_raw"]), "yaw_turns": -float(selected["yaw_raw"]) / 4096.0, "floor_height": bool(record["transform"].get("floor_height", false)), "native_resolver_result": int(selected.get("result", 0)), "arrival_message_index": int(selected.get("arrival_message_index", -1))}
 static func can_play(node: Node3D, event_script: Node) -> bool:
+	var item: Node = node.get_meta("native_item_controller") if is_instance_valid(node) and node.has_meta("native_item_controller") else null
+	if is_instance_valid(item): return item.can_interact()
+	return is_data_service(node) or can_play_dialogue(node, event_script)
+static func can_play_dialogue(node: Node3D, event_script: Node) -> bool:
 	var source := binding(node)
 	if source.is_empty() or not is_instance_valid(event_script): return false
 	if source.has("bank_id"): return event_script.can_play_bound_message(str(source["stage"]), str(source["bank_id"]), int(source["message_index"]))
 	return event_script.can_play_native_call(str(source["stage"]), str(source["message_call"]), int(source["message_index"]))
 static func play(node: Node3D, event_script: Node) -> bool:
-	if not can_play(node, event_script): return false
+	var item: Node = node.get_meta("native_item_controller") if is_instance_valid(node) and node.has_meta("native_item_controller") else null
+	if is_instance_valid(item): return await item.interact()
+	if not can_play_dialogue(node, event_script): return false
 	var source := binding(node)
 	if source.has("bank_id"): return await event_script.play_bound_message(str(source["stage"]), str(source["bank_id"]), int(source["message_index"]), str(source["message_call"]), node)
 	return await event_script.play_native_call(str(source["stage"]), str(source["message_call"]), int(source["message_index"]), node)

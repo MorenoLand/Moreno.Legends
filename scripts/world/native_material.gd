@@ -10,7 +10,9 @@ static func area_parameters(path: String, area: int) -> Dictionary:
 	return {}
 static func apply(root: Node3D, color_scale: float = 255.0) -> void:
 	preload("res://scripts/world/native_coplanar_overlays.gd").apply(root)
-	for node in root.find_children("*", "MeshInstance3D", true, false):
+	var nodes: Array[Node] = root.find_children("*", "MeshInstance3D", true, false)
+	if root is MeshInstance3D: nodes.push_front(root)
+	for node in nodes:
 		var mesh := node as MeshInstance3D
 		if mesh.mesh == null: continue
 		for surface in range(mesh.mesh.get_surface_count()):
@@ -28,7 +30,7 @@ static func apply(root: Node3D, color_scale: float = 255.0) -> void:
 			material.set_shader_parameter("part_visible", not source.resource_name.ends_with("_default_hidden"))
 			material.set_shader_parameter("coplanar_overlay_flags", bool(mesh.mesh.get_meta("coplanar_overlays", false)))
 			mesh.set_surface_override_material(surface, material)
-static func depth_cue(root: Node3D, parameters: Dictionary) -> void:
+static func depth_cue(root: Node3D, parameters: Dictionary, exterior_atmosphere: bool = false) -> void:
 	if not is_instance_valid(root): return
 	var rgb: Array = parameters.get("far_rgb", [0, 0, 0])
 	for node in root.find_children("*", "MeshInstance3D", true, false):
@@ -37,6 +39,7 @@ static func depth_cue(root: Node3D, parameters: Dictionary) -> void:
 		for surface in mesh.mesh.get_surface_count():
 			var material := mesh.get_active_material(surface) as ShaderMaterial
 			if material == null: continue
+			if material.shader == preload("res://shaders/native_model.gdshader"): material.set_shader_parameter("exterior_atmosphere", exterior_atmosphere)
 			material.set_shader_parameter("native_depth_cue_enabled", bool(parameters.get("enabled", false)))
 			material.set_shader_parameter("native_depth_cue_shift", int(parameters.get("depth_shift", 0)))
 			material.set_shader_parameter("native_far_color", Vector3(float(rgb[0]), float(rgb[1]), float(rgb[2])))

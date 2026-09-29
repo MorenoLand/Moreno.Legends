@@ -19,10 +19,21 @@ var speed := 128
 var vertical_speed := 0
 var avoidance_heading := 0
 var avoidance_timer := 0
+var floor_initialized := false
+var spawn_entry: Dictionary = {}
+var gameplay: Node3D
+var tundra := false
+var stop_control := -1
+var river_detour := false
 func configure(owner: Node3D, entry: Dictionary, context: Dictionary) -> bool:
+	spawn_entry = entry.duplicate(true)
+	tundra = str(entry.get("native_follower_profile", "")) == "tundra"
 	actor = owner; native_context = context; animation_clock = actor.get_node_or_null("NativeAnimationClock") as NativeAnimation
 	var ancestor: Node = actor
-	while ancestor != null and player == null: player = ancestor.get_node_or_null("Player") as CharacterBody3D; ancestor = ancestor.get_parent()
+	while ancestor != null and player == null:
+		player = ancestor.get_node_or_null("Player") as CharacterBody3D
+		if player != null: gameplay = ancestor as Node3D
+		ancestor = ancestor.get_parent()
 	if animation_clock == null or player == null: return false
 	if trig.is_empty():
 		var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://assets/weather/manifest.json"))
@@ -30,16 +41,30 @@ func configure(owner: Node3D, entry: Dictionary, context: Dictionary) -> bool:
 		trig = parsed["trig4096"]
 	if trig.size() != 4096: return false
 	animation_clock.automatic = false; previous_player = player.global_position; waypoint = actor.global_position; heading = roundi(-actor.rotation.y * 4096.0 / TAU) & 4095
-	actor.set_meta("native_behavior_source", "ST08T E93EC/E9740/E98F0; states E9AC8/E9B2C/E9C70")
+	actor.set_meta("native_behavior_source", "ST0DT EB9BC/EBD78; normal following and river routing" if tundra else "ST09T E9D0C/EA1B0; shared friendly follower" if str(entry.get("stage", "")) == "ST09" else "ST08T E93EC/E9740/E98F0; states E9AC8/E9B2C/E9C70")
 	actor.set_meta("native_ray_adapter", "Godot map visibility ray and body/floor queries replace primitive7 asynchronous ray and native map collision")
+	var ground := Motion.ray(actor, Vector3(actor.global_position.x, maxf(actor.global_position.y, player.global_position.y) + 1.0, actor.global_position.z), actor.global_position - Vector3.UP * 2.0)
+	if not ground.is_empty() and (ground["normal"] as Vector3).y >= 0.65: actor.global_position.y = (ground["position"] as Vector3).y
+	waypoint = actor.global_position
 	return true
 func native_tick() -> void:
 	if not is_instance_valid(actor) or not is_instance_valid(player): return
+	if not floor_initialized:
+		if spawn_entry.has("native_pose_resolver"):
+			var parent := actor.get_parent() as Node3D; var point := parent.to_local(player.global_position); var context := native_context.duplicate(true); context["native_player_pose_raw"] = [roundi(-point.x * 256.0), roundi(-point.y * 256.0), roundi(point.z * 256.0), roundi(-player.player_model.rotation.y * 4096.0 / TAU) & 4095]; var pose := preload("res://scripts/world/native_interaction.gd").resolve_pose(spawn_entry, context)
+			if not pose.is_empty():
+				actor.position = Vector3(pose["position"][0], pose["position"][1], pose["position"][2]); heading = int(pose["yaw_raw"]); actor.rotation.y = -float(heading) * TAU / 4096.0
+				if int(pose.get("arrival_message_index", -1)) >= 0: _arrival_message.call_deferred(int(pose["arrival_message_index"]))
+		var ground := Motion.ray(actor, Vector3(actor.global_position.x, maxf(actor.global_position.y, player.global_position.y) + 1.0, actor.global_position.z), actor.global_position - Vector3.UP * 2.0)
+		if not ground.is_empty() and (ground["normal"] as Vector3).y >= 0.65: actor.global_position.y = (ground["position"] as Vector3).y
+		waypoint = actor.global_position; floor_initialized = true
 	var control := animation_clock.current_control
 	match mode:
 		0:
-			if not entered: control = 0; entered = true
-			if _distance(actor.global_position, player.global_position) > 512: _state(1)
+			if not entered: control = stop_control if tundra and stop_control >= 0 else 0; entered = true
+			if tundra and stop_control >= 0:
+				if animation_clock.current_control == stop_control and animation_clock.held: stop_control = -1; control = 0
+			elif _distance(actor.global_position, player.global_position, tundra) > 512 and (not tundra or animation_clock.record_flags & 128): _state(1)
 		1, 2:
 			speed = 128 if mode == 1 else 384
 			if not entered: control = 1 if mode == 1 else 2; entered = true
@@ -49,10 +74,12 @@ func native_tick() -> void:
 			if bool(moved["blocked"]): _state(3)
 			elif not bool(moved["floor"]): _state(5)
 			else:
-				var distance: int = _distance(actor.global_position, player.global_position)
-				if distance < 256: _state(0)
-				elif _distance(actor.global_position, waypoint) < 128: _state(2 if mode == 1 else 1)
-				elif mode == 1 and distance > 1024: _state(2)
+				var distance: int = _distance(actor.global_position, player.global_position, tundra)
+				if distance < (512 if tundra and mode == 2 else 256) and (not tundra or mode == 1 or animation_clock.record_flags & 128):
+					if tundra: stop_control = 6 if mode == 2 else 5
+					_state(0)
+				elif not tundra and _distance(actor.global_position, waypoint) < 128: _state(2 if mode == 1 else 1)
+				elif mode == 1 and distance > 1024 and (not tundra or animation_clock.record_flags & 128): _state(2)
 		3:
 			if not entered: control = 1; speed = 128; avoidance_timer = 0; entered = true
 			if avoidance_timer <= 0:
@@ -72,6 +99,7 @@ func native_tick() -> void:
 	else: animation_clock.native_tick()
 	_update_waypoint()
 func begin_talk() -> void:
+	stop_control = -1
 	_state(4); animation_clock.play_control(0)
 func end_talk() -> void:
 	_state(0)
@@ -80,13 +108,19 @@ func _turn(desired: int, maximum: int) -> void:
 	var difference: int = ((desired - heading + 2048) & 4095) - 2048; heading = (heading + clampi(difference, -maximum, maximum)) & 4095; actor.rotation.y = -float(heading) * TAU / 4096.0
 func _motion() -> Vector3: return Vector3(float(speed * int(trig[heading][0])), -float(vertical_speed * 4096), -float(speed * int(trig[heading][1]))) / 16777216.0
 func _update_waypoint() -> void:
+	if tundra:
+		var player_x := int(-player.global_position.x * 256.0); var actor_x := int(-actor.global_position.x * 256.0); var bank := 0
+		if player_x >= -2047: bank = -4608 if actor_x < -4608 else -2048 if actor_x < -2048 else 0
+		elif player_x >= -4607: bank = -4608 if actor_x < -4608 else -2048 if actor_x >= -2047 else 0
+		else: bank = -2048 if actor_x >= -2047 else -4608 if actor_x >= -4607 else 0
+		river_detour = bank != 0; waypoint = Vector3(-float(bank) / 256.0, actor.global_position.y, -4864.0 / 256.0) if river_detour else previous_player; previous_player = player.global_position; ray_blocked = false; actor.set_meta("native_waypoint", waypoint); return
 	var result: Dictionary = Motion.ray(actor, actor.global_position + Vector3.UP * 0.25, player.global_position + Vector3.UP * 0.25, Motion.excluded(player))
-	ray_blocked = not result.is_empty()
+	ray_blocked = not result.is_empty() and (result["normal"] as Vector3).y < 0.65
 	if not ray_blocked: waypoint = previous_player
 	previous_player = player.global_position; actor.set_meta("native_waypoint", waypoint); actor.set_meta("native_ray_blocked", ray_blocked)
-func _distance(first: Vector3, second: Vector3) -> int:
+func _distance(first: Vector3, second: Vector3, vertical: bool = false) -> int:
 	var x: int = int((first.x - second.x) * 256.0); var z: int = int((first.z - second.z) * 256.0)
-	return int(sqrt(float(x * x + z * z)))
+	var y := int((first.y - second.y) * 256.0) if vertical else 0; return int(sqrt(float(x * x + y * y + z * z)))
 func _angle(first: Vector3, second: Vector3) -> int:
 	var x: int = int((second.x - first.x) * 16777216.0); var z: int = int((first.z - second.z) * 16777216.0); var negative_x := x < 0; var negative_z := z < 0; x = absi(x); z = absi(z)
 	if x == 0 and z == 0: return 0
@@ -100,6 +134,12 @@ func _angle(first: Vector3, second: Vector3) -> int:
 	if negative_z: angle = 2048 - angle
 	if negative_x: angle = -angle
 	return angle & 4095
+func _arrival_message(index: int) -> void:
+	if not is_instance_valid(actor) or not is_instance_valid(gameplay): return
+	var original := preload("res://scripts/world/native_interaction.gd").binding(actor).duplicate(true); var source := original.duplicate(true); source["message_index"] = index; source["request_kind"] = 0x10; actor.set_meta("native_interaction", source); await gameplay._talk_to_npc(actor)
+	if is_instance_valid(actor): actor.set_meta("native_interaction", original)
 func _physics_process(delta: float) -> void:
+	if not is_instance_valid(gameplay) or not bool(gameplay.get("preparation_finished")) or not bool(gameplay.get("playable")): return
+	if mode != 4 and (bool(gameplay.get("loading")) or not player.is_physics_processing()): return
 	elapsed += delta * 25.0
 	while elapsed >= 1.0: elapsed -= 1.0; native_tick()

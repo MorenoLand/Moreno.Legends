@@ -19,10 +19,10 @@ func configure(owner: Node) -> void:
 	host = owner; set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	var manifest: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://assets/menu/manifest.json")); layout = manifest["load_game_layout"]; font = load("res://assets/menu/native_font.fnt") as Font
 	surface = Control.new(); surface.mouse_filter = Control.MOUSE_FILTER_IGNORE; add_child(surface)
-	scroll = ScrollContainer.new(); scroll.position = Vector2(53, 69); scroll.size = Vector2(218, 108); scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER; scroll.follow_focus = true; surface.add_child(scroll)
+	scroll = ScrollContainer.new(); scroll.position = Vector2(53, 71); scroll.size = Vector2(218, 108); scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER; scroll.follow_focus = true; surface.add_child(scroll)
 	rows = VBoxContainer.new(); rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL; rows.add_theme_constant_override("separation", 0); scroll.add_child(rows)
-	pointer = preload("res://scripts/ui/native_menu_cursor.gd").new(); pointer.configure(Vector2(40, 71)); surface.add_child(pointer)
-	details = Label.new(); details.mouse_filter = Control.MOUSE_FILTER_IGNORE; details.add_theme_font_override("font", font); details.add_theme_font_size_override("font_size", 9); details.position = Vector2(44, 192); details.size = Vector2(232, 32); details.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; details.clip_text = true; surface.add_child(details)
+	pointer = preload("res://scripts/ui/native_menu_cursor.gd").new(); pointer.configure(Vector2(40, 73)); surface.add_child(pointer)
+	details = Label.new(); details.mouse_filter = Control.MOUSE_FILTER_IGNORE; details.add_theme_font_override("font", font); details.add_theme_font_size_override("font_size", 9); details.position = Vector2(44, 200); details.size = Vector2(232, 28); details.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; details.clip_text = true; surface.add_child(details)
 	scroll.get_v_scroll_bar().value_changed.connect(func(_value: float): _place_pointer())
 	resized.connect(_layout); visibility_changed.connect(func(): if visible: call_deferred("focus_first"))
 	_layout()
@@ -35,6 +35,7 @@ func refresh() -> void:
 		var button := Button.new(); button.custom_minimum_size.y = 18; button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		for state in ["normal", "hover", "pressed", "focus", "disabled"]: button.add_theme_stylebox_override(state, StyleBoxEmpty.new())
 		button.focus_entered.connect(_focus_row.bind(buttons.size())); button.mouse_entered.connect(button.grab_focus); rows.add_child(button)
+		button.gui_input.connect(_debug_click.bind(id, button))
 		var line := HBoxContainer.new(); line.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); line.mouse_filter = Control.MOUSE_FILTER_IGNORE; line.add_theme_constant_override("separation", 4); button.add_child(line)
 		var badge := TextureRect.new(); badge.mouse_filter = Control.MOUSE_FILTER_IGNORE; badge.custom_minimum_size = Vector2(16, 16); badge.expand_mode = TextureRect.EXPAND_IGNORE_SIZE; badge.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED; badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		var path: String = host.achievement_badge(id); badge.texture = load(path) as Texture2D if ResourceLoader.exists(path) else null; line.add_child(badge)
@@ -43,6 +44,9 @@ func refresh() -> void:
 	for index in range(buttons.size()):
 		buttons[index].focus_neighbor_top = buttons[index].get_path_to(buttons[index - 1]); buttons[index].focus_neighbor_bottom = buttons[index].get_path_to(buttons[(index + 1) % buttons.size()])
 	selected_index = clampi(selected_index, 0, maxi(buttons.size() - 1, 0)); _focus_row(selected_index); queue_redraw()
+func _debug_click(event: InputEvent, id: String, button: Button) -> void:
+	if not host.debug_achievements or not event is InputEventMouseButton or not event.pressed or event.button_index not in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT]: return
+	button.accept_event(); host.debug_set_achievement(id, event.button_index == MOUSE_BUTTON_LEFT)
 func focus_first() -> void:
 	if is_visible_in_tree() and selected_index < buttons.size(): buttons[selected_index].grab_focus()
 func _focus_row(index: int) -> void:
@@ -55,8 +59,8 @@ func _focus_row(index: int) -> void:
 	_place_pointer()
 func _place_pointer() -> void:
 	if pointer == null or selected_index >= buttons.size(): return
-	var y := 71.0 + float(selected_index) * 18.0 - float(scroll.scroll_vertical)
-	pointer.visible = y >= 67.0 and y <= 69.0 + scroll.size.y - 10.0;pointer.select_at(Vector2(40, y)); queue_redraw()
+	var y := 73.0 + float(selected_index) * 18.0 - float(scroll.scroll_vertical)
+	pointer.visible = y >= 69.0 and y <= 71.0 + scroll.size.y - 10.0;pointer.select_at(Vector2(40, y)); queue_redraw()
 func _unhandled_input(event: InputEvent) -> void:
 	if not visible: return
 	if event.is_action_pressed("ui_cancel") or event.is_action_pressed("ui_accept"): closed.emit(); get_viewport().set_input_as_handled()
@@ -71,8 +75,8 @@ func animate_exit(context: String) -> void:
 func _draw() -> void:
 	if layout.is_empty() or size.y <= 0: return
 	var factor: float = size.y / 240.0; draw_set_transform(Vector2((size.x - 320.0 * factor) * 0.5, 0), 0, Vector2.ONE * factor)
-	FRAME.draw(self, layout, "header", Rect2(20, 16, 112, 24)); FRAME.draw(self, layout, "prompt", Rect2(36, 43, 248, 14)); FRAME.draw(self, layout, "selector", Rect2(36, 62, 248, 122)); FRAME.draw(self, layout, "prompt", Rect2(36, 188, 248, 40))
+	FRAME.draw(self, layout, "header", Rect2(20, 4, 112, 22)); FRAME.draw(self, layout, "prompt", Rect2(36, 38, 248, 14)); FRAME.draw(self, layout, "selector", Rect2(36, 64, 248, 120)); FRAME.draw(self, layout, "prompt", Rect2(36, 196, 248, 34))
 	if not FRAME.content_visible(self): return
-	draw_string(font, Vector2(29, 22 + font.get_ascent(12)), "Achievements", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
-	draw_string(font, Vector2(44, 45 + font.get_ascent(9)), "%d / %d unlocked   %d / %d points" % [unlocked_count, ids.size(), earned_points, total_points], HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color.WHITE)
+	draw_string(font, Vector2(29, 10 + font.get_ascent(12)), "Achievements", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
+	draw_string(font, Vector2(44, 40 + font.get_ascent(9)), "%d / %d unlocked   %d / %d points" % [unlocked_count, ids.size(), earned_points, total_points], HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color.WHITE)
 func _readable_text(value: String) -> String: return value.replace("[", "(").replace("]", ")").replace("|", ",")

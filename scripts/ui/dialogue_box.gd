@@ -6,6 +6,7 @@ signal choice_completed(choice_index: int)
 signal message_started(stage: String, index: int)
 signal message_finished(stage: String, index: int)
 signal typing_sound_requested(sound_id: int)
+signal menu_sound_requested(name: String)
 const FRAME = preload("res://scripts/ui/native_menu_frame.gd")
 var layout: Dictionary = {}
 var font: Font
@@ -42,6 +43,8 @@ var glyph_delay := 0
 var pending_typing_sound := false
 var page_ready := false
 var advance_blocker: Callable
+var heading_panel: Dictionary = {}
+var choice_sounds := false
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); mouse_filter = Control.MOUSE_FILTER_IGNORE; texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST; visible = false
 	var manifest: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://assets/menu/manifest.json"))
@@ -75,6 +78,8 @@ func _update_choice_pointer(_stage: String, _index: int, _selection: int, point:
 	elif target != choice_pointer_target: choice_pointer.select_at(target); choice_pointer_target = target
 	choice_pointer.show()
 func present_message(stage: String, entry: Dictionary) -> Dictionary:
+	heading_panel = entry.get("heading_panel", {})
+	choice_sounds = bool(entry.get("choice_sounds", false))
 	var continuing := active
 	page_ready = false; visible_glyphs = 0; text_complete = false; pending_typing_sound = false
 	if not continuing: active = true; active_stage = stage; active_index = int(entry.get("index", -1)); message_started.emit(active_stage, active_index)
@@ -131,6 +136,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		if not (event.is_action_pressed("interact") or event.is_action_pressed("ui_accept") or event.is_action_pressed("ui_cancel")): return
 		get_viewport().set_input_as_handled()
 		if event.is_action_pressed("ui_cancel"): current_choice_index = count
+		if choice_sounds:
+			var cancelled := current_choice_index >= count or current_choice_index >= 0 and bool(current_native_choice["rows"][current_choice_index].get("cancel", false))
+			menu_sound_requested.emit("menu_cancel" if cancelled else "menu_confirm")
 		choice_completed.emit(current_choice_index); return
 	if not (event.is_action_pressed("interact") or event.is_action_pressed("ui_accept")): return
 	get_viewport().set_input_as_handled()
@@ -162,7 +170,9 @@ func _draw() -> void:
 	if not active or font == null or layout.is_empty() or size.y <= 0: return
 	var factor := size.y / 240.0; draw_set_transform(Vector2((size.x - 320.0 * factor) * 0.5, 0), 0, Vector2.ONE * factor)
 	FRAME.draw(self, layout, "prompt", current_frame)
+	if not heading_panel.is_empty(): FRAME.draw(self, layout, "prompt", Rect2(85, 32, 151, 23))
 	if pages.is_empty() or not FRAME.content_visible(self): return
+	if not heading_panel.is_empty(): draw_string(font, Vector2(92, 38 + font.get_ascent(12)), str(heading_panel["text"]), HORIZONTAL_ALIGNMENT_LEFT, 144, 12, Color.WHITE)
 	var remaining := visible_glyphs; var y := current_layout_origin.y + 3.0 + font.get_ascent(12)
 	for line_index in range(pages[page_index].size()):
 		var line := pages[page_index][line_index]; var shown := mini(remaining, line.length()); if shown > 0: draw_string(font, Vector2(current_layout_origin.x, y), line.substr(0, shown), HORIZONTAL_ALIGNMENT_LEFT, current_frame.size.x - 10, 12, Color.WHITE)
@@ -209,7 +219,10 @@ func _move_native_choice(dx: int, dy: int) -> void:
 		if dy != 0 and int(point[0]) == int(source[0]): distance = posmod((int(point[1]) - int(source[1])) * dy, 256)
 		elif dx != 0 and int(point[1]) == int(source[1]): distance = posmod((int(point[0]) - int(source[0])) * dx, 256)
 		if distance > 0 and distance < best_distance: best = candidate; best_distance = distance
-	if best >= 0: current_choice_index = best; queue_redraw()
+	if best >= 0:
+		current_choice_index = best
+		if choice_sounds: menu_sound_requested.emit("menu_move")
+		queue_redraw()
 func _source_speed(value: Variant) -> int:
 	if typeof(value) == TYPE_INT or typeof(value) == TYPE_FLOAT: return int(value)
 	if value is Array or value is PackedInt32Array:

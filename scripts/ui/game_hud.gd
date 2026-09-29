@@ -1,4 +1,5 @@
 extends Control
+const FRAME = preload("res://scripts/ui/native_menu_frame.gd")
 var textures: Dictionary = {}
 var health := 80
 var threat_alert := false
@@ -23,6 +24,8 @@ var interaction_text := ""
 var interaction_key := ""
 var interaction_layout: Dictionary = {}
 var interaction_font: Font
+var interaction_generation := 0
+var interaction_closing := false
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -53,8 +56,34 @@ func _ready() -> void:
 		interaction_layout = menu["load_game_layout"]
 		interaction_font = load("res://assets/menu/native_font.fnt") as Font
 func set_interaction(position: Vector2, text: String, key: String = "") -> void:
-	if interaction_position == position and interaction_text == text and interaction_key == key: return
-	interaction_position = position; interaction_text = text; interaction_key = key; queue_redraw()
+	if text.is_empty():
+		if interaction_text.is_empty() or interaction_closing: return
+		interaction_generation += 1; interaction_closing = true; call_deferred("_animate_interaction_exit", interaction_generation); return
+	if interaction_text.is_empty() or interaction_closing:
+		interaction_generation += 1; interaction_closing = false; interaction_position = position; interaction_text = text; interaction_key = key; set_meta("native_panel_rectangles", {}); remove_meta("native_panel_animation"); queue_redraw(); call_deferred("_animate_interaction_enter", interaction_generation); return
+	if interaction_text == text and interaction_key == key and interaction_position == position: return
+	interaction_text = text; interaction_key = key
+	var animation: Dictionary = get_meta("native_panel_animation", {})
+	if animation.is_empty() or bool(animation.get("complete", false)):
+		if interaction_position != position: set_meta("native_panel_rectangles", {})
+		interaction_position = position
+	queue_redraw()
+func animate_enter(context: String = "gameplay") -> bool: return await FRAME.enter(self, interaction_layout, context)
+func animate_exit(context: String = "gameplay") -> bool: return await FRAME.exit(self, interaction_layout, context)
+func _animate_interaction_enter(generation: int) -> void:
+	await get_tree().process_frame
+	if generation != interaction_generation or interaction_closing or interaction_text.is_empty(): return
+	await animate_enter("gameplay")
+	if generation != interaction_generation or interaction_closing: return
+	remove_meta("native_panel_animation"); set_meta("native_panel_rectangles", {}); queue_redraw()
+func _animate_interaction_exit(generation: int) -> void:
+	await get_tree().process_frame
+	if generation != interaction_generation or not interaction_closing: return
+	if get_meta("native_panel_rectangles", {}).is_empty(): _finish_interaction_exit(generation); return
+	await animate_exit("gameplay"); _finish_interaction_exit(generation)
+func _finish_interaction_exit(generation: int) -> void:
+	if generation != interaction_generation or not interaction_closing: return
+	interaction_position = Vector2.ZERO; interaction_text = ""; interaction_key = ""; interaction_closing = false; remove_meta("native_panel_animation"); set_meta("native_panel_rectangles", {}); queue_redraw()
 func _layout_minimap() -> void:
 	if minimap == null: return
 	var factor := size.y / 240.0
@@ -90,7 +119,8 @@ func _draw() -> void:
 		var height := interaction_font.get_height(12) + 8.0
 		var position := interaction_position / factor - Vector2(width * 0.5, height + 8.0)
 		position.x = clampf(position.x, 4.0, size.x / factor - width - 4.0); position.y = clampf(position.y, 4.0, size.y / factor - height - 4.0)
-		preload("res://scripts/ui/native_menu_frame.gd").draw(self, interaction_layout, "header", Rect2(position, Vector2(width, height)))
+		FRAME.draw(self, interaction_layout, "header", Rect2(position, Vector2(width, height)))
+		if not FRAME.content_visible(self): return
 		var text_position := position + Vector2(7, 4 + interaction_font.get_ascent(12))
 		if key_width > 0.0:
 			var key_edge := position + Vector2(7, height - 3); draw_polyline(PackedVector2Array([key_edge + Vector2(0, -2), key_edge, key_edge + Vector2(key_width - 4, 0), key_edge + Vector2(key_width - 4, -2)]), Color8(185, 190, 208), 1.0)

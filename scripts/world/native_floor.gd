@@ -3,25 +3,26 @@ const SIMPLE_RAMP_ORIENTATION := {0x04: 0, 0x05: 1, 0x06: 2, 0x07: 3, 0x10: 0, 0
 const DIAGONAL_ORIENTATION := {0x14: 4, 0x16: 2, 0x17: 3, 0x15: 5, 0x23: 2, 0x24: 2, 0x33: 3, 0x34: 3, 0x43: 4, 0x44: 4, 0x53: 5, 0x54: 5}
 const TRIANGULAR_PRISM := [0x22, 0x32, 0x42, 0x52]
 static func apply(level: Node3D, source: Dictionary, area: int, native_context: Dictionary = {}) -> int:
-	var groups := {}; var automatic := {}; var manual := {}; var count := 0
+	var groups := {}; var automatic := {}; var manual := {}; var elevators := {}; var count := 0
 	for record: Dictionary in source.get(str(area), {}).get("boxes", []):
 		var placement := int(record["placement"])
 		if not groups.has(placement): groups[placement] = []
 		if int(record["kind"]) >> 8 == 15 and (int(record["mask"]) & 0x8000) == 0: automatic[placement] = true
 		if int(record["kind"]) >= 0x100 and int(record["kind"]) >> 8 != 15: manual[placement] = true
-		if int(record["kind"]) < 0x100 and int(record["mask"]) != 0: groups[placement].append(record)
+		if int(record["kind"]) >> 8 == 4: elevators[placement] = true
+		if int(record["kind"]) < 0x100 and (int(record["mask"]) & 1) != 0: groups[placement].append(record)
 	for placement: int in groups:
 		var records: Array = groups[placement]; var ramp := false; var unported := false
 		for record: Dictionary in records:
 			var kind := int(record["kind"]); ramp = ramp or (SIMPLE_RAMP_ORIENTATION.has(kind) and kind not in [0x04, 0x05, 0x06, 0x07]) or DIAGONAL_ORIENTATION.has(kind)
 			if kind not in [0, 2, 0x1C] and kind not in TRIANGULAR_PRISM and not SIMPLE_RAMP_ORIENTATION.has(kind) and not DIAGONAL_ORIENTATION.has(kind): unported = true
-		if not ramp and not automatic.has(placement) and (unported or records.is_empty() or manual.has(placement)): continue
+		if not elevators.has(placement) and not ramp and not automatic.has(placement) and (unported or records.is_empty() or manual.has(placement)): continue
 		var meshes := level.find_children("placement_%03d_model_*" % placement, "MeshInstance3D", true, false)
 		if meshes.is_empty(): continue
 		var body := StaticBody3D.new(); body.name = "NativePlacementFloor_%03d" % placement; body.collision_layer = 1; body.collision_mask = 0
 		for record: Dictionary in records:
 			var kind := int(record["kind"]); var x: Array = record["x"]; var y: Array = record["y"]; var z: Array = record["z"]
-			if kind == 0x1C and not _volume_enabled(native_context): continue
+			if kind == 0x1C and (elevators.has(placement) or not _volume_enabled(native_context)): continue
 			if kind not in [0, 2, 0x1C] and kind not in TRIANGULAR_PRISM and not SIMPLE_RAMP_ORIENTATION.has(kind) and not DIAGONAL_ORIENTATION.has(kind): continue
 			var shape := CollisionShape3D.new()
 			if kind in [0, 2, 0x1C]:
@@ -46,7 +47,7 @@ static func apply(level: Node3D, source: Dictionary, area: int, native_context: 
 				var wedge := ConvexPolygonShape3D.new(); wedge.points = points; shape.shape = wedge
 			body.add_child(shape)
 		if body.get_child_count() > 0:
-			if not unported:
+			if not unported and not elevators.has(placement):
 				for mesh: MeshInstance3D in meshes:
 					for child in mesh.get_children():
 						if child is StaticBody3D and (child.collision_layer == 1 or child.name == "RoomCollision_1"): child.collision_layer = 0; child.set_meta("native_floor_replaced", true)

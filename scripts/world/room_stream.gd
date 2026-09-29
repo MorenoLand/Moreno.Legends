@@ -106,6 +106,7 @@ func _subtract_region(polygon: Array[Vector3], region: AABB) -> Array:
 	return kept
 func clear_parked_exterior() -> void:
 	exterior_request += 1
+	for room: Node3D in rooms.values(): preload("res://scripts/world/window_view.gd").set_snowfall(room, false)
 	if is_instance_valid(parked_exterior): parked_exterior.queue_free()
 	parked_exterior = null
 func set_parked_exterior(stage: String, area: int) -> bool:
@@ -114,7 +115,7 @@ func set_parked_exterior(stage: String, area: int) -> bool:
 	var request := exterior_request
 	var paired: Dictionary = {}
 	for route: Dictionary in external_routes:
-		if str(route["destination_stage"]) == stage and int(route["destination_area"]) == area: paired = route; break
+		if str(route["source_stage"]) == "ST04" and int(route["source_area"]) == 1: paired = route; break
 	if paired.is_empty(): return false
 	if not await AssetStore.ensure_stage(stage) or request != exterior_request: return false
 	var doors_path := "res://assets/levels/%s/doors.json" % stage
@@ -130,6 +131,8 @@ func set_parked_exterior(stage: String, area: int) -> bool:
 	var exterior_anchor := Vector3(-float(outside[0]), -float(outside[1]), float(outside[2])) / 256.0
 	var interior_yaw := -float(inside[3]) * TAU / 4096.0
 	var exterior_yaw := -float(outside[3]) * TAU / 4096.0 + PI
+	var dock := preload("res://scripts/world/flutter_dock.gd").exterior_hatch(stage)
+	if not dock.is_empty(): exterior_anchor = dock["position"]; exterior_yaw = float(dock["yaw"]) + PI
 	var manifest_path := "res://assets/levels/%s/manifest.json" % stage
 	var manifest: Variant = JSON.parse_string(FileAccess.get_file_as_string(manifest_path)) if FileAccess.file_exists(manifest_path) else null
 	if not manifest is Dictionary: return false
@@ -149,13 +152,46 @@ func set_parked_exterior(stage: String, area: int) -> bool:
 	for collider: CollisionObject3D in exterior.find_children("*", "CollisionObject3D", true, false): collider.collision_layer = 0; collider.collision_mask = 0; collider.queue_free()
 	add_child(exterior)
 	preload("res://scripts/world/native_material.gd").apply(exterior)
+	for mesh: MeshInstance3D in exterior.find_children("*", "MeshInstance3D", true, false):
+		if mesh.mesh == null: continue
+		var body := StaticBody3D.new(); body.name = "RoomCollision_1"; body.collision_layer = 32; body.collision_mask = 0; var shape := CollisionShape3D.new(); shape.shape = mesh.mesh.create_trimesh_shape(); body.add_child(shape); mesh.add_child(body)
+	preload("res://scripts/world/native_floor.gd").apply(exterior, manifest.get("native_floor_collision", {}), area, native_context)
+	for body: StaticBody3D in exterior.find_children("NativePlacementFloor_*", "StaticBody3D", true, false): body.collision_layer = 32
 	await _load_room_props(exterior, stage, area, ["player_vehicle"])
 	if request != exterior_request:
 		exterior.queue_free()
 		return false
-	for collider: CollisionObject3D in exterior.find_children("*", "CollisionObject3D", true, false): collider.collision_layer = 0; collider.collision_mask = 0; collider.queue_free()
+	for collider: CollisionObject3D in exterior.find_children("*", "CollisionObject3D", true, false): collider.collision_layer = 0 if bool(collider.get_meta("native_floor_replaced", false)) else 32; collider.collision_mask = 0
+	for behavior: Node in exterior.find_children("NativeNpcBehavior", "Node", true, false):
+		var actor: Node3D = behavior.get("actor"); actor.set_meta("native_motion_collision_mask", 32); behavior.process_mode = Node.PROCESS_MODE_PAUSABLE
+	for clock: Node in exterior.find_children("NativeAnimationClock", "Node", true, false): clock.process_mode = Node.PROCESS_MODE_PAUSABLE
 	parked_exterior = exterior
+	_clip_parked_exterior()
+	preload("res://scripts/world/native_material.gd").depth_cue(exterior, preload("res://scripts/world/native_material.gd").area_parameters("res://assets/levels/%s/lighting.json" % stage, area), true)
+	var weather: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://assets/weather/manifest.json")); var snow := false
+	if weather is Dictionary:
+		for record: Dictionary in weather.get("stages", {}).get(stage, {}).get("areas", {}).get(str(area), []): snow = snow or int(record.get("native_variant", -1)) == 1
+	exterior.set_meta("window_snowfall", false)
+	for room: Node3D in rooms.values(): preload("res://scripts/world/window_view.gd").set_snowfall(room, false)
+	if snow:
+		var flakes := CPUParticles3D.new(); flakes.name = "ExteriorSnow"; flakes.process_mode = Node.PROCESS_MODE_PAUSABLE; flakes.amount = 1000; flakes.lifetime = 20.0; flakes.preprocess = 20.0; flakes.local_coords = false; flakes.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX; flakes.emission_box_extents = Vector3(10, 3, 10); flakes.direction = Vector3.DOWN; flakes.spread = 8.0; flakes.initial_velocity_min = 0.35; flakes.initial_velocity_max = 0.55; flakes.gravity = Vector3(0.015, -0.01, 0.015); flakes.position = exterior_anchor + Vector3.UP * 3.0
+		var quad := QuadMesh.new(); quad.size = Vector2(0.035, 0.035); var material := ShaderMaterial.new(); material.shader = preload("res://shaders/exterior_snow.gdshader"); material.set_shader_parameter("snow_texture", load("res://assets/weather/snow.png")); quad.material = material; flakes.mesh = quad; exterior.set_meta("snow_material", material); exterior.add_child(flakes); _clip_parked_exterior()
 	return true
+func _clip_parked_exterior(visible_rooms: Dictionary = {}) -> void:
+	if not is_instance_valid(parked_exterior): return
+	var minimum := PackedVector3Array(); var maximum := PackedVector3Array()
+	for key in rooms:
+		if bool(room_info[key].get("exterior", false)) or (not visible_rooms.has(key) if not visible_rooms.is_empty() else not rooms[key].visible): continue
+		var bounds: AABB = room_bounds[key]; minimum.append(bounds.position); maximum.append(bounds.end)
+	var count := minimum.size(); minimum.resize(16); maximum.resize(16)
+	var snow_material := parked_exterior.get_meta("snow_material", null) as ShaderMaterial
+	if snow_material != null: snow_material.set_shader_parameter("interior_clip_count", mini(count, 16)); snow_material.set_shader_parameter("interior_clip_min", minimum); snow_material.set_shader_parameter("interior_clip_max", maximum)
+	for mesh: MeshInstance3D in parked_exterior.find_children("*", "MeshInstance3D", true, false):
+		if mesh.mesh == null: continue
+		for surface in mesh.mesh.get_surface_count():
+			var material := mesh.get_active_material(surface) as ShaderMaterial
+			if material == null or material.shader != preload("res://shaders/native_model.gdshader"): continue
+			material.set_shader_parameter("interior_clip_count", mini(count, 16)); material.set_shader_parameter("interior_clip_min", minimum); material.set_shader_parameter("interior_clip_max", maximum)
 func configure(layout_path: String, start_stage: String, start_area: int, player_radius: float = 0.12) -> bool:
 	var data: Variant = JSON.parse_string(FileAccess.get_file_as_string(layout_path)) if FileAccess.file_exists(layout_path) else null
 	if not data is Dictionary or not data.get("rooms", []) is Array: return false
@@ -189,7 +225,7 @@ func _ensure_room_loaded(stage: String, area: int) -> bool:
 	if stage_manifest is Dictionary:
 		for area_entry: Dictionary in stage_manifest.get("areas", []):
 			if int(area_entry["index"]) == area: map_face_flags = bool(area_entry.get("native_map_face_flags_in_alpha", false)); break
-	var room := scene.instantiate() as Node3D; room.name = key.replace(":", "_"); room.position = room_offsets[key]; room.visible = key == active_room_key; room.set_meta("native_map_face_flags", map_face_flags); add_child(room); preload("res://scripts/world/native_material.gd").apply(room); rooms[key] = room; var nodes: Dictionary = {}; mesh_nodes[key] = nodes
+	var room := scene.instantiate() as Node3D; room.name = key.replace(":", "_"); room.position = room_offsets[key]; room.visible = key == active_room_key; room.set_meta("native_map_face_flags", map_face_flags); room.set_meta("native_stream_room_active", key == active_room_key); add_child(room); preload("res://scripts/world/native_material.gd").apply(room); rooms[key] = room; var nodes: Dictionary = {}; mesh_nodes[key] = nodes
 	for item in room.find_children("*", "MeshInstance3D", true, false):
 		var mesh_node := item as MeshInstance3D
 		if mesh_node.mesh == null: continue
@@ -204,6 +240,7 @@ func _ensure_room_loaded(stage: String, area: int) -> bool:
 	for generated_roof: MeshInstance3D in room.find_children("*", "MeshInstance3D", true, false):
 		if generated_roof.has_meta("generated_roof_mesh"): nodes[generated_roof.name] = generated_roof; source_meshes[_mesh_key(key, generated_roof.name)] = generated_roof.mesh
 	preload("res://scripts/world/window_view.gd").apply(room, stage, area)
+	preload("res://scripts/world/window_view.gd").set_snowfall(room, is_instance_valid(parked_exterior) and bool(parked_exterior.get_meta("window_snowfall", false)))
 	var opened_nodes := {}
 	for portal: Dictionary in portal_layout:
 		if not opened_portals.has(_portal_key(portal)): continue
@@ -456,6 +493,10 @@ func _compose_leaf_faces(portal: Dictionary, leaf: Node3D) -> bool:
 				if front or back: faces.append([points[ids[0]], points[ids[1]], points[ids[2]]])
 			removed[surface] = faces
 		node.mesh = _mesh_without_faces(node.mesh, removed)
+		for surface in node.mesh.get_surface_count():
+			var material := node.get_active_material(surface) as ShaderMaterial
+			if material == null: continue
+			material = material.duplicate() as ShaderMaterial; material.set_shader_parameter("double_sided", true); node.set_surface_override_material(surface, material)
 	var view := MeshInstance3D.new(); view.name = "PairedDoorFaces"; view.mesh = composed; leaf.add_child(view)
 	return true
 func _door_sweep_bounds(pivot: Node3D, panel: Node3D, closed_yaw: float, open_yaw: float) -> AABB:
@@ -554,14 +595,28 @@ func crossed_room(previous: Vector3, current: Vector3, stage: String, area: int,
 		if not source_side and not destination_side: continue
 		if not opened_portals.has(_portal_key(portal)): continue
 		var axis := 0 if str(portal["normal_axis"]) == "x" else 2; var lateral := 2 if axis == 0 else 0; var sign := _outward_sign(portal, source_side); var plane := float(portal["world_center"][axis]); var before := (previous[axis] - plane) * sign; var after := (current[axis] - plane) * sign
-		if after <= 0.01: continue
+		if before > 0.01 or after <= 0.01: continue
 		var center: Array = portal["world_center"]; var width := float(portal["shared_panel_size"][0]); var height := float(portal["shared_panel_size"][1]); var lateral_clearance := maxf(0.0, width * 0.5 - body_radius); var bottom := float(center[1]) - height * 0.5
+		var crossing := previous.lerp(current, clampf((0.01 - before) / (after - before), 0.0, 1.0))
+		if absf(crossing[lateral] - float(center[lateral])) > lateral_clearance or crossing.y < bottom - 0.05 or crossing.y + body_height > bottom + height + 0.05: continue
 		if absf(current[lateral] - float(center[lateral])) > lateral_clearance or current.y < bottom - 0.05 or current.y + body_height > bottom + height + 0.05: continue
 		var target: Dictionary = portal["destination"] if source_side else portal["source"]
 		var target_key := _room_key(str(target["stage"]), int(target["area"]))
 		if not rooms.has(target_key) or loading_rooms.has(target_key): continue
 		return {"stage": str(target["stage"]), "area": int(target["area"]), "portal": portal}
 	return {}
+func doorway_camera_yaw(point: Vector3, yaw: float, motion: Vector3) -> float:
+	for portal: Dictionary in portal_layout:
+		if not opened_portals.has(_portal_key(portal)): continue
+		var source_key := _room_key(str(portal["source"]["stage"]), int(portal["source"]["area"])); var destination_key := _room_key(str(portal["destination"]["stage"]), int(portal["destination"]["area"]))
+		if active_room_key != source_key and active_room_key != destination_key: continue
+		var axis := 0 if str(portal["normal_axis"]) == "x" else 2; var lateral := 2 if axis == 0 else 0; var center: Array = portal["world_center"]; var height := float(portal["shared_panel_size"][1]) * 0.5
+		if absf(motion[axis]) < 0.05 or absf(motion[axis]) <= absf(motion[lateral]): continue
+		if absf(point[axis] - float(center[axis])) > body_radius + 0.25 or absf(point[lateral] - float(center[lateral])) > float(portal["shared_panel_size"][0]) * 0.5 + body_radius or point.y < float(center[1]) - height - 0.05 or point.y > float(center[1]) + height: continue
+		var normal_yaw := PI * 0.5 if axis == 0 else 0.0; var difference := wrapf(yaw - normal_yaw, -PI, PI)
+		if absf(difference) > PI * 0.5: normal_yaw += PI; difference = wrapf(yaw - normal_yaw, -PI, PI)
+		return normal_yaw + clampf(difference, -PI / 6.0, PI / 6.0)
+	return yaw
 func _outward_sign(portal: Dictionary, source_side: bool) -> float:
 	var side: Dictionary = portal["source_panel"] if source_side else portal["destination_panel"]; var raw: Array = portal["source_contact_raw"] if source_side else portal["reverse_source_contact_raw"]; var yaw := int(portal["source_yaw_raw"] if source_side else portal["reverse_source_yaw_raw"]); var axis := 0 if str(portal["normal_axis"]) == "x" else 2; var yaw_radians := -float(yaw) * TAU / 4096.0; var contact := -float(raw[axis]) / 256.0 if axis == 0 else float(raw[axis]) / 256.0; var face := float(side["center"][axis]); var contact_sign := signf(face - contact)
 	var player_forward := Vector3(-sin(yaw_radians), 0.0, -cos(yaw_radians)); var player_forward_sign := signf(player_forward[axis])
@@ -666,11 +721,15 @@ func _refresh_room_state() -> void:
 		var source_key := _room_key(str(portal["source"]["stage"]), int(portal["source"]["area"])); var destination_key := _room_key(str(portal["destination"]["stage"]), int(portal["destination"]["area"]))
 		if source_key == active_room_key: visible[destination_key] = true; visible_neighbor_keys[destination_key] = true
 		elif destination_key == active_room_key: visible[source_key] = true; visible_neighbor_keys[source_key] = true
+	_clip_parked_exterior(visible)
 	for support in floor_supports.values():
 		if is_instance_valid(support): support.collision_layer = 0; support.collision_mask = 0; support.queue_free()
 	floor_supports.clear()
 	for room_key in rooms:
 		rooms[room_key].visible = visible.has(room_key)
+		rooms[room_key].set_meta("native_stream_room_active", room_key == active_room_key)
+		for collider: CollisionObject3D in rooms[room_key].find_children("*", "CollisionObject3D", true, false):
+			if collider.has_meta("native_stream_actor_layer"): collider.collision_layer = int(collider.get_meta("native_stream_actor_layer")) if room_key == active_room_key else 0
 		var clip_plane := Vector4.ZERO
 		var clip_enabled := false
 		var room_planes := PackedVector4Array(); var room_limits := PackedFloat32Array(); var room_clip_bounds := PackedVector4Array(); var room_clip_depths := PackedVector2Array(); var room_clip_bounded: Array[bool] = []; var room_clip_view_gate: Array[bool] = []; var room_clip_view_cut: Array[bool] = []
@@ -729,7 +788,7 @@ func _refresh_room_state() -> void:
 func _refresh_camera_layers() -> void:
 	camera_collision_rooms.clear()
 	for room_key in rooms:
-		var keep: bool = room_key == active_room_key or rooms[room_key].visible or _camera_inside_room(str(room_key))
+		var keep: bool = room_key == active_room_key or rooms[room_key].visible
 		if keep: camera_collision_rooms[room_key] = true
 		for node: MeshInstance3D in mesh_nodes[room_key].values():
 			var body := node.get_node_or_null("RoomCollision_4") as StaticBody3D

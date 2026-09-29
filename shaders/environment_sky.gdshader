@@ -11,4 +11,6 @@ void sky() {
 	float row = clamp((0.12 - EYEDIR.y) / 0.4, 0.0, 1.0);
 	vec4 clouds = texture(cloud_texture, vec2((fract(angle * 4.0) * 255.0 + 0.5) / 256.0, (row * 127.0 + 0.5) / 256.0));
 	COLOR = mix(COLOR, clouds.rgb, clouds.a * (1.0 - smoothstep(-0.04, 0.12, EYEDIR.y)));
+	vec4 lower_clouds = texture(cloud_texture, vec2((fract(angle * 4.0) * 255.0 + 0.5) / 256.0, mix(160.5, 255.5, clamp(-EYEDIR.y, 0.0, 1.0)) / 256.0));
+	COLOR = mix(COLOR, mix(sky_horizon, lower_clouds.rgb, lower_clouds.a), smoothstep(0.0, 0.12, -EYEDIR.y));
 }

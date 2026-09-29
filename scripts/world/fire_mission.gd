@@ -11,6 +11,7 @@ var extinguished_total := 0
 var elapsed := 0.0
 var idle := 0
 var finished := false
+var data_rescued := false
 var started := false
 var kitchen_greeted := false
 var busy := false
@@ -112,8 +113,11 @@ func _finish(success: bool) -> void:
 	elif extinguished_total >= int(completion["failure_fast_count"]): _set_flag(int(completion["fast_flag"]), true)
 	while is_inside_tree() and (host.loading or bool(host.dialogue_box.get("active"))): await get_tree().process_frame
 	host.loading = true; host.player.set_physics_process(false)
-	var ok: bool = await host.native_scenes.run_scene(level, "res://assets/levels/ST1E/scene_0d_%s.json" % ("success" if success else "failure"), area)
-	if not ok: push_error(str(host.native_scenes.last_error)); host.loading = false; host.player.set_physics_process(true)
+	var ok: bool = await host.native_scenes.run_scene(level, "res://assets/levels/ST1E/scene_0d_%s.json" % ("success" if success else "failure"), area, true)
+	if not is_instance_valid(host) or not host.is_inside_tree(): return
+	if not ok: push_error(str(host.native_scenes.last_error))
+	else: data_rescued = success
+	host.player.camera_pivot.rotation = Vector3(deg_to_rad(-12.0), host.player.player_model.rotation.y, 0.0); host.player.camera.make_current(); host.player.refresh_room_camera(); host.area_picker.disabled = false; host.loading = false; host.player.set_physics_process(true)
 func _set_flag(id: int, value: bool) -> void:
 	var flags: Dictionary = host.native_context.get("event_flags", {}); flags[id] = value; flags.erase(str(id)); host.native_context["event_flags"] = flags
 func _banner() -> Control:

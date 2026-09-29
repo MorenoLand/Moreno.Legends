@@ -11,6 +11,7 @@ var font: Font
 var surface: Control
 var pages: Dictionary = {}
 var active_page := "extra"
+var game_controls: Dictionary = {}
 func configure(owner: Node) -> void:
 	host = owner
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -26,15 +27,23 @@ func configure(owner: Node) -> void:
 	surface.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(surface)
 	var settings := _page("extra")
+	_scroll_page(settings)
+	for entry: Array in [["controller", "Controller", ["A", "B", "C"]], ["view", "Camera direction", ["Reverse", "Normal"]], ["buster_lock_on", "Buster lock-on", ["Manual", "Auto"]], ["special_lock_on", "Special weapon lock-on", ["Manual", "Auto"]], ["vibration", "Vibration", ["On", "Off"]], ["sound", "Sound", ["Stereo", "Monaural"]]]: _game_choice(settings, str(entry[0]), str(entry[1]), entry[2])
+	for entry: Array in [["bgm_volume", "BGM volume", 0, 127], ["se_volume", "Sound effects volume", 0, 127], ["screen_x", "Screen position X", -12, 12], ["screen_y", "Screen position Y", 0, 12]]:
+		var key := str(entry[0]); game_controls[key] = _slider(settings, str(entry[1]), float(entry[2]), float(entry[3]), 1, float(host.options.values[key]), func(value): host.options._set_value(key, int(value)))
 	_slider(settings, "Mouse sensitivity", 0.0005, 0.01, 0.0001, float(host.settings.get_value("controls", "mouse_sensitivity", 0.003)), host._sensitivity_changed)
 	_slider(settings, "Camera FOV", 45, 100, 1, float(host.settings.get_value("camera", "fov", 65)), _fov_changed)
 	_toggle(settings, "Fullscreen", DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN, func(value): DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if value else DisplayServer.WINDOW_MODE_WINDOWED))
+	_button(settings, "Restore defaults", func(): host.options.selected_row = 7; host.options._activate_row(); sync_game_options())
 	var cheat_page := _page("cheats")
+	_scroll_page(cheat_page)
 	cheat_page.add_theme_constant_override("separation", 3)
 	for key in cheats:
-		var label: String = {"invulnerable": "Invulnerable", "free_flight": "Flight", "no_clip": "No clip"}[key]
+		var label: String = {"invulnerable": "Invulnerable", "free_flight": "Player flight", "no_clip": "No clip"}[key]
 		_toggle(cheat_page, label, cheats[key], func(value): _cheat_changed(key, value))
 	_toggle(cheat_page, "Location picker", bool(host.settings.get_value("interface", "show_location_picker", true)), _picker_changed)
+	_toggle(cheat_page, "Flutter Fly", host.flutter_fly_anytime, func(value): host.flutter_fly_anytime = value)
+	_toggle(cheat_page, "Debug achievements", host.debug_achievements, func(value): host.debug_achievements = value)
 	_button(cheat_page, "Locations", func(): open_page("locations"); focus_first())
 	var controls := Label.new()
 	controls.text = "Flight: Space up / C down"
@@ -67,6 +76,17 @@ func configure(owner: Node) -> void:
 	resized.connect(_layout)
 	_layout()
 	open_page("extra")
+func _scroll_page(page: VBoxContainer) -> void:
+	var wrapper := ScrollContainer.new(); wrapper.position = page.position; wrapper.size = page.size; wrapper.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; wrapper.follow_focus = true; surface.add_child(wrapper); page.reparent(wrapper); page.size_flags_horizontal = Control.SIZE_EXPAND_FILL; page.set_meta("scroll_wrapper", wrapper)
+func _game_choice(parent: Control, key: String, caption: String, choices: Array) -> void:
+	_label(parent, caption); var picker := OptionButton.new(); _style_picker(picker)
+	for index in choices.size(): picker.add_item(str(choices[index]), index)
+	picker.select(int(host.options.values[key])); picker.item_selected.connect(func(index): host.options._set_value(key, index)); parent.add_child(picker); game_controls[key] = picker
+func sync_game_options() -> void:
+	for key: String in game_controls:
+		var control: Control = game_controls[key]
+		if control is OptionButton: control.select(int(host.options.values[key]))
+		elif control is Slider: control.set_value_no_signal(float(host.options.values[key])); (control.get_meta("value_label") as Label).text = str(control.get_meta("caption")) + ": " + str(int(host.options.values[key]))
 func _page(key: String) -> VBoxContainer:
 	var page := VBoxContainer.new()
 	page.position = Vector2(43, 64)
@@ -78,7 +98,10 @@ func _page(key: String) -> VBoxContainer:
 func open_page(key: String) -> void:
 	if not pages.has(key): return
 	active_page = key
-	for page in pages: pages[page].visible = page == key
+	if key == "extra": sync_game_options()
+	for page in pages:
+		pages[page].visible = page == key
+		if pages[page].has_meta("scroll_wrapper"): pages[page].get_meta("scroll_wrapper").visible = page == key
 	if key == "locations" and is_instance_valid(host.gameplay):
 		var stage := str(host.gameplay.manifest_path.get_base_dir().get_file())
 		for index in range(host.locations.size()):
@@ -152,7 +175,7 @@ func _load_room() -> void:
 	host._load_location(stage, room_picker.get_selected_id())
 func set_location_message(text: String) -> void:
 	if location_message != null: location_message.text = text
-func _slider(parent: Control, caption: String, minimum: float, maximum: float, step: float, value: float, action: Callable) -> void:
+func _slider(parent: Control, caption: String, minimum: float, maximum: float, step: float, value: float, action: Callable) -> HSlider:
 	var label := _label(parent, caption)
 	label.text = caption + ": " + ("%.4f" % value if step < 1.0 else "%d" % int(value))
 	var slider := HSlider.new()
@@ -163,6 +186,7 @@ func _slider(parent: Control, caption: String, minimum: float, maximum: float, s
 	slider.value_changed.connect(action)
 	slider.value_changed.connect(func(current): label.text = caption + ": " + ("%.4f" % current if step < 1.0 else "%d" % int(current)))
 	parent.add_child(slider)
+	slider.set_meta("value_label", label); slider.set_meta("caption", caption); return slider
 func _toggle(parent: Control, caption: String, value: bool, action: Callable) -> void:
 	var button := Button.new()
 	button.toggle_mode = true

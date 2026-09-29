@@ -4,6 +4,7 @@ signal sound_requested(sound_id: int, point: Vector3)
 signal contact_hit(actor: CharacterBody3D, damage: int, flags: int)
 signal drop_requested(actor: CharacterBody3D, entries: Array)
 static var random_state: int = 0
+const TICK_RATE := 25.0
 var model: Node3D
 var animation_player: AnimationPlayer
 var source: Dictionary = {}
@@ -21,6 +22,8 @@ var attack_damage: int = 0
 var attack_effect_state: int = -1
 var attack_effect_timer: int = 0
 var attack_effect_radius: int = 3
+var attack_effect_visual: MeshInstance3D
+var attack_effect_tick := 16
 var native_state: int = 0
 var initialized: bool = false
 var mode: int = 0
@@ -75,6 +78,8 @@ func configure(entry: Dictionary, metadata: Dictionary, directory: String) -> vo
 			native_box = AABB(Vector3(-32, 0, -32) / 256.0, Vector3(64, 160, 64) / 256.0)
 		8:
 			native_box = AABB(Vector3(-64, 0, -64) / 256.0, Vector3(128, 512, 128) / 256.0)
+		7:
+			native_box = AABB(Vector3(-250, 0, -250) / 256.0, Vector3(500, 300, 500) / 256.0)
 		_:
 			set_physics_process(false)
 			return
@@ -96,7 +101,7 @@ func configure(entry: Dictionary, metadata: Dictionary, directory: String) -> vo
 			if material != null: native_materials.append(material)
 	var coordinates: Array = entry["transform"]["position"]
 	position = Vector3(float(coordinates[0]), -float(coordinates[1]), float(coordinates[2]))
-	origin = position if actor_class == 5 and dispatch == 1 else Vector3.ZERO
+	origin = global_position if actor_class == 5 and dispatch == 2 else Vector3.ZERO
 	rotation.y = float(native_yaw) * TAU / 4096.0
 	var players := model.find_children("*", "AnimationPlayer", true, false)
 	if not players.is_empty(): animation_player = players[0] as AnimationPlayer
@@ -132,11 +137,11 @@ func release_lift(direction: Vector3, vertical_raw: int, forward_raw: int) -> vo
 	thrown_bounces = 0
 	collision_layer = 8
 	native_yaw = roundi(atan2(direction.x, direction.z) * 4096.0 / TAU) & 4095
-	velocity = direction * absf(float(forward_raw)) * 30.0 / 4096.0 + Vector3.UP * -float(vertical_raw) * 30.0 / 4096.0
+	velocity = direction * absf(float(forward_raw)) * TICK_RATE / 4096.0 + Vector3.UP * -float(vertical_raw) * TICK_RATE / 4096.0
 	play_control(5)
 func _throw_tick() -> void:
-	var hit := move_and_collide(velocity / 30.0)
-	velocity.y -= 64.0 * 30.0 / 4096.0
+	var hit := move_and_collide(velocity / TICK_RATE)
+	velocity.y -= 64.0 * TICK_RATE / 4096.0
 	_update_collision()
 	var query := PhysicsShapeQueryParameters3D.new()
 	query.shape = collision.shape
@@ -174,10 +179,10 @@ func play_control(slot: int) -> void:
 	animation_player.speed_scale = 0.0
 	animation_player.seek(0.0, true)
 func _physics_process(delta: float) -> void:
-	if target == null or removed: return
+	if target == null or removed or not target.is_physics_processing(): return
 	tick_accumulator += delta
-	while tick_accumulator >= 1.0 / 30.0:
-		tick_accumulator -= 1.0 / 30.0
+	while tick_accumulator >= 1.0 / TICK_RATE:
+		tick_accumulator -= 1.0 / TICK_RATE
 		if is_instance_valid(carrier):
 			global_position = carrier.lift_anchor(native_box.size.y)
 			rotation.y = carrier.player_model.rotation.y
@@ -233,6 +238,24 @@ func _set_state(state: int) -> void:
 func _class_five_tick() -> void:
 	var distance := global_position.distance_to(target.global_position) * 256.0
 	match native_state:
+		1:
+			if not initialized:
+				initialized = true
+				attack_phase = 0
+				velocity = Vector3.DOWN * 64.0 / 4096.0
+				play_control(2)
+			var hit := move_and_collide(velocity)
+			velocity.y -= 64.0 / 4096.0
+			if hit != null and hit.get_normal().y > 0.65:
+				sound_requested.emit(0xc4, global_position)
+				if attack_phase == 0:
+					attack_phase = 1
+					native_yaw = ((_next_random() & 255) << 4) & 4095
+					var yaw := float(native_yaw) * TAU / 4096.0
+					velocity = Vector3(sin(yaw) * -128.0 / 4096.0, -velocity.y * 0.5, cos(yaw) * -128.0 / 4096.0)
+				else:
+					velocity = Vector3.ZERO
+					_set_state([4, 10, 12, 4, 13][mode])
 		3:
 			native_speed = -384
 			play_control(1)
@@ -410,6 +433,9 @@ func _death_tick() -> void:
 			var query := PhysicsRayQueryParameters3D.create(global_position + Vector3.UP * 0.125, global_position + Vector3.DOWN * 0.1875, 1, [get_rid()])
 			timer = 20 if not get_world_3d().direct_space_state.intersect_ray(query).is_empty() else 8
 		else: timer = 16
+		var death_effect := preload("res://scripts/world/native_mine_death.gd").new(); get_parent().add_child(death_effect)
+		var point := global_position + Vector3.UP * 96.0 / 256.0 if actor_class == 5 else skeleton.global_transform * skeleton.get_bone_global_pose(0).origin if skeleton != null else global_position
+		death_effect.configure(point, 48 if actor_class == 5 else 128, timer, Callable(self, "_next_random")); death_effect.sound_requested.connect(func(sound_id: int, position: Vector3): sound_requested.emit(sound_id, position))
 	timer -= 1
 	if timer <= 0:
 		removed = true
@@ -432,10 +458,11 @@ func _drop_entries() -> Array:
 		var vertical := -512 - ((int(entry["type"]) + (_next_random() & 15) - 8) << 5)
 		var forward := 256 - ((int(entry["type"]) + (_next_random() & 15) - 8) << 5)
 		var yaw := float(entry["yaw_raw"]) * TAU / 4096.0
-		entry["velocity"] = Vector3(sin(yaw) * forward, -vertical, -cos(yaw) * forward) * 30.0 / 4096.0
+		entry["velocity"] = Vector3(sin(yaw) * forward, -vertical, -cos(yaw) * forward) * TICK_RATE / 4096.0
 	return entries
 func _advance_control() -> void:
 	if not clips.has(current_control): return
+	control_ended = false
 	var clip: Dictionary = clips[current_control]
 	var records: Array = clip["records"]
 	control_remaining -= 1
@@ -446,6 +473,7 @@ func _advance_control() -> void:
 			if flags != 255:
 				control_frame = flags & 127
 				control_tick = 0
+				for index in range(control_frame): control_tick += int(records[index]["duration"])
 		else: control_frame += 1
 		control_frame = mini(control_frame, records.size() - 1)
 		control_remaining = int(records[control_frame]["duration"])
@@ -453,7 +481,6 @@ func _advance_control() -> void:
 		if actor_class == 5 and (event & 128): sound_requested.emit(0xa5, global_position)
 		elif actor_class == 8 and current_control == 0 and int(records[control_frame]["pose"]) in [15, 31]: sound_requested.emit(0xd3, global_position)
 	control_tick += 1
-	control_ended = bool(int(records[control_frame]["flags"]) & 128)
 	if animation_player != null: animation_player.seek(float(control_tick) / 30.0, true)
 func _update_collision() -> void:
 	if collision == null: return
@@ -472,13 +499,20 @@ func _register_contact() -> void:
 			contact_hit.emit(self, charge_damage if actor_class == 5 and native_state == 7 and attack_phase == 2 else contact_damage, 0x180000 if actor_class == 5 and native_state == 7 and attack_phase == 2 else 0x20000)
 			return
 func _tick_attack_effect() -> void:
+	if attack_effect_visual == null:
+		attack_effect_visual = preload("res://scripts/world/native_mine_energy.gd").new(); add_child(attack_effect_visual); attack_effect_visual.configure(Callable(self, "_next_random"))
 	var bound := native_state == 3 and not dying
 	if attack_effect_state == -1:
-		if not bound: return
+		if not bound: attack_effect_visual.redraw(-1, 0, 0, 0); return
 		attack_effect_state = 0
 		attack_effect_timer = 8
 		attack_effect_radius = 3
+		attack_effect_tick = 16
 		sound_requested.emit(0xd4, global_position)
+	attack_effect_visual.global_position = collision.global_position - global_basis * native_box.get_center()
+	attack_effect_visual.global_basis = Basis.IDENTITY
+	attack_effect_visual.redraw(attack_effect_state, attack_effect_radius, attack_effect_timer, attack_effect_tick)
+	attack_effect_tick = (attack_effect_tick + 1) & 255
 	if attack_effect_state in [1, 2]:
 		var shape := SphereShape3D.new()
 		shape.radius = float(attack_effect_radius) / 16.0

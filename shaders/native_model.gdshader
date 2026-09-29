@@ -11,6 +11,10 @@ uniform int uv_word = 0;
 uniform bool native_depth_cue_enabled = false;
 uniform int native_depth_cue_shift = 0;
 uniform vec3 native_far_color = vec3(0.0);
+uniform bool exterior_atmosphere = false;
+uniform int interior_clip_count = 0;
+uniform vec3 interior_clip_min[16];
+uniform vec3 interior_clip_max[16];
 varying vec3 native_vertex_rgb;
 uniform bool portal_clip_enabled = false;
 uniform vec4 portal_clip_plane = vec4(0.0);
@@ -36,7 +40,7 @@ void vertex() {
 		int ir0 = sz >> native_depth_cue_shift;
 		ivec3 active = ivec3(round(native_vertex_rgb));
 		ivec3 far_rgb = ivec3(native_far_color);
-		native_vertex_rgb = vec3(clamp((active * (4096 - ir0) + far_rgb * ir0) >> 12, ivec3(0), ivec3(255)));
+		 native_vertex_rgb = vec3(clamp((active * (4096 - ir0) + far_rgb * ir0) >> 12, ivec3(0), ivec3(255)));
 	}
 	if (uv_word != 0) {
 		ivec2 pixel = ivec2(floor(UV * 256.0));
@@ -53,6 +57,9 @@ void vertex() {
 	}
 }
 void fragment() {
+	for (int i = 0; i < interior_clip_count; i++) {
+		if (all(greaterThanEqual(portal_world_position, interior_clip_min[i])) && all(lessThanEqual(portal_world_position, interior_clip_max[i]))) { discard; }
+	}
 	bool aperture_required = false; bool aperture_visible = false; vec3 eye = INV_VIEW_MATRIX[3].xyz;
 	for (int i = 0; i < room_clip_count; i++) {
 		if (!room_clip_view_gate[i] && !room_clip_view_cut[i]) { continue; }
@@ -93,6 +100,10 @@ void fragment() {
 	vec2 sample_uv = roof_texture_region.z > 0.0 ? roof_texture_region.xy + fract(portal_world_position.xz) * roof_texture_region.zw : UV;
 	vec4 pixel = texture(albedo_texture, sample_uv);
 	ALBEDO = pixel.rgb * native_vertex_rgb / 128.0;
+	if (exterior_atmosphere) {
+		float depth = max(-(VIEW_MATRIX * vec4(portal_world_position, 1.0)).z, 0.0);
+		ALBEDO = mix(ALBEDO, vec3(160.0, 173.0, 193.0) / 255.0, clamp((depth - 12.0) / 16.0, 0.0, 1.0));
+	}
 	ALPHA = pixel.a;
 	ALPHA_SCISSOR_THRESHOLD = 0.5;
 }

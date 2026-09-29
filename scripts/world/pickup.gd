@@ -1,5 +1,6 @@
 extends CharacterBody3D
 signal collected(group: int, value: int, sound_id: int)
+const TICK_RATE := 25.0
 var target: CharacterBody3D
 var source: Dictionary = {}
 var data: Dictionary = {}
@@ -28,20 +29,20 @@ func configure(entry: Dictionary, metadata: Dictionary, player: CharacterBody3D)
 func _physics_process(delta: float) -> void:
 	if taken or target == null: return
 	age += delta; accumulator += delta
-	if age >= float(data["lifetime_ticks"]) / 30.0: queue_free(); return
-	if age >= float(data["lifetime_ticks"] - 64) / 30.0: visual.visible = (int(age * 30.0) & 1) == 0
-	while accumulator >= 1.0 / 30.0:
-		accumulator -= 1.0 / 30.0
+	if age >= float(data["lifetime_ticks"]) / TICK_RATE: queue_free(); return
+	if age >= float(data["lifetime_ticks"] - 64) / TICK_RATE: visual.visible = (int(age * TICK_RATE) & 1) == 0
+	while accumulator >= 1.0 / TICK_RATE:
+		accumulator -= 1.0 / TICK_RATE
 		var distance := global_position.distance_to(target.global_position)
 		if distance < float(data["pickup_radius_raw"]) / 256.0:
 			taken = true; set_physics_process(false); collected.emit(int(source["group"]), int(source["value"]), int(data["sound_ids"][int(source["group"])])); queue_free(); return
 		if settled and distance < float(data["magnet_radius_raw"]) / 256.0:
-			var direction := target.global_position - global_position; direction.y = 0.0; var heading := direction.normalized() * float(data["magnet_speed_raw"]) * 30.0 / 4096.0; velocity.x = heading.x; velocity.z = heading.z
+			var direction := target.global_position - global_position; direction.y = 0.0; var heading := direction.normalized() * float(data["magnet_speed_raw"]) * TICK_RATE / 4096.0; velocity.x = heading.x; velocity.z = heading.z
 		elif settled: velocity.x = 0.0; velocity.z = 0.0
-		if not settled or not is_zero_approx(velocity.y): velocity.y -= float(data["gravity_raw"]) * 900.0 / 4096.0 / 30.0
-		var hit := move_and_collide(velocity / 30.0)
+		if not settled or not is_zero_approx(velocity.y): velocity.y -= float(data["gravity_raw"]) * TICK_RATE * TICK_RATE / 4096.0 / TICK_RATE
+		var hit := move_and_collide(velocity / TICK_RATE)
 		if hit != null:
-			if absf(velocity.y) <= 64.0 * 30.0 / 4096.0 and Vector2(velocity.x, velocity.z).length() <= 16.0 * 30.0 / 4096.0:
+			if absf(velocity.y) <= 64.0 * TICK_RATE / 4096.0 and Vector2(velocity.x, velocity.z).length() <= 16.0 * TICK_RATE / 4096.0:
 				velocity = Vector3.ZERO; settled = true
 			else: velocity = Vector3(velocity.x * 0.5, -velocity.y * 0.5, velocity.z * 0.5)
 		visual.rotation.y += TAU * float(128 - ((6 + ((int(source["type"]) * 5) >> 1)) << 4)) / 4096.0
@@ -50,7 +51,7 @@ func _rebuild_mesh() -> void:
 	var pair: Array = data["colors"][int(source["type"]) if int(source["group"]) == 0 else 7 if int(source["group"]) == 1 else 8]
 	var colors := PackedColorArray(); var output := PackedVector3Array()
 	for face in range(faces.size()):
-		var phase := (int(age * 30.0) + (face / 4) * 16) & 31; var blend := float(phase) / 16.0 if phase < 16 else float(32 - phase) / 16.0
+		var phase := (int(age * TICK_RATE) + (face / 4) * 16) & 31; var blend := float(phase) / 16.0 if phase < 16 else float(32 - phase) / 16.0
 		var color := Color8(int(lerpf(float(pair[0]),float(pair[4]),blend)),int(lerpf(float(pair[1]),float(pair[5]),blend)),int(lerpf(float(pair[2]),float(pair[6]),blend)))
 		for index in faces[face]: output.append(vertices[int(index)]); colors.append(color)
 	var arrays := []; arrays.resize(Mesh.ARRAY_MAX); arrays[Mesh.ARRAY_VERTEX] = output; arrays[Mesh.ARRAY_COLOR] = colors; mesh = ArrayMesh.new(); mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays); visual.mesh = mesh

@@ -44,7 +44,7 @@ static func decode(opcode: int, arguments: Array) -> Dictionary:
 			if arguments.size() != 4: return {}
 			return {"kind": "timed_page_reset", "wait_ticks": (int(arguments[0]) << 8) | int(arguments[1]), "effective_updates": ((int(arguments[0]) << 8) | int(arguments[1])) + 1, "header": [int(arguments[2]), int(arguments[3])], "source": "SLES 0x8004C014 / 0x8004BE30"}
 	return {}
-static func _signed12(low: int, high: int) -> int:
+static func _signed12(high: int, low: int) -> int:
 	var value := ((high & 0xff) << 8) | (low & 0xff); value &= 0xfff; return value - 0x1000 if value & 0x800 else value
 static func _be16(high: int, low: int) -> int: return ((high & 0xff) << 8) | (low & 0xff)
 static func _signed_be16(high: int, low: int) -> int:

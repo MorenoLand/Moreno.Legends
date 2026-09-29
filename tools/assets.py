@@ -16,7 +16,12 @@ import fire_mission
 import flight_scene
 import landing_scene
 import flutter_scene
+import flutter_travel
 import yosyonke_scene
+import joe_scene
+import mine_quest
+import mine_scene
+import mine_effects
 import disc
 import models
 import native_fades
@@ -115,9 +120,15 @@ def prepare(cue, source, stages, only, report_path=None):
 	if "world" in only and (not stages or "ST3A" in stages): task("flight_scene", flight_scene.export)
 	if "world" in only and (not stages or "ST08" in stages): task("landing_scene", landing_scene.export)
 	if "world" in only and (not stages or "ST04" in stages): task("flutter_scene", flutter_scene.export)
+	if "world" in only and (not stages or "ST08" in stages): task("joe_workshop_scene", joe_scene.export)
+	if "world" in only and (not stages or any(stage in stages for stage in ["ST0D", "ST0F"])): task("mine_quest", mine_quest.export)
+	if "world" in only and (not stages or "ST0F" in stages): task("mine_scenes", mine_scene.export)
+	if "world" in only and (not stages or "ST0F" in stages): task("mine_effects", mine_effects.export)
+	if "world" in only and (not stages or "ST01" in stages): task("flutter_travel", flutter_travel.export)
 	if "world" in only and (not stages or "ST09" in stages): task("yosyonke_scene", yosyonke_scene.export)
 	if "world" in only: task("lighting", world.lighting_cli); task("depth_cue", lambda: world.export_depth_cue(source / "DAT", ROOT / "assets/levels")); task("weather", lambda: world.export_weather(source / "DAT", ROOT / "assets/weather"))
 	if "world" in only: task("area_roofs", lambda: area_roofs.export(source / "DAT", ROOT / "assets/levels"))
+	if "world" in only: task("bitmap_minimaps", lambda: world.export_bitmap_minimaps(source / "DAT", ROOT / "assets/minimap", stages))
 	if "world" in only and all((ROOT / "assets/levels" / stage / "doors.json").is_file() for stage in world.STAGES): task("room_layout", lambda: world.export_room_layout(ROOT / "assets/levels", ROOT / "assets/locations/room_layout.json"))
 	if "world" in only and all((ROOT / "assets/levels" / stage / "doors.json").is_file() for stage in ["ST09", "ST0A", "ST0C", "ST47"]): task("town_room_layout", lambda: world.export_room_layout(ROOT / "assets/levels", ROOT / "assets/locations/town_room_layout.json", ("ST09", "ST0A", "ST0C", "ST47")))
 	report["summary"] = {"source_files": len(report["files"]), "source_bytes": sum(item["bytes"] for item in report["files"]), "stages_exported": sum(item["status"] == "exported" for item in report["stages"]), "models_exported": sum(model["status"] == "exported" for archive in report["model_archives"] for model in archive["models"]), "unsupported": sum(item["status"] == "unsupported" for item in report["stages"] + report["model_archives"] + report["tasks"]) + sum(model["status"] == "unsupported" for archive in report["model_archives"] for model in archive["models"])}

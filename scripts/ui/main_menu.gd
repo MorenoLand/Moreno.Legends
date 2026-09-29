@@ -1,4 +1,5 @@
 extends Node
+signal data_save_menu_finished(saved: bool)
 var gameplay: Node3D
 var overlay: Control
 var pages: Dictionary = {}
@@ -15,6 +16,7 @@ var saves := preload("res://scripts/state/save_store.gd").new()
 var save_menu: Control
 var save_feedback: Label
 var session_loading := false
+var data_save_menu_active := false
 var opening: Control
 var opening_loading := false
 var locations: Array = []
@@ -24,6 +26,9 @@ var achievements := ConfigFile.new()
 var achievement_catalog: Dictionary = {}
 var achievement_notice: Control
 var achievement_menu: Control
+var debug_achievements := false
+var flutter_fly_anytime := false
+var error_dialogue: Control
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	session_loading = true
@@ -81,10 +86,7 @@ func _ready() -> void:
 	overlay.add_child(save_menu)
 	save_menu.configure(self)
 	save_menu.selected.connect(_load_save)
-	save_menu.closed.connect(func():
-		if session_loading: return
-		audio.play_ui("menu_cancel")
-		_show("pause" if save_menu.save_mode else "main"))
+	save_menu.closed.connect(_close_save_menu)
 	pages["saves"] = save_menu
 	custom = preload("res://scripts/ui/custom_menu.gd").new()
 	overlay.add_child(custom)
@@ -131,7 +133,7 @@ func _ready() -> void:
 	var pause_page: Control = pages["pause"].get_meta("content")
 	_button(pause_page, "Resume", _resume)
 	_button(pause_page, "Save Game", _save_game)
-	_button(pause_page, "Options", func(): _open_custom("extra"))
+	_button(pause_page, "Options", func(): _options("pause"))
 	_button(pause_page, "Achievements", func(): achievement_menu.refresh(); _show("achievements"))
 	_button(pause_page, "Cheats", func(): _open_custom("cheats"))
 	_button(pause_page, "Main Menu", _confirm_main_menu)
@@ -258,6 +260,15 @@ func _show(name: String) -> void:
 			break
 func _new_game() -> void:
 	await _start_session({}, "ST39", 0, {"native_save_byte14": 0, "native_save_byte16": 1, "native_save_word40": 0, "native_save_byte44": 1, "native_save_byte45": 1, "event_flags": {}})
+func _show_error(message: String) -> void:
+	status.hide()
+	if not is_instance_valid(error_dialogue):
+		error_dialogue = preload("res://scripts/ui/dialogue_box.gd").new(); error_dialogue.process_mode = Node.PROCESS_MODE_ALWAYS; overlay.add_child(error_dialogue); error_dialogue.z_index = 200; error_dialogue.mouse_filter = Control.MOUSE_FILTER_STOP; error_dialogue.typing_sound_requested.connect(audio.play_sound); error_dialogue.menu_sound_requested.connect(audio.play_ui)
+	if error_dialogue.active: return
+	var focus := get_viewport().gui_get_focus_owner()
+	if focus != null: focus.release_focus()
+	await error_dialogue.present_message("MENU", {"index": -1, "text": message})
+	if is_instance_valid(focus) and focus.is_visible_in_tree(): focus.grab_focus()
 func _threaded_scene(path: String) -> PackedScene:
 	var status := ResourceLoader.load_threaded_get_status(path)
 	if status in [ResourceLoader.THREAD_LOAD_INVALID_RESOURCE, ResourceLoader.THREAD_LOAD_FAILED]:
@@ -268,7 +279,7 @@ func _threaded_scene(path: String) -> PackedScene:
 		await get_tree().process_frame
 		status = ResourceLoader.load_threaded_get_status(path)
 	return ResourceLoader.load_threaded_get(path) as PackedScene if status == ResourceLoader.THREAD_LOAD_LOADED else null
-func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0, context: Dictionary = {}) -> void:
+func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0, context: Dictionary = {}, load_feedback: bool = false, parked_override: Dictionary = {}) -> void:
 	if session_loading or opening_loading: return
 	session_loading = true
 	if not state.is_empty():
@@ -305,11 +316,14 @@ func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0, co
 	var weapon_policy: Variant = stage_manifest.get("native_combat_policy", null)
 	var buster_allowed := bool(weapon_policy.get("buster_allowed", true)) if weapon_policy is Dictionary else true
 	var player_path := "res://assets/player/megaman_civilian.glb" if stage in ["ST04", "ST05", "ST06", "ST07"] else ("res://assets/player/megaman.glb" if buster_allowed else "res://assets/player/megaman_normal.glb")
+	var gameplay_script := ResourceLoader.load("res://scripts/world/gameplay.gd", "GDScript") as GDScript
+	if gameplay_script == null or not gameplay_script.can_instantiate() and (gameplay_script.reload() != OK or not gameplay_script.can_instantiate()):
+		session_loading = false; await _show_error("The gameplay script could not be loaded."); return
 	var scene: PackedScene = await _threaded_scene("res://scenes/gameplay.tscn")
 	var player_scene: PackedScene = await _threaded_scene(player_path) if scene != null else null
 	if scene == null or player_scene == null:
-		if pages["saves"].visible: save_menu.set_message("The game could not be opened.")
 		session_loading = false
+		await _show_error("The game could not be opened.")
 		if pending_custom_menu: pending_custom_menu = false; _toggle_custom_menu()
 		return
 	await get_tree().process_frame
@@ -322,14 +336,14 @@ func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0, co
 		if candidate != null: candidate.queue_free()
 		if is_instance_valid(previous): previous.process_mode = Node.PROCESS_MODE_PAUSABLE
 		get_tree().paused = previous_paused; session_loading = false
-		status.text = "The gameplay script could not be loaded."; status.show()
+		await _show_error("The gameplay script could not be loaded.")
 		push_error("Failed to compile res://scripts/world/gameplay.gd or one of its dependencies")
 		return
 	candidate.manifest_path = stage_path
 	candidate.initial_area = area_index
 	candidate.entry_route = state.get("entry_route", {}).duplicate(true)
 	var entry_fade_code := int(candidate.entry_route.get("native_entry_fade", 0x02))
-	candidate.parked_location = state.get("parked_location", {}).duplicate(true)
+	candidate.parked_location = state.get("parked_location", parked_override).duplicate(true)
 	candidate.native_context = state.get("native_context", context if not context.is_empty() else {"native_save_byte14": 0, "native_save_byte16": 0, "native_save_word40": 0, "native_save_byte44": 1, "native_save_byte45": 1, "event_flags": {}}).duplicate(true)
 	candidate.initial_player_state = state.get("player", {}).duplicate(true) if candidate.entry_route.is_empty() else {}
 	candidate.audio_preparing = true
@@ -341,6 +355,7 @@ func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0, co
 	var success: bool = candidate.playable if candidate.preparation_finished else await candidate.prepared
 	if success and not state.is_empty(): success = await candidate.restore_state(state)
 	if success: candidate.entry_route = {}; candidate.initial_player_state = {}
+	var docked_hull: Node3D = await preload("res://scripts/world/flutter_dock.gd").ensure(candidate) if success else null
 	if not success:
 		remove_child(candidate)
 		candidate.queue_free()
@@ -356,6 +371,7 @@ func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0, co
 			status.show()
 		if pending_custom_menu: pending_custom_menu = false; _toggle_custom_menu()
 		return
+	if load_feedback: audio.play_sound(0xEF); await save_menu.finish_load()
 	if is_instance_valid(previous) and previous.audio != null and candidate.audio != null: candidate.audio.adopt_music(previous.audio.capture_music())
 	if entry_fade_code != 0xFF: candidate.transition_overlay.hold(entry_fade_code in [0x09, 0x0A, 0x0B, 0x0C])
 	if is_instance_valid(previous):
@@ -377,12 +393,15 @@ func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0, co
 	if gameplay.audio != null: gameplay.audio.set_preparing(false)
 	if is_instance_valid(opening): opening._finish(true)
 	await _resume(not OS.has_feature("web"))
+	if bool(state.get("entry_route", {}).get("flutter_landing", false)):
+		if not await preload("res://scripts/world/flutter_dock.gd").land(gameplay, docked_hull): push_error("Flutter landing sequence failed: " + gameplay.native_scenes.last_error)
 	await gameplay.transition_overlay.request(entry_fade_code)
 	gameplay.player.set_physics_process(true); session_loading = false
 	if pending_custom_menu: pending_custom_menu = false; _toggle_custom_menu()
 func _load_location(stage: String, area: int) -> void:
 	var context: Dictionary = gameplay.native_context.duplicate(true) if is_instance_valid(gameplay) else {}
-	await _start_session({}, stage, area, context)
+	var parked: Dictionary = gameplay.parked_location.duplicate(true) if is_instance_valid(gameplay) else {}
+	await _start_session({}, stage, area, context, false, parked)
 func _stage_transition(route: Dictionary) -> void:
 	if session_loading or not is_instance_valid(gameplay): return
 	var previous := gameplay
@@ -390,8 +409,11 @@ func _stage_transition(route: Dictionary) -> void:
 	if state.is_empty(): previous.cancel_stage_transition(); return
 	var stage := str(route["destination_stage"]); var area := int(route["destination_area"])
 	var source_stage := str(state["stage"]); var source_area := int(state["area"])
-	if source_stage in ["ST04", "ST05", "ST06", "ST07"] and stage not in ["ST04", "ST05", "ST06", "ST07"]: state["parked_location"] = {"stage": stage, "area": area}
-	elif stage in ["ST04", "ST05", "ST06", "ST07"] and source_stage not in ["ST04", "ST05", "ST06", "ST07"]: state["parked_location"] = {"stage": source_stage, "area": source_area}
+	if route.get("parked_location", null) is Dictionary: state["parked_location"] = route["parked_location"].duplicate(true)
+	elif source_stage in ["ST04", "ST05", "ST06", "ST07"] and stage not in ["ST04", "ST05", "ST06", "ST07"]:
+		if str(state.get("parked_location", {}).get("stage", "")) != stage or int(state.get("parked_location", {}).get("area", -1)) != area: state["parked_location"] = {"stage": stage, "area": area}
+	elif stage in ["ST04", "ST05", "ST06", "ST07"] and source_stage not in ["ST04", "ST05", "ST06", "ST07"]:
+		if str(state.get("parked_location", {}).get("stage", "")) != source_stage or int(state.get("parked_location", {}).get("area", -1)) != source_area: state["parked_location"] = {"stage": source_stage, "area": source_area}
 	state["stage"] = stage; state["area"] = area
 	state["defeated_actors"] = state.get("stage_events", {}).get(stage, []).duplicate()
 	state["minimap"] = state.get("explored_stages", {}).get(stage, []).duplicate(true)
@@ -409,25 +431,47 @@ func _show_saves() -> void:
 	_show("saves")
 func _load_save(id: String) -> void:
 	if session_loading: return
+	if save_menu.confirming_load or save_menu.loading_display: return
+	if save_menu.completion_active: save_menu.acknowledge_completion(); return
 	if save_menu.save_mode:
 		if not is_instance_valid(gameplay): return
-		var overwriting := not id.is_empty() and FileAccess.file_exists(saves.directory.path_join(id + ".json"))
-		var saved_id: String = saves.write(gameplay.save_state(), id)
+		if FileAccess.file_exists(saves.directory.path_join(id + ".json")) and not await save_menu.confirm_load(true): audio.play_ui("menu_cancel"); return
+		audio.play_ui("menu_confirm"); save_menu.show_loading(); session_loading = true
+		await RenderingServer.frame_post_draw
+		var saved_id: String = saves.write(gameplay.save_state(data_save_menu_active), id)
+		session_loading = false
 		if saved_id.is_empty():
 			save_menu.set_message(saves.error)
 			return
-		audio.play_ui("menu_confirm")
-		save_feedback.text = "Save overwritten." if overwriting else "Game saved."
-		save_feedback.show()
+		save_menu.refresh(saves.entries(), true)
+		audio.play_sound(0xEF)
+		await save_menu.show_completion()
+		if data_save_menu_active: data_save_menu_finished.emit(true); return
 		_show("pause")
 		return
 	var data: Dictionary = saves.read(id)
 	if data.is_empty():
 		save_menu.set_message(saves.error)
 		return
-	audio.play_ui("menu_confirm")
-	save_menu.set_message("Loading...")
-	await _start_session(data["state"])
+	if not await save_menu.confirm_load(): audio.play_ui("menu_cancel"); return
+	audio.play_ui("menu_confirm"); save_menu.show_loading()
+	await _start_session(data["state"], "ST04", 0, {}, true)
+func open_data_save_menu() -> bool:
+	if session_loading or not is_instance_valid(gameplay): return false
+	data_save_menu_active = true; save_menu.refresh(saves.entries(), true)
+	if not saves.error.is_empty(): save_menu.set_message(saves.error)
+	await _show("saves")
+	var saved: bool = await data_save_menu_finished
+	data_save_menu_active = false
+	if is_instance_valid(gameplay): await _resume()
+	return saved
+func _close_save_menu(play_sound := true) -> void:
+	if session_loading: return
+	if save_menu.confirming_load: save_menu.load_confirmed.emit(false); return
+	if save_menu.completion_active: save_menu.acknowledge_completion(); return
+	if play_sound: audio.play_ui("menu_cancel")
+	if data_save_menu_active: data_save_menu_finished.emit(false)
+	else: _show("pause" if save_menu.save_mode else "main")
 func _pause() -> void:
 	pause_return = ""
 	save_feedback.text = ""
@@ -461,9 +505,10 @@ func _confirm_main_menu() -> void:
 	else: _main_menu()
 func _main_menu() -> void:
 	if is_instance_valid(opening): opening._finish(true)
-	if not is_instance_valid(gameplay): _show("main"); return
+	if is_instance_valid(gameplay):
+		var previous := gameplay
+		remove_child(previous); previous.queue_free(); gameplay = null
 	get_tree().paused = true
-	gameplay.audio.music.stream_paused = true
 	title.show_press_start()
 	_show("main")
 func _title_selected(action: String) -> void:
@@ -476,18 +521,15 @@ func _title_selected(action: String) -> void:
 			_start_session({}, "ST4A", 0)
 		"options": _options("main")
 func _options(return_page: String) -> void:
-	options_return = return_page
-	_show("options")
+	options_return = "pause" if return_page == "status" else return_page
+	custom.open_page("extra"); _show("custom")
 func _input(event: InputEvent) -> void:
+	if is_instance_valid(error_dialogue) and error_dialogue.active: return
 	if menu_transitioning: get_viewport().set_input_as_handled(); return
 	if event.is_action_pressed("status_menu"):
 		if not session_loading and not opening_loading and is_instance_valid(gameplay) and not is_instance_valid(opening):
-			if status_menu.visible or (options.visible and options_return == "status"): _resume()
-			else:
-				get_tree().paused = true
-				status_menu.show_page("status")
-				_show("status")
-				audio.play_ui("menu_confirm")
+			if pages["pause"].visible: _resume()
+			else: _pause(); audio.play_ui("menu_confirm")
 		get_viewport().set_input_as_handled()
 		return
 	if not event.is_action_pressed("custom_menu"): return
@@ -507,9 +549,11 @@ func _toggle_custom_menu() -> void:
 	get_tree().paused = is_instance_valid(gameplay)
 	_show("pause")
 func _open_custom(page: String) -> void:
+	if page == "extra": _options("pause"); return
 	custom.open_page(page)
 	_show("custom")
 func _unhandled_input(event: InputEvent) -> void:
+	if is_instance_valid(error_dialogue) and error_dialogue.active: return
 	if menu_transitioning: get_viewport().set_input_as_handled(); return
 	if session_loading or opening_loading: return
 	if is_instance_valid(opening) and not (pages["pause"].visible or custom.visible or pages["options"].visible): return
@@ -518,7 +562,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if pages["title_confirm"].visible: _show("pause")
 	elif custom.visible: _close_custom()
 	elif status_menu.visible: status_menu.back()
-	elif pages["saves"].visible: _show("pause" if save_menu.save_mode else "main")
+	elif pages["saves"].visible: _close_save_menu(false)
 	elif pages["options"].visible: _show(options_return)
 	elif pages["pause"].visible: _resume()
 	elif is_instance_valid(gameplay) and not pages["main"].visible:
@@ -527,6 +571,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	get_viewport().set_input_as_handled()
 func _close_custom() -> void:
 	if custom.active_page == "locations": custom.open_page("cheats"); custom.focus_first()
+	elif custom.active_page == "extra": _show(options_return)
 	else: _show("pause")
 func _sensitivity_changed(value: float) -> void:
 	if is_instance_valid(gameplay): gameplay.player.mouse_sensitivity = value
@@ -535,6 +580,7 @@ func _sensitivity_changed(value: float) -> void:
 func _native_option_changed(_key: String, _value: int) -> void:
 	audio.play_ui("menu_move")
 	_apply_native_options()
+	if is_instance_valid(custom): custom.sync_game_options()
 func _native_defaults_reset() -> void:
 	AudioServer.set_bus_volume_db(0, 0.0)
 	AudioServer.set_bus_mute(0, false)
@@ -573,7 +619,12 @@ func _apply_screen_offset(node: Node) -> void:
 	for child in node.get_children(): _apply_screen_offset(child)
 func achievement_badge(id: String) -> String:
 	return "res://assets/achievements/" + str(achievement_catalog[id]["icon_file" if achievements.has_section_key("unlocked", id) else "locked_icon_file"]) if achievement_catalog.has(id) else ""
-func _unlock_achievement(id: String) -> void:
+func debug_set_achievement(id: String, unlocked: bool) -> void:
+	if not debug_achievements or not achievement_catalog.has(id): return
+	if unlocked: _unlock_achievement(id, true)
+	else: achievements.erase_section_key("unlocked", id); achievements.save("user://achievements.cfg")
+	achievement_menu.call_deferred("refresh")
+func _unlock_achievement(id: String, debug_preview: bool = false) -> void:
 	if not achievement_catalog.has(id) or achievements.has_section_key("unlocked", id): return
 	achievements.set_value("unlocked", id, int(Time.get_unix_time_from_system())); achievements.save("user://achievements.cfg")
-	var definition: Dictionary = achievement_catalog[id]; achievement_notice.enqueue({"id": id, "title": definition["title"], "description": definition["description"], "icon": achievement_badge(id)})
+	var definition: Dictionary = achievement_catalog[id]; achievement_notice.enqueue({"id": id, "title": definition["title"], "description": definition["description"], "icon": achievement_badge(id), "debug_preview": debug_preview})

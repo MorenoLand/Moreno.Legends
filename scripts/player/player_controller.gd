@@ -22,6 +22,7 @@ signal special_sound_requested(sound_id: int)
 var locked_target: Node3D
 var lock_on: Node3D
 var input_blocker: Callable
+var camera_yaw_constraint: Callable
 var health := 80
 var zenny := 0
 var inventory: Dictionary = {"items": {}, "key_items": {}, "special_weapons": {"0": 1}, "body_parts": {}, "buster_parts": {}}
@@ -137,6 +138,7 @@ func _ready() -> void:
 	health = max_health
 func _process(delta: float) -> void:
 	_update_special_action(delta)
+	if interaction_role in ["ladder_up", "ladder_down"]: camera_pivot.rotation = Vector3(deg_to_rad(-12.0), player_model.rotation.y, 0.0); _update_camera(delta)
 	if camera_pivot is SpringArm3D:
 		var allowed := maxf((camera_pivot as SpringArm3D).get_hit_length(), 0.0)
 		var basis := camera_pivot.global_basis
@@ -198,6 +200,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 	elif event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		if interaction_role in ["ladder_up", "ladder_down"]: return
 		camera_pivot.rotation.y -= event.relative.x * mouse_sensitivity
 		camera_pivot.rotation.x = clampf(camera_pivot.rotation.x + event.relative.y * mouse_sensitivity * (1.0 if inverse_mouse_y else -1.0), deg_to_rad(-55.0), deg_to_rad(25.0))
 		camera_pivot.rotation.z = 0.0
@@ -227,9 +230,9 @@ func _physics_process(delta: float) -> void:
 	elif shot_pose <= 0: gun_pose_active = false
 	camera_pivot.rotation.y -= Input.get_axis("turn_left", "turn_right") * turn_speed * delta
 	var input_vector := Vector2(Input.get_axis("strafe_left", "strafe_right"), Input.get_axis("move_back", "move_forward"))
-	var forward := -camera.global_basis.z
+	var forward := -camera_pivot.global_basis.z
 	forward.y = 0.0
-	var right := camera.global_basis.x
+	var right := camera_pivot.global_basis.x
 	right.y = 0.0
 	var direction := (right.normalized() * input_vector.x + forward.normalized() * input_vector.y).normalized()
 	slow_walking = Input.is_action_pressed("slow_walk")
@@ -528,6 +531,7 @@ func _fit_model() -> void:
 	if camera_pivot is SpringArm3D: (camera_pivot as SpringArm3D).spring_length = body_height * 3.4
 	if camera_pivot is SpringArm3D: ((camera_pivot as SpringArm3D).shape as SphereShape3D).radius = capsule.radius * 0.8
 func _update_camera(delta: float) -> void:
+	if camera_yaw_constraint.is_valid(): camera_pivot.rotation.y = lerp_angle(camera_pivot.rotation.y, camera_yaw_constraint.call(global_position, camera_pivot.rotation.y), 1.0 - exp(-delta * 10.0))
 	if not camera_pivot is SpringArm3D: return
 	var arm := camera_pivot as SpringArm3D
 	arm.spring_length = lerpf(arm.spring_length, body_height * (1.8 if aiming else 3.4), minf(delta * 10, 1))
@@ -641,8 +645,9 @@ func begin_scripted_walk(source: Dictionary, yaw: float) -> bool:
 	if upper_modifier != null: upper_modifier.active = true; upper_modifier.track_target = false; upper_modifier.set_source_aim_angles(0, 0)
 	motion_tree.set("parameters/UpperBody/blend_amount", 0.0); motion_tree.set("parameters/MotionSpeed/scale", rate / 30.0); player_model.rotation.y = yaw; scripted_walk = {"elapsed": 0.0, "duration": float(ticks) / rate, "velocity": Basis(Vector3.UP, yaw) * Vector3(-float(step[0]), -float(step[1]), float(step[2])) * rate / 4096.0}; motion_role = ""; _play_animation(role); motion_tree.advance(0.0)
 	return true
-func refresh_room_camera() -> void:
-	camera_world_valid = false; camera_distance = -1.0; _update_camera(0.0)
+func refresh_room_camera(preserve_world: bool = false) -> void:
+	if not preserve_world: camera_world_valid = false; camera_distance = -1.0
+	_update_camera(0.0)
 func _update_scripted_walk(delta: float) -> void:
 	var elapsed := float(scripted_walk["elapsed"]); var duration := float(scripted_walk["duration"]); var advance := minf(delta, duration - elapsed)
 	velocity = (scripted_walk["velocity"] as Vector3) * advance / delta; move_and_slide(); apply_floor_snap(); _update_camera(delta); scripted_walk["elapsed"] = elapsed + advance

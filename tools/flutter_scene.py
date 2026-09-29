@@ -72,6 +72,8 @@ def export(root=None, out_dir=None):
 	for slot, profile in controllers.items():
 		item = actors[int(slot)]; entry_data = item["entry"]; profile["source"] = "ST04T class 0x%02X variant %d (pool 0x%02X) emulated once per native tick after the scene update; render helpers stubbed" % (entry_data["actor_class"], entry_data["actor_state"], entry_data["pool_type"])
 		profile.setdefault("startup_control", entry_data["control"])
+	segments["0:1"]["camera_offset_raw"] = [-524, 0, 0]; controllers["1"]["render_offset_by_step"] = {"1": [-524, 0, 0]}
+	segments["0:1"]["visible_actor_slots"] = [1]; segments["0:1"]["player_visible"] = False
 	scene = {"stage": STAGE, "area": 0, "scene_id": SCENE_ID, "native_tick_hz": 25, "callback_contract_file": "scene_4c_callbacks.json", "commands": native, "timeline": tl, "actors": actors,
 		"player": {"track": intro_scene.compress(tracks["player"]), "camera_opcode_0x42_used": any(c["opcode"] == 0x42 for c in native)},
 		"face_tables": {"player_eyes": intro_scene.face_table(EYES, 2), "player_mouth": intro_scene.face_table(MOUTH, 2)},

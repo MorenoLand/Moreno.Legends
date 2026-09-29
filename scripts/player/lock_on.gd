@@ -30,6 +30,7 @@ func update(delta: float, held: bool) -> void:
 func clear() -> void:
 	if is_instance_valid(target): last_target = target; released_tick = tick
 	target = null; acquired_tick = -1; player.locked_target = null
+	if is_instance_valid(mesh): (mesh.mesh as ImmediateMesh).clear_surfaces()
 func lock_point(node: Node3D) -> Vector3:
 	var center: Variant = node.get("hit_center")
 	return center if center is Vector3 else node.global_position + Vector3.UP

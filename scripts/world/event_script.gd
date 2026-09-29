@@ -165,8 +165,11 @@ func _resolve_program(stage: String, initial_index: int, window_state: Dictionar
 		for command: Dictionary in commands:
 			events.append({"kind": "command", "offset": _integer(command.get("file_offset", command.get("relative_offset", order)), order), "order": order, "command": command}); order += 1
 		if commands.is_empty() and runs.is_empty():
-			if not _has_displayable_text(entry): return {"supported": false}
-			var fallback_text := str(entry.get("text", "")); page_text += fallback_text; _append_speed(page_speed_counts, fallback_text, page_speed); pages.append(page_text); page_speeds.append(page_speed_counts.duplicate()); page_wait_updates.append(0); page_choices.append({}); page_commands.append(current_page_commands); return {"supported": true, "program_index": message_index, "pages": pages, "page_speeds": page_speeds, "page_wait_updates": page_wait_updates, "page_choices": page_choices, "page_commands": page_commands, "tail_commands": tail_commands}
+			if not _has_displayable_text(entry) and page_text.strip_edges().is_empty() and pages.is_empty() and current_page_commands.is_empty(): return {"supported": false}
+			var fallback_text := str(entry.get("text", "")) if _has_displayable_text(entry) else ""; page_text += fallback_text; _append_speed(page_speed_counts, fallback_text, page_speed)
+			if not page_text.strip_edges().is_empty(): pages.append(page_text); page_speeds.append(page_speed_counts.duplicate()); page_wait_updates.append(0); page_choices.append({}); page_commands.append(current_page_commands)
+			else: tail_commands = current_page_commands
+			return {"supported": true, "program_index": message_index, "pages": pages, "page_speeds": page_speeds, "page_wait_updates": page_wait_updates, "page_choices": page_choices, "page_commands": page_commands, "tail_commands": tail_commands}
 		events.sort_custom(func(a: Dictionary, b: Dictionary): return int(a["offset"]) < int(b["offset"]) if int(a["offset"]) != int(b["offset"]) else int(a["order"]) < int(b["order"]))
 		var redirected := false
 		for event: Dictionary in events:
@@ -259,7 +262,7 @@ func _resolve_program(stage: String, initial_index: int, window_state: Dictionar
 						if not simulated_context.has("event_flags") or not simulated_context["event_flags"] is Dictionary: return {"supported": false}
 						var event_id := (int(arguments[0]) << 8) | int(arguments[1]); var simulated_flags: Dictionary = simulated_context["event_flags"]; var event_key: Variant = event_id if simulated_flags.has(event_id) or not simulated_flags.has(str(event_id)) else str(event_id); simulated_flags[event_key] = opcode == 0x26; simulated_context["event_flags"] = simulated_flags
 					current_page_commands.append({"opcode": opcode, "arguments": arguments, "source_command": command.duplicate(true)})
-				0x0A, 0x22:
+				0x0A, 0x0B, 0x20, 0x22:
 					pass
 				0x0C, 0x1A:
 					current_page_commands.append({"opcode": opcode, "arguments": arguments, "source_command": command.duplicate(true)})

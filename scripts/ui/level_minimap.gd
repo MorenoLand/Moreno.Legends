@@ -1,6 +1,8 @@
 extends Control
 var areas: Array = []
 var atlas: Texture2D
+var bitmap_mode := false
+var stage_directory := ""
 var area: Dictionary = {}
 var explored: Dictionary = {}
 var position_in_area := Vector3.ZERO
@@ -16,11 +18,14 @@ func _ready() -> void:
 	configure("ST0F")
 	set_player(position_in_area, -heading)
 func configure(stage: String) -> void:
-	areas.clear()
-	area.clear()
+	areas = []
+	area = {}
 	explored.clear()
 	atlas = null
+	bitmap_mode = false
+	hide(); queue_redraw()
 	var path := "res://assets/minimap/" + stage + "/manifest.json"
+	stage_directory = path.get_base_dir()
 	if not FileAccess.file_exists(path):
 		hide()
 		return
@@ -29,29 +34,36 @@ func configure(stage: String) -> void:
 		push_error("Missing original minimap export")
 		return
 	areas = manifest["areas"]
+	bitmap_mode = str(manifest.get("mode", "tiles")) == "bitmap"
 	atlas = load(path.get_base_dir().path_join(str(manifest["atlas"]))) as Texture2D
 	visible = display_enabled
 func set_display_enabled(value: bool) -> void:
 	display_enabled = value
 	visible = value and atlas != null and not areas.is_empty()
 func set_area(index: int) -> void:
+	area = {}
 	for entry: Dictionary in areas:
 		if int(entry["index"]) == index:
-			area = entry
+			area = entry.duplicate(true); bitmap_mode = area.has("bitmap_origin")
+			if bitmap_mode: atlas = load(stage_directory.path_join(str(entry["atlas"]))) as Texture2D
 			break
+	visible = display_enabled and atlas != null and not area.is_empty()
 	queue_redraw()
 func set_player(position: Vector3, yaw: float) -> void:
 	position_in_area = position
 	heading = -yaw
 	var next_scroll := Vector2(floorf(-position.x * 4), -floorf(position.z * 4))
+	if bitmap_mode and not area.is_empty():
+		var center: Array = area["native_center"]; next_scroll = Vector2(clampf(floorf(-position.x * 4.0) - float(center[0]), -92, 92), clampf(-floorf(position.z * 4.0) - float(center[1]), -92, 92))
 	var next_arrow := PackedVector2Array()
 	for vertex in [Vector2(0, 6), Vector2(-3, -5), Vector2(3, -5)]:
 		var point: Vector2 = vertex.rotated(heading)
-		next_arrow.append(Vector2(36, 36) + Vector2(floorf(snappedf(point.x, 0.0001)), floorf(snappedf(point.y, 0.0001))))
+		var marker_offset := Vector2(floorf(-position.x * 4.0), -floorf(position.z * 4.0)) - next_scroll if bitmap_mode else Vector2.ZERO
+		next_arrow.append(Vector2(36, 36) + marker_offset + Vector2(floorf(snappedf(point.x, 0.0001)), floorf(snappedf(point.y, 0.0001))))
 	var changed := scroll != next_scroll or arrow != next_arrow
 	scroll = next_scroll
 	arrow = next_arrow
-	if not area.is_empty():
+	if not area.is_empty() and not bitmap_mode:
 		var column := floori(-position.x / 4.0 + float(area["width"]) * 0.5)
 		var row := floori(position.z / 4.0 + float(area["height"]) * 0.5)
 		var cell := Vector3i(int(area["index"]), column, row)
@@ -63,6 +75,10 @@ func _draw() -> void:
 	if area.is_empty() or atlas == null: return
 	var factor := size.y / 72.0
 	draw_set_transform(Vector2.ZERO, 0, Vector2.ONE * factor)
+	if area.has("bitmap_origin"):
+		var origin: Array = area["bitmap_origin"]; draw_texture_rect(atlas, Rect2(Vector2(36, 36) - scroll + Vector2(float(origin[0]), float(origin[1])), Vector2(256, 256)), false, Color(1.25, 1.25, 1.25, 0.5)); draw_polygon(arrow, arrow_colors)
+		var bitmap_outline := arrow.duplicate(); bitmap_outline.append(arrow[0]); draw_polyline(bitmap_outline, Color8(64, 64, 128), 1.0); return
+	if not area.has("tiles"): return
 	var width := int(area["width"])
 	var height := int(area["height"])
 	var center := Vector2(36, 36)

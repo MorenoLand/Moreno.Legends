@@ -170,6 +170,8 @@ func _tick_droplets() -> void:
 		if int(droplet["life"]) <= 0: droplets.erase(droplet)
 func _emit_gauge() -> void:
 	gauge_changed.emit(tank, capacity, 16, int(data["tank"]["reserve"]["value"]), int(data["tank"]["reserve"]["value"]))
+func refill_energy() -> void:
+	tank = capacity; _emit_gauge()
 func _draw() -> void:
 	var camera := get_viewport().get_camera_3d()
 	if camera == null: return

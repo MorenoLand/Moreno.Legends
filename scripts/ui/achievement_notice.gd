@@ -17,6 +17,7 @@ var hold_seconds := 0.0
 var icon: Texture2D
 var text_width := 174.0
 func _ready() -> void:
+	z_index = 100
 	process_mode = Node.PROCESS_MODE_PAUSABLE; set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); mouse_filter = Control.MOUSE_FILTER_IGNORE; focus_mode = Control.FOCUS_NONE; texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST; hide()
 	var manifest: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://assets/menu/manifest.json"))
 	if manifest is Dictionary: layout = manifest.get("load_game_layout", {})
@@ -30,8 +31,10 @@ func configure(controls: Array[Control]) -> void:
 	_refresh_visibility()
 func enqueue(definition: Dictionary) -> void:
 	if str(definition.get("id", "")).is_empty() or str(definition.get("title", "")).is_empty(): return
-	pending.append({"id": str(definition["id"]), "title": str(definition["title"]), "description": str(definition.get("description", "")), "icon": str(definition.get("icon", ""))})
+	pending.append({"id": str(definition["id"]), "title": str(definition["title"]), "description": str(definition.get("description", "")), "icon": str(definition.get("icon", "")), "debug_preview": bool(definition.get("debug_preview", false))})
+	if bool(definition.get("debug_preview", false)): process_mode = Node.PROCESS_MODE_ALWAYS
 func _blocked() -> bool:
+	if bool(current.get("debug_preview", false)) or current.is_empty() and not pending.is_empty() and bool(pending[0].get("debug_preview", false)): return false
 	for control: Control in blockers:
 		if is_instance_valid(control) and control.is_visible_in_tree(): return true
 	return false
@@ -63,7 +66,7 @@ func _process(delta: float) -> void:
 			if complete:
 				if phase == "opening": phase = "holding"
 				else:
-					var id := str(current["id"]); current.clear(); phase = ""; elapsed = 0.0; hide(); finished.emit(id); return
+					var id := str(current["id"]); current.clear(); phase = ""; elapsed = 0.0; hide(); process_mode = Node.PROCESS_MODE_ALWAYS if pending.any(func(entry: Dictionary): return bool(entry.get("debug_preview", false))) else Node.PROCESS_MODE_PAUSABLE; finished.emit(id); return
 		queue_redraw()
 func _draw() -> void:
 	if phase.is_empty() or font == null or layout.is_empty() or size.y <= 0.0: return

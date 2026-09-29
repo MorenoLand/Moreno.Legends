@@ -56,7 +56,7 @@ static func load_into(parent: Node3D, stage: String, area: int, native_context: 
 			deferred_pose = deferred_pose or enabled_sets.has(spawn_set_id)
 			continue
 		var record_id := int(entry.get("record_id", -1)); var observed_registration: bool = scripted.get("source", {}).has("registration_observation"); var record_key := "controller:" + str(entry["source_record_ram"]) if direct else "record:%s:%s:%d" % [str(entry["source_record_ram"]), str(entry.get("native_registration_call_pc", "")), int(entry.get("record_ordinal", 0))] if observed_registration else str(record_id); var source_bytes := str(entry.get("source_bytes_hex", entry.get("source_bytes", ""))); var prior: Variant = registry.get(record_key, null)
-		var role := str(entry.get("role", ""))
+		var role := "player_vehicle" if int(entry.get("native_resource_flags", -1)) == 0x3020 else str(entry.get("role", ""))
 		if excluded_roles.has(role):
 			if is_instance_valid(prior) and str(prior.get_meta("native_role", "")) == role: prior.queue_free(); registry.erase(record_key)
 			continue
@@ -252,7 +252,9 @@ static func _models_by_index(models: Array) -> Dictionary:
 	for model: Dictionary in models: result[int(model.get("model_index", model.get("source_model_index", model.get("index", -1))))] = model
 	return result
 static func _attach_native_source(node: Node3D, stage: String, area: int, entry: Dictionary) -> void:
-	node.set_meta("native_stage", stage); node.set_meta("native_area", area); preload("res://scripts/world/native_interaction.gd").attach(node, entry)
+	node.set_meta("native_stage", stage); node.set_meta("native_area", area); node.set_meta("native_actor_source", entry.duplicate(true)); preload("res://scripts/world/native_interaction.gd").attach(node, entry)
+	if str(entry.get("role", "")) == "bridge_steering_wheel": node.add_to_group("flutter_steering_wheels")
+	if int(entry.get("native_resource_flags", -1)) == 0x3020: node.add_to_group("parked_flutter_hulls")
 	var receiver := node.get_node_or_null("NativeKickableBody")
 	if receiver != null:
 		var ancestor: Node = node.get_parent()
@@ -299,7 +301,10 @@ static func _load_actor(parent: Node3D, path: String, entry: Dictionary, model: 
 	if not movement_profile.is_empty():
 		var behavior := preload("res://scripts/world/native_npc_behavior.gd").new(); behavior.name = "NativeNpcBehavior"; node.add_child(behavior); behavior.configure(node, movement_profile, native_context)
 	var interaction: Dictionary = entry.get("native_interaction", {})
-	if str(entry.get("stage", "")) == "ST08" and int(entry.get("actor_class", -1)) == 0 and int(entry.get("model_index", -1)) == 2 and str(entry.get("source_record_ram", "")) == "0x800f5284" and int(interaction.get("actor_state", -1)) == 1 and str(interaction.get("actor_callback", "")).to_lower() == "0x800e93ec":
+	if int(entry.get("actor_class", -1)) == 0 and int(interaction.get("actor_state", -1)) == 1 and ((str(entry.get("stage", "")) == "ST08" and str(entry.get("source_record_ram", "")) == "0x800f5284" and str(interaction.get("actor_callback", "")).to_lower() == "0x800e93ec") or (str(entry.get("stage", "")) == "ST09" and str(entry.get("source_record_ram", "")) == "0x800f2d00" and str(interaction.get("actor_callback", "")).to_lower() == "0x800e9d0c")):
+		var follower := preload("res://scripts/world/native_follower.gd").new(); follower.name = "NativeFollower"; node.add_child(follower)
+		if not follower.configure(node, entry, native_context): follower.queue_free()
+	if str(entry.get("native_follower_profile", "")) == "tundra":
 		var follower := preload("res://scripts/world/native_follower.gd").new(); follower.name = "NativeFollower"; node.add_child(follower)
 		if not follower.configure(node, entry, native_context): follower.queue_free()
 	preload("res://scripts/world/native_material.gd").apply(node, 255.0 if bool(model.get("native_vertex_colors", false)) else 128.0)
@@ -318,6 +323,14 @@ static func _load_actor(parent: Node3D, path: String, entry: Dictionary, model: 
 				var geometry: Shape3D = mesh_shape.duplicate() if layer == 4 else mesh_shape
 				if geometry is ConcavePolygonShape3D: (geometry as ConcavePolygonShape3D).backface_collision = layer == 4 or entry.has("native_broadphase")
 				var body := StaticBody3D.new(); body.name = "NativeMeshCollision_%d" % layer; body.collision_layer = layer; body.collision_mask = 0; var shape := CollisionShape3D.new(); shape.shape = geometry; body.add_child(shape); mesh_node.add_child(body)
+	if parent.has_meta("native_stream_room_active"):
+		var colliders: Array[CollisionObject3D] = []
+		if node is CollisionObject3D: colliders.append(node)
+		for collider: CollisionObject3D in node.find_children("*", "CollisionObject3D", true, false): colliders.append(collider)
+		for collider: CollisionObject3D in colliders:
+			collider.set_meta("native_stream_actor_layer", collider.collision_layer)
+			if not bool(parent.get_meta("native_stream_room_active")): collider.collision_layer = 0
+	if int(entry.get("actor_class", -1)) == 0 and entry.has("native_hitbox") and not entry.has("native_pose_resolver"): preload("res://scripts/world/native_actor_motion.gd").settle_on_floor.call_deferred(node)
 	return node
 static func _prefetchable(entry: Dictionary) -> bool: return str(entry.get("model_file", "")).ends_with(".glb") and not entry.has("native_kickable") and not entry.has("native_pose_resolver")
 static func _prefetch(paths: Array[String]) -> void:

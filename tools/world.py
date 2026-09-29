@@ -375,6 +375,19 @@ def export_minimap(dat_dir, maps_dir, output_dir):
 	print(f"ST0F minimap: {len(areas)} areas, {sum(area['width'] * area['height'] for area in areas)} cells, {texture_count} texture sections -> {output_dir}")
 	return manifest
 
+def export_bitmap_minimaps(dat_dir, output_dir, stages=None):
+	bindings = {"ST08": 0, "ST09": 1, "ST0B": 2, "ST20": 8, "ST30": 3, "ST31": 6, "ST29": 9, "ST2A": 11, "ST2B": 13, "ST3B": 15, "ST3C": 17}; result = {}; source_path = Path(dat_dir) / "ST09T.BIN"; source_data = source_path.read_bytes(); source_base = read_u32(source_data, 12)
+	for stage, first_index in bindings.items():
+		if stages and stage not in stages: continue
+		overlay_path = Path(dat_dir) / (stage + "T.BIN"); manifest_path = ROOT / "assets/levels" / stage / "manifest.json"
+		if not overlay_path.is_file() or not manifest_path.is_file(): continue
+		manifest = json.loads(manifest_path.read_text()); areas = []; vram, _ = textures(overlay_path); target = Path(output_dir) / stage; target.mkdir(parents=True, exist_ok=True)
+		for source in manifest["areas"]:
+			index = int(source["index"]); map_index = first_index + (index if stage not in ("ST08", "ST09", "ST0B", "ST20") else 0)
+			if map_index >= 22: raise ValueError(f"{stage}:{index} exceeds original HUD minimap table")
+			clut, tpage = struct.unpack_from("<2H", source_data, 48 + 0x800F2FA4 - source_base + map_index * 4); offset = list(struct.unpack_from("<4h", source_data, 48 + 0x800F2EF4 - source_base + map_index * 8)); atlas = "bitmap_%02d.png" % map_index; write_if_changed(target / atlas, texture_page(vram, clut, tpage)); areas.append({"index": index, "width": 256, "height": 256, "native_center": [0, 0], "bitmap_origin": [-offset[2], -offset[3]], "source_offset": offset, "atlas": atlas, "native_map_index": map_index, "tpage": hex(tpage), "clut": hex(clut)})
+		write_if_changed(target / "manifest.json", json.dumps({"stage": stage, "mode": "bitmap", "atlas": areas[0]["atlas"], "source": {"overlay": overlay_path.name, "dispatch_source": "ST09T800F1434/800E70B4", "offset_table": "0x800F2EF4", "texture_table": "0x800F2FA4", "native_units_per_pixel": 64}, "areas": areas}, indent=2) + "\n", encoding="utf-8"); result[stage] = len(areas)
+	return result
 def minimap_cli():
 	parser = argparse.ArgumentParser(); parser.add_argument("--dat-dir", type=Path, default=Path("build/disc-assets/DAT")); parser.add_argument("--maps-dir", type=Path, default=Path("build/maps")); parser.add_argument("--output-dir", type=Path, default=Path("assets/minimap/ST0F")); args = parser.parse_args(); export_minimap(args.dat_dir, args.maps_dir, args.output_dir)
 
@@ -411,6 +424,7 @@ NATIVE_INTERACTION_TARGETS = {"ST08": {(0, 0): (0x800F2928, 0x800F2934), (0, 1):
 NATIVE_INTERACTION_TARGETS.update({"ST0B": {(0, 0): (0x800EF45C, 0x800EF468)}, "ST0D": {(0, 0): (0x800F084C, 0x800F0858)}, "ST17": {(0, 0): (0x80106F48, 0x80106F54)}, "ST18": {(0, 0): (0x801075E4, 0x801075E4)}, "ST1B": {(0, 0): (0x800F0280, 0x800F028C)}, "ST1F": {(0, 0): (0x801012C8, 0x801012D4)}, "ST20": {(0, 0): (0x800F2088, 0x800F2094)}, "ST24": {(0, 0): (0x800F2454, 0x800F2460)}, "ST25": {(0, 0): (0x800F9F44, 0x800F9F50)}, "ST29": {(0, 0): (0x800F70A8, 0x800F70B4)}, "ST3B": {(0, 0): (0x800FE524, 0x800FE530)}, "ST3C": {(0, 0): (0x800FEA74, 0x800FEA80)}, "ST3D": {(0, 0): (0x800EB0B8, 0x800EB0C4)}, "ST3E": {(0, 0): (0x800ED614, 0x800ED620)}, "ST3F": {(0, 0): (0x800EF948, 0x800EF954)}})
 NATIVE_SCRIPTED_INTERACTIONS.update({"ST2C": {(0, 0): (0x800E7454, 0x800E78D4, 0, False)}})
 NATIVE_INTERACTION_TARGETS.update({"ST2C": {(0, 0): (0x800EA884, 0x800EA890)}})
+NATIVE_SCRIPTED_INTERACTIONS["ST09"][(0, 1)] = (0x800E9D0C, 0x800EA33C, 0, True)
 def bind_scripted_interactions(stage, records, overlay, source_key="source_bytes_hex", address_key="source_record_ram"):
 	base = read_u32(overlay, 12)
 	for record in records:

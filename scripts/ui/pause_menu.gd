@@ -16,7 +16,7 @@ func configure() -> void:
 	surface.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(surface)
 	content = VBoxContainer.new()
-	content.position = Vector2(100, 68)
+	content.position = Vector2(100, 65)
 	content.size = Vector2(120, 0)
 	content.add_theme_constant_override("separation", 2)
 	content.minimum_size_changed.connect(queue_redraw)

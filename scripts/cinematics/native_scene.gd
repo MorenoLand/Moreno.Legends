@@ -10,6 +10,8 @@ var directory := ""
 var stage := ""
 var area := 0
 var camera: Camera3D
+var camera_collision := false
+var shot_suppressed: Array[Node3D] = []
 var actors: Dictionary = {}
 var records: Dictionary = {}
 var segment := 0
@@ -59,6 +61,8 @@ var xa_ready_tick := -1
 var xa_answer := -1
 var player_faces: Array = []
 var player_face_page: Texture2D
+var registration_records: Array[String] = []
+var player_pose: Node3D
 func configure(gameplay: Node3D, level: Node3D, path: String, requested_area: int = -1) -> bool:
 	host = gameplay; scene_root = level; directory = path.get_base_dir()
 	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
@@ -71,6 +75,9 @@ func configure(gameplay: Node3D, level: Node3D, path: String, requested_area: in
 	var contract: Variant = JSON.parse_string(FileAccess.get_file_as_string(callback_path))
 	if not contract is Dictionary: return false
 	callbacks = contract
+	registration_records.clear()
+	for record in callbacks.get("finish", {}).get("registration_records", []): registration_records.append(str(record).to_lower())
+	if callbacks.get("finish", {}).has("registration_record"): registration_records.append(str(callbacks["finish"]["registration_record"]).to_lower())
 	var weather: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://assets/weather/manifest.json"))
 	if weather is Dictionary: trig = weather.get("trig4096", [])
 	if trig.size() != 4096: return false
@@ -79,6 +86,7 @@ func configure(gameplay: Node3D, level: Node3D, path: String, requested_area: in
 		if not callbacks.get("segments", {}).has("%d:%d" % [int(entry["phase"]), int(entry["step"])]): return false
 	if JSON.stringify(callbacks.get("segments", {})).contains("\"area_change\""): scene_root = Node3D.new(); scene_root.name = "NativeSceneRoot"; host.add_child(scene_root); scene_root.global_transform = level.global_transform; owns_root = true
 	camera = Camera3D.new(); camera.name = "NativeSceneCamera"; camera.near = host.player.camera.near; camera.far = host.player.camera.far; camera.fov = rad_to_deg(2.0 * atan(120.0 / 384.0)); scene_root.add_child(camera)
+	if bool(data.get("player", {}).get("track_runtime", false)): player_pose = Node3D.new(); scene_root.add_child(player_pose); player_pose.global_position = host.player.global_position; player_pose.global_rotation.y = host.player.player_model.global_rotation.y
 	player_clock = preload("res://scripts/world/native_animation.gd").new(); player_clock.automatic = false; add_child(player_clock)
 	var clips: Array = []
 	for clip: Dictionary in host.player.native_clips.values():
@@ -126,7 +134,7 @@ func run() -> bool:
 				if str(node.get_meta("native_spawn_set", "")) == str(rule["spawn_set"]) and str(node.get_meta("native_identity", "")) == str(rule.get("identity", node.get_meta("native_identity", ""))): node.hide(); suppressed.append(node)
 	if host.player.upper_modifier != null: host.player.upper_modifier.track_target = false; host.player.upper_modifier.set_source_aim_angles(0, 0)
 	for record: Dictionary in records.values():
-		if str(record["source_ram"]).to_lower() == str(callbacks["finish"].get("registration_record", "")): continue
+		if str(record["source_ram"]).to_lower() in registration_records: continue
 		var node: Node3D = await Props.spawn_entry(scene_root, stage, area, record["entry"], record["model"], host.native_context)
 		if node == null: _restore(); return false
 		var clock := node.get_node_or_null("NativeAnimationClock") as NativeAnimation
@@ -183,6 +191,10 @@ func native_tick() -> void:
 		var duration := int(data["timeline"][segment]["duration"])
 		if duration >= 0 and segment_tick == duration: _advance()
 		if not running or finishing: return
+	if is_instance_valid(player_pose):
+		var reference: float = host.player.global_position.y; _track(player_pose, data["player"]["track"], int(data["timeline"][segment]["step"]))
+		if bool(data["player"].get("floor_follow", false)): _floor_follow(player_pose, reference, [-32, 32, -roundi(host.player.body_height * 256.0), 0, -32, 32])
+		host.player.global_position = player_pose.global_position; host.player.player_model.global_rotation.y = player_pose.global_rotation.y
 	_head_tick(); player_clock.native_tick(); _xa_tick(); _actor_tick(); _face_tick(); _camera_update()
 	if camera.has_node("NativeBackdrop"): camera.get_node("NativeBackdrop").native_tick()
 func _profile() -> Dictionary:
@@ -231,6 +243,7 @@ func _action(action: Dictionary) -> void:
 		"despawn":
 			var record: Dictionary = records.get(str(action["record"]).to_lower(), {})
 			if not record.is_empty(): _remove(int(record["slot"]))
+		"actor_spawn": _activate_record(str(action["record"]).to_lower())
 		"player_face_init": faces.erase(host.player.player_model.get_instance_id())
 		"player_face": _set_face(host.player.player_model, "player_" + str(action["channel"]), str(action["channel"]), int(action["sequence"]))
 		"player_face_frame":
@@ -295,6 +308,7 @@ func _actor_tick() -> void:
 		var actor: Dictionary = actors[slot]
 		if not bool(actor["active"]) or not is_instance_valid(actor["node"]): continue
 		var node: Node3D = actor["node"]; var profile: Dictionary = callbacks.get("actor_controllers", {}).get(str(slot), {}); var clock: NativeAnimation = actor["clock"]
+		node.position -= actor.get("render_offset", Vector3.ZERO)
 		var total_yaw: Dictionary = profile.get("total_yaw_increment", {})
 		if not total_yaw.is_empty() and total_tick >= int(total_yaw["from_tick"]) and total_tick <= int(total_yaw["through_tick"]): _set_yaw(node, (_yaw(node) + mini(total_tick >> int(total_yaw["shift"]), int(total_yaw["maximum"])) * int(total_yaw["sign"])) & 4095)
 		for event: Dictionary in profile.get("events", []):
@@ -325,6 +339,7 @@ func _actor_tick() -> void:
 				if str(reaction["op"]) == "event_clear": _clear_flag(int(reaction["id"]))
 				elif str(reaction["op"]) == "actor_face": _set_face(node, str(actor["face_tables"].get(str(reaction["channel"]), "")), str(reaction["channel"]), int(reaction["sequence"]))
 		if clock != null: clock.native_tick()
+		var render_raw: Array = profile.get("render_offset_by_step", {}).get(str(step), [0, 0, 0]); actor["render_offset"] = _world(render_raw); node.position += actor["render_offset"]
 func _head_tick() -> void:
 	var difference := ((_yaw(host.player.player_model) + head_units - head_target + 2048) & 4095) - 2048
 	if difference < -int(head_speed / 2): head_units = mini(768, head_units + head_speed)
@@ -355,11 +370,7 @@ func _commands() -> void:
 				var record: Dictionary = records.get(str(command.get("actor_record", {}).get("source_ram", "")).to_lower(), {})
 				if record.is_empty(): record = records.get("0x%08x" % int(words[1]), {})
 				if record.is_empty(): message_failed = true; return
-				var slot := int(record["slot"])
-				if not actors.has(slot): message_failed = true; return
-				actors[slot]["active"] = true; actors[slot]["node"].visible = true
-				var clock: NativeAnimation = actors[slot]["clock"]
-				if clock != null: clock.play_control(int(callbacks.get("actor_controllers", {}).get(str(slot), {}).get("startup_control", 0)))
+				_activate_record(str(record["source_ram"]).to_lower())
 			65:
 				var record: Dictionary = records.get("0x%08x" % int(words[1]), {})
 				if not record.is_empty(): _remove(int(record["slot"]))
@@ -373,24 +384,47 @@ func _commands() -> void:
 func _fixed(words: Array) -> Vector3: return Vector3(_s32(int(words[1])), _s32(int(words[2])), _s32(int(words[3]))) / 65536.0
 func _s32(value: int) -> int: return (value & 2147483647) - (value & 2147483648)
 func _camera_update() -> void:
+	_restore_shot_visibility()
+	var shot := _profile()
+	if shot.has("visible_actor_slots"):
+		for slot: int in actors:
+			var node: Node3D = actors[slot]["node"]
+			if is_instance_valid(node) and node.visible and slot not in shot["visible_actor_slots"]: shot_suppressed.append(node); node.hide()
+	if not bool(shot.get("player_visible", true)) and host.player.player_model.visible: shot_suppressed.append(host.player.player_model); host.player.player_model.hide()
 	var target := focus
-	if target_mode == 1 and actors.has(target_slot): target = Vector3(-actors[target_slot]["node"].position.x, -actors[target_slot]["node"].position.y, actors[target_slot]["node"].position.z) * 256.0 + relative_focus
+	var render_offset: Array = _profile().get("camera_offset_raw", [0, 0, 0])
+	if target_mode == 1 and actors.has(target_slot):
+		var actor_position: Vector3 = actors[target_slot]["node"].position - actors[target_slot].get("render_offset", Vector3.ZERO); target = Vector3(-actor_position.x, -actor_position.y, actor_position.z) * 256.0 + relative_focus
 	elif target_mode == 2: var local: Vector3 = scene_root.to_local(host.player.global_position); target = Vector3(-local.x, -local.y, local.z) * 256.0 + relative_focus
 	target.y -= float(shake >> 8); shake = maxi(shake - shake_decay, 0)
 	if eye_mode != 0:
 		camera.position = _world([eye.x, eye.y, eye.z]); var point := _world([target.x, target.y, target.z])
 		if point.distance_squared_to(camera.position) > 0.000001: camera.look_at(scene_root.to_global(point), Vector3.UP)
 		if roll != 0: camera.rotate_object_local(Vector3.BACK, -float(roll) * TAU / 4096.0)
+		camera.position += _world(render_offset); _constrain_camera(target + Vector3(render_offset[0], render_offset[1], render_offset[2]))
 		return
 	var yaw := float(orbit.x) * TAU / 4096.0; var pitch := float(orbit.y) * TAU / 4096.0; var offset := Vector3(sin(yaw) * cos(pitch), sin(pitch), cos(yaw) * cos(pitch)) * orbit.z; var rotation := Basis(Vector3.RIGHT, pitch) * Basis(Vector3.UP, -yaw)
 	var rows: Array[Vector3] = [Vector3(rotation.x.x, rotation.y.x, rotation.z.x), Vector3(rotation.x.y, rotation.y.y, rotation.z.y), Vector3(rotation.x.z, rotation.y.z, rotation.z.z)]
 	camera.basis = Basis(Vector3(-rows[0].x, rows[1].x, rows[2].x), Vector3(-rows[0].y, rows[1].y, rows[2].y), Vector3(rows[0].z, -rows[1].z, -rows[2].z)).inverse(); camera.position = _world([target.x - offset.x, target.y - offset.y, target.z - offset.z])
 	if roll != 0: camera.rotate_object_local(Vector3.BACK, -float(roll) * TAU / 4096.0)
+	camera.position += _world(render_offset); _constrain_camera(target + Vector3(render_offset[0], render_offset[1], render_offset[2]))
+func _constrain_camera(target: Vector3) -> void:
+	if not camera_collision: return
+	var focus_position := scene_root.to_global(_world([target.x, target.y, target.z])); var offset := camera.global_position - focus_position
+	if offset.length_squared() <= 0.000001: return
+	var query := PhysicsRayQueryParameters3D.create(focus_position, camera.global_position, 4); query.hit_back_faces = true; query.exclude = [host.player.get_rid()]
+	var hit: Dictionary = camera.get_world_3d().direct_space_state.intersect_ray(query)
+	if not hit.is_empty(): camera.global_position = focus_position + offset.normalized() * maxf(focus_position.distance_to(hit["position"]) - maxf(camera.near * 2.0, 0.1), 0.0)
 func _remove(slot: int) -> void:
 	if not actors.has(slot): return
 	var node: Node3D = actors[slot]["node"]
 	if is_instance_valid(node): node.queue_free()
 	actors.erase(slot)
+func _activate_record(address: String) -> void:
+	var record: Dictionary = records.get(address, {})
+	if record.is_empty() or not actors.has(int(record["slot"])): message_failed = true; return
+	var slot := int(record["slot"]); actors[slot]["active"] = true; actors[slot]["node"].visible = true; var clock: NativeAnimation = actors[slot]["clock"]
+	if clock != null: clock.play_control(int(callbacks.get("actor_controllers", {}).get(str(slot), {}).get("startup_control", 0)))
 func _finish_scene() -> void:
 	if finishing: return
 	finishing = true
@@ -407,8 +441,8 @@ func _finish_scene() -> void:
 			_: _action(operation)
 	if finish.has("fade_exit") and not faded: await host.transition_overlay.request(int(finish["fade_exit"]))
 	for slot: int in actors.keys(): _remove(slot)
-	if finish.has("registration_record"):
-		var record: Dictionary = records.get(str(finish["registration_record"]).to_lower(), {})
+	for address: String in registration_records:
+		var record: Dictionary = records.get(address, {})
 		if record.is_empty(): running = false; completed.emit(false); return
 		var vendor: Node3D = await Props.spawn_entry(scene_root, stage, area, record["entry"], record["model"], host.native_context)
 		if vendor == null: running = false; completed.emit(false); return
@@ -422,6 +456,7 @@ func _finish_scene() -> void:
 		var raw: Array = transition_route["destination_transform_raw"]; transition_route["destination_transform"] = {"position": [float(raw[0]) / 256.0, float(raw[1]) / 256.0, float(raw[2]) / 256.0], "yaw_raw": int(raw[3]), "floor_height": int(raw[1]) == -1}
 	running = false; completed.emit(true)
 func _restore() -> void:
+	_restore_shot_visibility()
 	if host.player.motion_tree != null: host.player.motion_tree.active = saved_motion_active
 	if host.player.upper_modifier != null: host.player.upper_modifier.set_source_aim_angles(0, 0)
 	host.player.camera.make_current(); host.player.player_model.visible = true
@@ -429,9 +464,14 @@ func _restore() -> void:
 	if host.has_method("set_scene_presentation"): host.set_scene_presentation(false)
 	for slot: int in actors.keys(): _remove(slot)
 	if is_instance_valid(camera): camera.queue_free()
+	if is_instance_valid(player_pose): player_pose.queue_free()
 	_release_root()
 	for node: Node3D in suppressed:
 		if is_instance_valid(node): node.show()
+func _restore_shot_visibility() -> void:
+	for node: Node3D in shot_suppressed:
+		if is_instance_valid(node): node.show()
+	shot_suppressed.clear()
 func _release_root() -> void:
 	if owns_root and is_instance_valid(scene_root): scene_root.queue_free()
 	owns_root = false

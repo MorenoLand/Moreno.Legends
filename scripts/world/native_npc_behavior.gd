@@ -45,6 +45,8 @@ func _native_tick() -> void:
 			while yaw_delta < -PI: yaw_delta += TAU
 			actor.rotation.y += clampf(yaw_delta, -float(profile.get("turn_step_raw", 24)) * TAU / 4096.0, float(profile.get("turn_step_raw", 24)) * TAU / 4096.0)
 			var velocity_raw := int(profile.get("velocity_raw", -int(profile.get("speed_raw", 64)))); var motion := Vector3(-sin(actor.rotation.y), 0.0, -cos(actor.rotation.y)) * float(absi(velocity_raw)) / 4096.0
+			var parent := actor.get_parent() as Node3D
+			if parent != null: motion = parent.global_basis * motion
 			var result: Dictionary = Motion.move_actor(actor, motion, profile.get("collision_bounds_raw", [])); reroute_pending = bool(result["blocked"])
 	if is_instance_valid(clock): clock.call("native_tick")
 func begin_talk() -> void:

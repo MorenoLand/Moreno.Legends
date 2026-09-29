@@ -374,6 +374,7 @@ def native_message_handler(opcode):
 def native_message_commands(data, payload_offset, payload_size, message_offset, raw):
 	return native_program_trace(data, payload_offset, payload_size, message_offset, [])['commands']
 def native_run_separator(previous, current):
+	if previous.get("dynamic") == "item_name_text" and current["file_offset"] - previous["file_offset"] in (4, 6): return ""
 	if previous["file_offset"] + (3 if previous.get("dynamic") else len(previous["raw_hex"]) // 2) != current["file_offset"]: return "\n"
 	edges = previous["raw_hex"][-2:] + current["raw_hex"][:2]
 	return "\n" if "fc" in (edges[:2], edges[2:]) else (" " if "4c" in (edges[:2], edges[2:]) else "")
@@ -387,8 +388,15 @@ def native_control_texts(argument):
 			raw.append(executable[cursor]); cursor += 1
 		texts.append(decode_native_text(bytes(raw)))
 	return texts
+def native_item_text(code):
+	executable = (ROOT / "build/disc-assets/SLES_035.56").read_bytes(); table = 0x8006CFB8 - 0x80010000 + 0x800; index = code - 0x380
+	if index < 0 or index * 2 >= struct.unpack_from("<H", executable, table)[0]: raise ValueError(f"Invalid native item name code {code:04X}")
+	cursor = table + struct.unpack_from("<H", executable, table + index * 2)[0]; start = cursor
+	while executable[cursor] != 0xFF and executable[cursor:cursor + 2] != b"\xFB\x1F": cursor += 1
+	return decode_native_text(executable[start:cursor])
 def native_program_trace(data, payload_offset, payload_size, message_offset, entry_offsets):
 	lengths = {0x05: 4, 0x06: 8, 0x08: 4, 0x0A: 3, 0x0C: 2, 0x1A: 6, 0x22: 3, 0x09: 3, 0x0E: 3, 0x0F: 3, 0x11: 3, 0x15: 13, 0x16: 6, 0x18: 2, 0x19: 4, 0x1D: 2, 0x21: 3, 0x24: 2, 0x26: 4, 0x27: 4, 0x28: 6, 0x29: 3, 0x2A: 7, 0x2B: 2, 0x2C: 3, 0x30: 3, 0x31: 2, 0x33: 3, 0x37: 7, 0x38: 3, 0x39: 3, 0x3E: 4, 0x3F: 5}; cursor = message_offset + 2; text_mode = False; runs = []; commands = []; unresolved = []; status = "bank_end"
+	lengths.update({0x0B: 2, 0x20: 4})
 	for _ in range(2048):
 		if cursor >= payload_size: break
 		value = data[payload_offset + cursor]
@@ -433,6 +441,10 @@ def native_program_trace(data, payload_offset, payload_size, message_offset, ent
 		elif opcode == 0x0A: command.update(effect="native_noop", source="SLES0x800482A0..482B4 advances3 and returns0x101")
 		elif opcode == 0x0C: command.update(effect="voice_wait", source="SLES0x8004C6F0..4C740 holds the page while context flag0x8000 (voice playing) is set, then advances2")
 		elif opcode == 0x1A: command.update(effect="voice_xa", xa_id=(args[1] << 16) | (args[2] << 8) | args[3], source="SLES0x8004D11C..4D1BC calls0x8001B9A4(bytes3..5), waits for0x8001AF94 ready, advances6")
+		elif opcode == 0x20:
+			code = (args[0] << 8) | args[1]; text = native_item_text(code); command.update(effect="item_name_text", item_code=code, inserted_text=text, source="SLES0x8004D298: u16 offsets8006CFB8[item_code-0x380]; return through context+0x38")
+			if text: runs.append({"file_offset": payload_offset + cursor, "relative_offset": cursor, "raw_hex": "", "text": text, "dynamic": "item_name_text"})
+		elif opcode == 0x0B: command.update(effect="native_noop", source="SLES0x80048288 advances2; following byte remains a glyph")
 		elif opcode == 0x22:
 			texts = native_control_texts(args[0]); command.update(effect="control_text", inserted_text_by_layout=texts, layout_address="0x8009C834 (byte -3 path when 0x8009BEE4==7)", source="SLES0x8004D47C..4D520: byte table0x8006B8A4[layout*12+arg] -> u16 offsets0x8007019C, returns via context+0x38")
 			if texts and texts[0]: runs.append({"file_offset": payload_offset + cursor, "relative_offset": cursor, "raw_hex": "", "text": texts[0], "dynamic": "control_text"})

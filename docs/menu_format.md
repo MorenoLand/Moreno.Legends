@@ -15,6 +15,16 @@ The native Load Game window bank is DEMO RAM `0x800B116C`, file offset `0x419C`.
 
 Pause-menu Save Game writes a new version-one JSON checkpoint through Godot's application storage. Continue lists those files newest first, including room, date and health. Checkpoints contain stage/area identity, player position and yaw, camera angles, current and maximum health, defeated actor IDs and explored minimap cells. Live projectiles, actor attack phases and unimplemented inventory state are not serialized. The loader prepares a replacement scene before discarding the existing session; malformed or unsupported saves cannot be selected for loading.
 
+## Friendly dialogue cameras
+
+Normal request kind `0` and Data's kind `2` use the same friendly-talk callback: GAME `0x800BDBF8` indexes `0x800DC45C` with the signed high half of the request kind, selecting `0x800BDC28` for both. Every friendly request saves/binds and restores the talk camera. FB15 supplies each conversation's close-up framing; a message without that command keeps the existing view. Request bit `0x10` clears the actor-rotation pointer at `0x800BE44C`, suppressing the turn toward the player, while the position pointer and camera path remain active. The runtime therefore listens for camera commands on all NPC conversations, including those that suppress actor facing.
+
+The original Data request passes the actor position through GAME `0x800BE2E0` / `0x800BE39C` to `0x800BDD10`, which calls SLES `0x80016958` to save the current camera focus and orbit and bind the target at camera `0x8007D010+0xE0`. The local recomp checkout has setup/framework sources; these game routines were traced read-only from the project's PAL disc binaries with Capstone.
+
+Data's ST04 entry `180` and ST08 entry `240` contain FB15 bytes `01 0000 0080 0000 0130 0020`. SLES `0x8004CF14` decodes each pair big endian: mode `1`, yaw `0`, pitch `128`, roll `0`, orbit distance `304`, focus height `32`. SLES `0x80016560` adds the player-to-target bearing to yaw, raises the target focus by `32/256`, and positions the camera on the player's side of Data at distance `304/256` and pitch `128/4096` turns. BC is focus height; C0/C2/C4 are angular values, not XYZ offsets. The eye formula is native focus minus distance times `(sin(yaw)*cos(pitch), sin(pitch), cos(yaw)*cos(pitch))`.
+
+The transition interpolates focus, distance and shortest-arc angles over eight camera updates, with fractions `1/8` through `8/8`. GAME `0x800BDE44` calls SLES `0x80016A00` when the interaction closes: mode `0x102` restores the saved view in eight updates; cancelled mode `0x202` takes one. The adapter uses the project's existing PAL 25 Hz cadence and native-scene projection, starting from the current Godot camera. Blank terminal message entries preserve pending commands so FB15 and player visibility execute even when Data has no story text. The prior camera and player visibility return when the menu ends.
+
 ## Startup and attract scenes
 
 SLES `0x80012D7C`–`0x80012F28` loads `COMMON/LOGO.BIN` and draws the retail CAPCOM logo at `(48,192,544,96)`, with fade steps of four and a hold counter of 180. The next native scene is ST02 area zero in engine phase four. The title uses its original PRESS START and copyright sprites; the prompt blinks in 32-update phases.

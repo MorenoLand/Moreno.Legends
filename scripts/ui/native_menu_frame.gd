@@ -84,7 +84,9 @@ static func draw(control: Control, layout: Dictionary, key: String, rectangle: R
 			var points := PackedVector2Array()
 			var colors := PackedColorArray()
 			for index in [0, 2, 4]:
-				points.append(point(str(words[index + 1]).hex_to_int(), source, rectangle))
+				var word := str(words[index + 1]).hex_to_int(); var vertex := point(word, source, rectangle)
+				if (word & 65535) == roundi(source.position.x): vertex.x -= 1.0
+				points.append(vertex)
 				colors.append(color(str(words[index]).hex_to_int(), 0.5))
 			control.draw_polygon(points, colors)
 		elif str(primitive["opcode"]) == "0x48":
