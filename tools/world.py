@@ -402,11 +402,21 @@ def export_floor_shapes(path):
 			for index in range(count):
 				offset = pointer + index * 16; values = struct.unpack_from("<6h2H", stage.data, offset)
 				boxes.append({"x": [values[0] + offset_x, values[1] + offset_x], "z": [values[2] + offset_z, values[3] + offset_z], "y": [values[4] + offset_y, values[5] + offset_y], "kind": values[6], "mask": values[7], "placement": placement, "source_offset": hex(offset), "contact_raw": [int((values[0] + values[1]) / 2) + offset_x, int((values[4] + values[5]) / 2) + offset_y, int((values[2] + values[3]) / 2) + offset_z]})
-		result[str(area)] = {"grid": {"%d:%d" % coordinates: list(data) for coordinates, data in tiles.items()}, "boxes": boxes, "source": "SLES0x80038D20 placement collision directory; GAME0x800B13FC floor selector; GAME0x800B5658 shape0 footprint"}
+		walls = {key for key, data in tiles.items() if read_u16(data, 0) & 0x4800 != 0x800 and read_u16(data, 0) & 0x400}; edge = {key for key in walls if any((key[0] + dx, key[1] + dz) not in walls for dx in (-1, 0, 1) for dz in (-1, 0, 1))}; wall_rects = []
+		for key in sorted(edge, key=lambda cell: (cell[1], cell[0])):
+			if key not in edge: continue
+			x, z = key; width = 1
+			while (x + width, z) in edge: width += 1
+			height = 1
+			while all((x + i, z + height) in edge for i in range(width)): height += 1
+			for i in range(width):
+				for j in range(height): edge.discard((x + i, z + j))
+			wall_rects.append([(x << 9) - 0x8000, ((x + width) << 9) - 0x8000, (z << 9) - 0x8000, ((z + height) << 9) - 0x8000])
+		result[str(area)] = {"grid": {"%d:%d" % coordinates: list(data) for coordinates, data in tiles.items()}, "boxes": boxes, "walls": wall_rects, "wall_source": "GAME0x800B36E8/0x800B13FC: cell flags&0x4800!=0x800 and flags&0x400 block actor classes with mask&3 (player=1,friendly=2; enemy 4 and 8 pass) via shape0 box y+-0x4000; class mask GAME0x800B786C", "source": "SLES0x80038D20 placement collision directory; GAME0x800B13FC floor selector; GAME0x800B5658 shape0 footprint"}
 	return result
 
 def floor_collision_manifest(path):
-	return {area: {"boxes": source["boxes"], "source": source["source"], "slope_source": "GAME0x800B1C48;kind10:+Z,11:-Z,12:+X,13:-X;B1EA8 integer interpolation;B2868 upper surface"} for area, source in export_floor_shapes(path).items()}
+	return {area: {"boxes": source["boxes"], "walls": source["walls"], "wall_source": source["wall_source"], "source": source["source"], "slope_source": "GAME0x800B1C48;kind10:+Z,11:-Z,12:+X,13:-X;B1EA8 integer interpolation;B2868 upper surface"} for area, source in export_floor_shapes(path).items()}
 
 def bind_route_contacts(routes, floors):
 	for route in routes:
@@ -940,7 +950,7 @@ def stage_cli():
 
 STAGES = ("ST04", "ST05", "ST06", "ST07")
 UNIT_BASIS = [-1, -1, 1]
-LADDER_PAIRS = {frozenset((("ST04", 1), ("ST06", 0))), frozenset((("ST06", 0), ("ST07", 0)))}
+LADDER_PAIRS = {frozenset((("ST04", 1), ("ST06", 0))), frozenset((("ST06", 0), ("ST07", 0))), frozenset((("ST0F", 1), ("ST0F", 5))), frozenset((("ST0F", 9), ("ST0F", 10)))}
 
 def read_glb(path):
 	data = path.read_bytes()
@@ -1084,9 +1094,10 @@ def export_room_layout(assets_dir, output_path, stages=STAGES):
 		reverse = reverses[0]; paired.update(((a, b), (b, a)))
 		if frozenset((a, b)) in LADDER_PAIRS:
 			ladder_transitions.append({"source": {"stage": a[0], "area": a[1]}, "destination": {"stage": b[0], "area": b[1]}, "door_id": route["door_id"], "door_mode": route["door_mode"], "reverse_door_mode": reverse["door_mode"], "source_route_file_offset": route["file_offset"], "reverse_route_file_offset": reverse["file_offset"], "source_transform_raw": route["source_transform_raw"], "destination_transform_raw": route["destination_transform_raw"]}); continue
-		center_a, axis_a = route_center(route, reverse, True); center_b, axis_b = route_center(route, reverse, False)
-		if axis_a != axis_b: raise ValueError(f"{a} to {b} uses different local portal axes")
-		path_a, faces_a = room_faces(assets_dir, *a); path_b, faces_b = room_faces(assets_dir, *b); face_a = route.get("native_door", {}).get("source_panel") or select_panel(faces_a, center_a, axis_a); face_b = reverse.get("native_door", {}).get("source_panel") or select_panel(faces_b, center_b, axis_b)
+		native_a = route.get("native_door", {}).get("source_panel"); native_b = reverse.get("native_door", {}).get("source_panel")
+		if not (native_a and native_b): center_a, axis_a = route_center(route, reverse, True); center_b, axis_b = route_center(route, reverse, False)
+		if not (native_a and native_b) and axis_a != axis_b: raise ValueError(f"{a} to {b} uses different local portal axes")
+		path_a = assets_dir / a[0] / f"area_{a[1]:02d}.glb"; path_b = assets_dir / b[0] / f"area_{b[1]:02d}.glb"; face_a = native_a or select_panel(room_faces(assets_dir, *a)[1], center_a, axis_a); face_b = native_b or select_panel(room_faces(assets_dir, *b)[1], center_b, axis_b)
 		if face_a["axis"] != face_b["axis"]: raise ValueError(f"{a} to {b} panel normal axes disagree")
 		translation = tuple((-route["source_transform_raw"][1] + reverse["source_transform_raw"][1]) / 256 if town and i == 1 else face_a["center"][i] - face_b["center"][i] for i in range(3)); edges.append({"a": a, "b": b, "route": route, "reverse": reverse, "panel_a": face_a, "panel_b": face_b, "delta": translation, "glb_a": path_a, "glb_b": path_b})
 	adjacency = {}
@@ -1112,7 +1123,7 @@ def export_room_layout(assets_dir, output_path, stages=STAGES):
 			bottom = max(pa["bounds"]["min"][1] + offsets[a][1], pb["bounds"]["min"][1] + offsets[b][1]); top = min(pa["bounds"]["max"][1] + offsets[a][1], pb["bounds"]["max"][1] + offsets[b][1]); portal["world_center"][1] = (bottom + top) * 0.5; portal["shared_panel_size"][1] = top - bottom
 		portals.append(portal)
 	components_json = [[{"stage": stage, "area": area} for stage, area in component] for component in components]; anchor = components[0][0] if components else ("", 0); ladder_transitions.sort(key=lambda item: (item["source"]["stage"], item["source"]["area"], item["destination"]["stage"], item["destination"]["area"]))
-	manifest = {"coordinate_basis": {"native_to_godot": UNIT_BASIS, "unit": "1/256 map unit", "rotation": "identity for every room"}, "parked_exterior_enabled": not town, "placement_source": "reciprocal native Flutter door routes matched to static door-face quads in area GLBs; vertical ladder routes remain transitions", "anchor": {"stage": anchor[0], "area": anchor[1], "world_offset": [0, 0, 0]}, "graph": {"room_count": len(rooms), "reciprocal_edge_count": len(edges), "connected": len(components) == 1, "component_count": len(components), "is_tree": len(components) == 1 and len(edges) == len(rooms) - 1, "is_forest": len(edges) == len(rooms) - len(components), "components": components_json, "cycle_residuals": residuals}, "rooms": rooms, "portals": portals, "ladder_transitions": ladder_transitions, "external_routes": external, "route_data_remains_local": True, "source_sha256": {stage: {"manifest": hashlib.sha256((assets_dir / stage / "manifest.json").read_bytes()).hexdigest(), "doors": route_hashes[stage]} for stage in STAGES}}
+	manifest = {"coordinate_basis": {"native_to_godot": UNIT_BASIS, "unit": "1/256 map unit", "rotation": "identity for every room"}, "parked_exterior_enabled": not town and "ST0F" not in STAGES, "placement_source": "reciprocal native Flutter door routes matched to static door-face quads in area GLBs; vertical ladder routes remain transitions", "anchor": {"stage": anchor[0], "area": anchor[1], "world_offset": [0, 0, 0]}, "graph": {"room_count": len(rooms), "reciprocal_edge_count": len(edges), "connected": len(components) == 1, "component_count": len(components), "is_tree": len(components) == 1 and len(edges) == len(rooms) - 1, "is_forest": len(edges) == len(rooms) - len(components), "components": components_json, "cycle_residuals": residuals}, "rooms": rooms, "portals": portals, "ladder_transitions": ladder_transitions, "external_routes": external, "route_data_remains_local": True, "source_sha256": {stage: {"manifest": hashlib.sha256((assets_dir / stage / "manifest.json").read_bytes()).hexdigest(), "doors": route_hashes[stage]} for stage in STAGES}}
 	output_path.parent.mkdir(parents=True, exist_ok=True); write_if_changed(output_path, json.dumps(manifest, indent=2) + "\n", encoding="utf-8"); print(f"Flutter room layout: {len(rooms)} rooms, {len(portals)} paired portals, {len(external)} external routes -> {output_path}"); return manifest
 
 def room_layout_cli():

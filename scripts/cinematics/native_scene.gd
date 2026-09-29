@@ -1,7 +1,7 @@
 extends Node
 signal completed(success: bool)
-const Props := preload("res://scripts/world/native_props.gd")
-const Facing := preload("res://scripts/world/native_talk_facing.gd")
+const Props := preload("res://scripts/world/actors/native_props.gd")
+const Facing := preload("res://scripts/world/actors/native_talk_facing.gd")
 var host: Node3D
 var scene_root: Node3D
 var data: Dictionary = {}
@@ -87,7 +87,7 @@ func configure(gameplay: Node3D, level: Node3D, path: String, requested_area: in
 	if JSON.stringify(callbacks.get("segments", {})).contains("\"area_change\""): scene_root = Node3D.new(); scene_root.name = "NativeSceneRoot"; host.add_child(scene_root); scene_root.global_transform = level.global_transform; owns_root = true
 	camera = Camera3D.new(); camera.name = "NativeSceneCamera"; camera.near = host.player.camera.near; camera.far = host.player.camera.far; camera.fov = rad_to_deg(2.0 * atan(120.0 / 384.0)); scene_root.add_child(camera)
 	if bool(data.get("player", {}).get("track_runtime", false)): player_pose = Node3D.new(); scene_root.add_child(player_pose); player_pose.global_position = host.player.global_position; player_pose.global_rotation.y = host.player.player_model.global_rotation.y
-	player_clock = preload("res://scripts/world/native_animation.gd").new(); player_clock.automatic = false; add_child(player_clock)
+	player_clock = preload("res://scripts/world/actors/native_animation.gd").new(); player_clock.automatic = false; add_child(player_clock)
 	var clips: Array = []
 	for clip: Dictionary in host.player.native_clips.values():
 		if str(clip["name"]) != "clip_%03d" % int(clip.get("slot", -1)): continue
@@ -228,7 +228,7 @@ func _message(index: int) -> void:
 	message_busy = false; message_failed = message_failed or not success
 func _mission_banner() -> Control:
 	var hud: Node = host.get_node("HUD"); var banner := hud.get_node_or_null("MissionBanner") as Control
-	if banner == null: banner = preload("res://scripts/ui/mission_banner.gd").new(); banner.name = "MissionBanner"; hud.add_child(banner); hud.move_child(banner, host.dialogue_box.get_index())
+	if banner == null: banner = preload("res://scripts/ui/hud/mission_banner.gd").new(); banner.name = "MissionBanner"; hud.add_child(banner); hud.move_child(banner, host.dialogue_box.get_index())
 	return banner
 func _action(action: Dictionary) -> void:
 	match str(action["op"]):
@@ -332,7 +332,10 @@ func _actor_tick() -> void:
 			if _motion_active(motion): _motion(node, node, motion)
 		if profile.has("track"):
 			var reference := node.global_position.y; _track(node, profile["track"]["keyframes"], step)
-			if bool(profile["track"].get("floor_follow", false)): _floor_follow(node, reference, actor["record"]["entry"].get("native_hitbox", {}).get("bounds_raw", []))
+			if bool(profile["track"].get("floor_follow", false)):
+				var floor_bounds: Array = actor["record"]["entry"].get("native_hitbox", {}).get("bounds_raw", []).duplicate()
+				if floor_bounds.size() == 6 and profile["track"].has("floor_above_raw"): floor_bounds[2] = -int(profile["track"]["floor_above_raw"])
+				_floor_follow(node, reference, floor_bounds)
 		if xa_answer >= 0 and xa_ready_tick >= 0:
 			for reaction: Dictionary in profile.get("answer_reactions", {}).get("by_answer", {}).get(str(xa_answer), []):
 				if int(reaction["after_xa_ready_ticks"]) != total_tick - xa_ready_tick: continue
@@ -447,7 +450,7 @@ func _finish_scene() -> void:
 		var vendor: Node3D = await Props.spawn_entry(scene_root, stage, area, record["entry"], record["model"], host.native_context)
 		if vendor == null: running = false; completed.emit(false); return
 		vendor.set_meta("native_scene_registration", true)
-		preload("res://scripts/world/native_material.gd").depth_cue(vendor, host.depth_cue_parameters)
+		preload("res://scripts/world/rendering/native_material.gd").depth_cue(vendor, host.depth_cue_parameters)
 	if finish.has("player_yaw_raw"): _set_yaw(host.player.player_model, int(finish["player_yaw_raw"]))
 	host.player.camera.make_current(); camera.current = false
 	if finish.has("fade_entry"): await host.transition_overlay.request(int(finish["fade_entry"]))
@@ -558,7 +561,7 @@ func _track(node: Node3D, keyframes: Array, step: int) -> void:
 	node.position = _world(position); _set_yaw(node, yaw)
 func _floor_follow(node: Node3D, reference: float, bounds: Array) -> void:
 	if bounds.size() != 6: return
-	var origin := Vector3(node.global_position.x, reference, node.global_position.z); var hit: Dictionary = preload("res://scripts/world/native_actor_motion.gd").ray(node, origin + Vector3.UP * (-float(bounds[2]) / 256.0 + 0.125), Vector3(origin.x, minf(host.bounds.position.y, origin.y) - 0.125, origin.z))
+	var origin := Vector3(node.global_position.x, reference, node.global_position.z); var hit: Dictionary = preload("res://scripts/world/actors/native_actor_motion.gd").ray(node, origin + Vector3.UP * (-float(bounds[2]) / 256.0 + 0.125), Vector3(origin.x, minf(host.bounds.position.y, origin.y) - 0.125, origin.z))
 	if not hit.is_empty() and (hit["normal"] as Vector3).y > 0.0: node.global_position.y = (hit["position"] as Vector3).y
 func _unhandled_input(event: InputEvent) -> void:
 	if not running or finishing or not event.is_action_pressed("ui_cancel"): return

@@ -63,7 +63,7 @@ func configure(path: String = "res://assets/opening/manifest.json") -> bool:
 		var audio_manifest: Variant = JSON.parse_string(FileAccess.get_file_as_string(audio_path))
 		if audio_manifest is Dictionary:
 			for entry: Dictionary in audio_manifest.get("entries", []): audio_entries[str(int(entry["id"]))] = entry
-	veil = preload("res://scripts/ui/native_fade.gd").new(); add_child(veil)
+	veil = preload("res://scripts/ui/common/native_fade.gd").new(); add_child(veil)
 	if not veil.configure(true): prepared.emit(false); return false
 	veil.hold()
 	resized.connect(_resize); _resize(); _prepare.call_deferred(); return true
@@ -233,7 +233,7 @@ func _spawn(source: Dictionary) -> void:
 		if str(source_bank["archive"]).get_file().get_basename() != bank: continue
 		for model: Dictionary in source_bank["models"]:
 			if int(model["flags"]) != flags: continue
-			var model_path: String = directory.path_join(str(model["export"]["model_file"])); var node: Node3D = (scenes[model_path] as PackedScene).instantiate(); node.name = "Actor_%02d" % slot; world.add_child(node); node.position = _world(Vector3(record.decode_s16(12), record.decode_s16(14), record.decode_s16(16))); node.rotation.y = -float(record.decode_u16(18)) * TAU / 4096.0; preload("res://scripts/world/native_material.gd").apply(node, 255.0 if bool(model["export"].get("native_vertex_colors", false)) else 128.0)
+			var model_path: String = directory.path_join(str(model["export"]["model_file"])); var node: Node3D = (scenes[model_path] as PackedScene).instantiate(); node.name = "Actor_%02d" % slot; world.add_child(node); node.position = _world(Vector3(record.decode_s16(12), record.decode_s16(14), record.decode_s16(16))); node.rotation.y = -float(record.decode_u16(18)) * TAU / 4096.0; preload("res://scripts/world/rendering/native_material.gd").apply(node, 255.0 if bool(model["export"].get("native_vertex_colors", false)) else 128.0)
 			actors[slot] = {"node": node, "record": source, "model": model, "clock": 0, "control": -1, "class": kind, "yaw": record.decode_u16(18), "forward": 0, "fields": {"0x0C": record.decode_u32(8)}}
 			_face_surfaces(actors[slot])
 			if kind == 20 and variant == 1: node.rotation.x = -float(record.decode_u16(10) & 4095) * TAU / 4096.0
@@ -277,7 +277,7 @@ func _set_area(index: int) -> void:
 	if not scenes.has("area%d" % index): return
 	var node: Node3D = (scenes["area%d" % index] as PackedScene).instantiate(); node.name = "StageMap"
 	node.set_meta("native_map_face_flags", bool(map_face_flags.get(index, false)))
-	world.add_child(node); preload("res://scripts/world/native_material.gd").apply(node)
+	world.add_child(node); preload("res://scripts/world/rendering/native_material.gd").apply(node)
 func _actors_tick() -> void:
 	for slot: int in actors:
 		var actor: Dictionary = actors[slot]; var animation: AnimationPlayer = actor["node"].find_child("AnimationPlayer", true, false) as AnimationPlayer

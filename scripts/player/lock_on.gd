@@ -8,6 +8,7 @@ const YAW_STEP := 0x80
 const RESELECT_TICKS := 12
 const FLY_TICKS := 8
 const LOCK_SOUND := 0x87
+const TICK_RATE := 25.0
 var player: CharacterBody3D
 var target: Node3D
 var last_target: Node3D
@@ -24,7 +25,7 @@ func configure(owner_player: CharacterBody3D) -> void:
 	mesh.material_override = material; add_child(mesh)
 func locked() -> bool: return is_instance_valid(target)
 func update(delta: float, held: bool) -> void:
-	elapsed += delta * 30.0
+	elapsed += delta * TICK_RATE
 	while elapsed >= 1.0: elapsed -= 1.0; _tick(held)
 	_draw_reticle()
 func clear() -> void:
@@ -32,8 +33,12 @@ func clear() -> void:
 	target = null; acquired_tick = -1; player.locked_target = null
 	if is_instance_valid(mesh): (mesh.mesh as ImmediateMesh).clear_surfaces()
 func lock_point(node: Node3D) -> Vector3:
+	# Native lock point = centre of the hit volume the actor registered (SLES 0x80042704); stage actors build their collision box from it.
 	var center: Variant = node.get("hit_center")
-	return center if center is Vector3 else node.global_position + Vector3.UP
+	if center is Vector3: return center
+	var box: Variant = node.get("collision")
+	if box is CollisionShape3D and is_instance_valid(box) and box.is_inside_tree(): return (box as CollisionShape3D).global_position
+	return node.global_position + Vector3.UP
 func _tick(held: bool) -> void:
 	tick += 1
 	if not held: clear(); return
@@ -76,7 +81,19 @@ func _draw_reticle() -> void:
 		var angle := quarter * PI * 0.5; var radial := right * cos(angle) + up * sin(angle); var side := right * -sin(angle) + up * cos(angle)
 		var tip := center + radial * inner; var left := center + radial * outer + side * spread; var right_corner := center + radial * outer - side * spread
 		for point in [tip, left, right_corner]: immediate.surface_set_color(color); immediate.surface_add_vertex(point)
+	if special: _draw_arcs(immediate, center, right, up, color.a)
 	immediate.surface_end()
+func _draw_arcs(immediate: ImmediateMesh, center: Vector3, right: Vector3, up: Vector3, fade: float) -> void:
+	# Special-weapon ring, SLES 0x8003BC6C records 0x8006B330 drawn by 0x80039100 type 0xF0: 4 arcs x 8 steps of 1/64 turn, radius 0xA0..0xB0 (centre 0xA8 bright), spin 2/64 turn per tick, additive.
+	var radii := PackedFloat32Array([0xA0, 0xA8, 0xB0]); var shades := PackedFloat32Array([0x20, 0x80, 0x20]); var spin := 2 * (tick & 0x1F)
+	for arc in 4:
+		for step in 8:
+			var first := float(4 + arc * 16 + step + spin) * TAU / 64.0; var last := first + TAU / 64.0
+			for band in 2:
+				var inner_color := Color(shades[band] / 255.0 * fade, shades[band] / 255.0 * fade, shades[band] / 255.0 * fade); var outer_color := Color(shades[band + 1] / 255.0 * fade, shades[band + 1] / 255.0 * fade, shades[band + 1] / 255.0 * fade)
+				var v0 := center + (right * cos(first) - up * sin(first)) * radii[band] / 256.0; var v1 := center + (right * cos(last) - up * sin(last)) * radii[band] / 256.0
+				var v2 := center + (right * cos(first) - up * sin(first)) * radii[band + 1] / 256.0; var v3 := center + (right * cos(last) - up * sin(last)) * radii[band + 1] / 256.0
+				for corner in [[v0, inner_color], [v1, inner_color], [v2, outer_color], [v1, inner_color], [v3, outer_color], [v2, outer_color]]: immediate.surface_set_color(corner[1]); immediate.surface_add_vertex(corner[0])
 func _in_range() -> bool:
 	var hose: Node = player.get("hose")
 	var reach := 968.0 / 256.0 if player.active_special() == 15 and is_instance_valid(hose) else 0x80 * 2 / 256.0 + 0.25

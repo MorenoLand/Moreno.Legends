@@ -18,6 +18,7 @@ var zone_manifests: Dictionary = {}
 var zone_request := 0
 var music_request := 0
 var music_streams: Dictionary = {}
+var music_ready: Dictionary = {}
 var requested_music_cue := -1
 var requested_music_signature := ""
 var native_context: Dictionary = {}
@@ -134,9 +135,13 @@ func _request_music(cue: int) -> void:
 		if stream == null or request != music_request: return
 		music_streams[path] = stream
 	if request != music_request or music == null: return
-	var stream := (music_streams[path] as AudioStream).duplicate() as AudioStreamWAV
-	if stream == null: return
-	if bool(entry.get("looped", false)): stream.loop_mode = AudioStreamWAV.LOOP_FORWARD; stream.loop_begin = 0; stream.loop_end = int(entry["frames"])
+	var ready_key := path + "|" + str(bool(entry.get("looped", false))) + "|" + str(entry.get("frames", 0))
+	if not music_ready.has(ready_key):
+		var configured := (music_streams[path] as AudioStream).duplicate() as AudioStreamWAV
+		if configured == null: return
+		if bool(entry.get("looped", false)): configured.loop_mode = AudioStreamWAV.LOOP_FORWARD; configured.loop_begin = 0; configured.loop_end = int(entry["frames"])
+		music_ready[ready_key] = configured
+	var stream: AudioStreamWAV = music_ready[ready_key]
 	music.stream = stream
 	music_key = key
 	music_signature = requested_music_signature
@@ -193,7 +198,7 @@ func set_stage(value: String, target_area: int = 0, context: Dictionary = {}) ->
 	var zone: Dictionary = zone_manifests[stage]
 	for owner: String in zone.get("audio_dependencies", []):
 		if not await AssetStore.ensure_group("audio-" + owner) or request != zone_request: return false
-	var effects: Dictionary = manifest.get("effects", {}).duplicate(true)
+	var effects: Dictionary = manifest.get("effects", {}).duplicate()
 	for key in effects.keys():
 		if int(effects[key].get("physical_bank", 0)) in zone.get("loaded_effect_slots", []): effects.erase(key)
 	for key in zone.get("effects", {}): effects[key] = zone["effects"][key]

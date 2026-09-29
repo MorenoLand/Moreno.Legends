@@ -575,6 +575,11 @@ def export_shared_audio(source_dir=None):
 		if bytes.fromhex(effect["raw_tone"])[5]: effect["reverb"] = referenced_reverb(effect, OUTPUT, reverb_profile(executable))
 		print("Native shared audio " + key, flush=True)
 	manifest["effects"] = {**manifest.get("effects", {}), **effects}; write_if_changed(manifest_path, json.dumps(manifest, indent=2) + "\n"); canonicalize_audio_resources(); print(json.dumps(prune_audio_duplicates()), flush=True); return effects
+def export_game_over_audio():
+	ffmpeg = shutil.which("ffmpeg")
+	if not ffmpeg: raise RuntimeError("FFmpeg is required to decode the original PS1 ADPCM samples")
+	manifest_path = OUTPUT / "manifest.json"; manifest = json.loads(manifest_path.read_text(encoding="utf-8")); entry = render_music(ffmpeg, ROOT / "build/disc-assets/COMMON/G_OVER00.BIN", 0x9000, 0x9800, "game_over_music"); entry["looped"] = False
+	manifest["music"]["0x000C"] = {**entry, "source_cue": "DEMO0x800ADF54 SLES0x800201B0(0xC) after COMMON/G_OVER00.BIN (file id 4)"}; manifest["roles"]["game_over_music"] = "0x000C"; write_if_changed(manifest_path, json.dumps(manifest, indent=2) + "\n"); return entry
 def export_library(source_dir, output_dir):
 	source_dir = Path(source_dir); output_dir = Path(output_dir); result = []
 	for path in sorted(source_dir.rglob("*.BIN")):

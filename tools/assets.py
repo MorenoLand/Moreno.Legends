@@ -12,6 +12,7 @@ import cinematics
 import intro_scene
 import scene_player
 import special_weapons
+import player_effects
 import fire_mission
 import flight_scene
 import landing_scene
@@ -99,11 +100,11 @@ def prepare(cue, source, stages, only, report_path=None):
 		except (OSError, ValueError, RuntimeError, IndexError, KeyError, struct.error, OverflowError) as error: report["tasks"].append({"name": name, "status": "unsupported", "error": str(error)})
 	if "world" in only: export_world(source, stages, report)
 	if "textures" in only: task("textures", lambda: world.export_texture_library(source, ROOT / "assets/library/textures"))
-	if "models" in only: export_models(source, stages, report); task("player", models.export_player); task("special_weapon_0f", special_weapons.export_extinguisher); task("player_library", lambda: models.export_player_library(ROOT / "assets/library/players"))
+	if "models" in only: export_models(source, stages, report); task("player", models.export_player); task("special_weapon_0f", special_weapons.export_extinguisher); task("player_effects", player_effects.export); task("player_library", lambda: models.export_player_library(ROOT / "assets/library/players"))
 	if "ui" in only:
-		for name, function in [("hud", ui.hud_cli), ("projectile", ui.export_projectile), ("menu", ui.export_menu), ("dialogue", ui.export_dialogue), ("mission_banner", ui.export_mission_banner)]: task(name, function)
+		for name, function in [("hud", ui.hud_cli), ("projectile", ui.export_projectile), ("menu", ui.export_menu), ("dialogue", ui.export_dialogue), ("mission_banner", ui.export_mission_banner), ("game_over", ui.export_game_over)]: task(name, function)
 		task("fades", lambda: native_fades.export(source, ROOT / "assets/fades"))
-	if "audio" in only: task("audio", lambda: audio.export_audio(cue)); task("audio_library", lambda: audio.export_library(source, ROOT / "assets/library/audio")); task("zone_audio", lambda: audio.export_zone_audio(source))
+	if "audio" in only: task("audio", lambda: audio.export_audio(cue)); task("audio_library", lambda: audio.export_library(source, ROOT / "assets/library/audio")); task("zone_audio", lambda: audio.export_zone_audio(source)); task("game_over_audio", audio.export_game_over_audio)
 	if "audio" in only and (not stages or "ST0B" in stages): task("scene_audio", lambda: scenes.export_scene_audio(cue, source / "DAT", ROOT / "assets/levels/ST0B/audio"))
 	if "cinematics" in only: task("opening", cinematics.export_opening); task("opening_effects", cinematics.export_opening_effects); task("intro_scene", intro_scene.main); task("intro_player", lambda: scene_player.export_scene_player_clips("ST39"))
 	if "media" in only:
@@ -131,6 +132,7 @@ def prepare(cue, source, stages, only, report_path=None):
 	if "world" in only: task("bitmap_minimaps", lambda: world.export_bitmap_minimaps(source / "DAT", ROOT / "assets/minimap", stages))
 	if "world" in only and all((ROOT / "assets/levels" / stage / "doors.json").is_file() for stage in world.STAGES): task("room_layout", lambda: world.export_room_layout(ROOT / "assets/levels", ROOT / "assets/locations/room_layout.json"))
 	if "world" in only and all((ROOT / "assets/levels" / stage / "doors.json").is_file() for stage in ["ST09", "ST0A", "ST0C", "ST47"]): task("town_room_layout", lambda: world.export_room_layout(ROOT / "assets/levels", ROOT / "assets/locations/town_room_layout.json", ("ST09", "ST0A", "ST0C", "ST47")))
+	if "world" in only and (ROOT / "assets/levels/ST0F/doors.json").is_file(): task("mine_room_layout", lambda: world.export_room_layout(ROOT / "assets/levels", ROOT / "assets/locations/mine_room_layout.json", ("ST0F",)))
 	report["summary"] = {"source_files": len(report["files"]), "source_bytes": sum(item["bytes"] for item in report["files"]), "stages_exported": sum(item["status"] == "exported" for item in report["stages"]), "models_exported": sum(model["status"] == "exported" for archive in report["model_archives"] for model in archive["models"]), "unsupported": sum(item["status"] == "unsupported" for item in report["stages"] + report["model_archives"] + report["tasks"]) + sum(model["status"] == "unsupported" for archive in report["model_archives"] for model in archive["models"])}
 	report_path = report_path or ROOT / "build/asset_coverage.json"; report_path.parent.mkdir(parents=True, exist_ok=True); report_path.write_text(json.dumps(report, indent=2), encoding="utf-8"); print(json.dumps(report["summary"], indent=2)); return report
 def main():

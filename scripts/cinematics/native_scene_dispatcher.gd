@@ -7,7 +7,7 @@ var last_error := ""
 func configure(gameplay: Node3D) -> void: host = gameplay
 func run_pending(parent: Node3D, stage: String, area: int) -> bool:
 	last_error = ""; transition_requested = false
-	var pending: Array = preload("res://scripts/world/native_props.gd").pending_scene_requests(parent)
+	var pending: Array = preload("res://scripts/world/actors/native_props.gd").pending_scene_requests(parent)
 	for request: Dictionary in pending:
 		if str(request.get("status", "")) in ["complete_native_scene", "running_native_scene"]: continue
 		var function := str(request.get("source_function", "")).to_lower(); var id := int(request.get("argument", -1)); var path := "res://assets/levels/%s/scene_%02x.json" % [stage, id]

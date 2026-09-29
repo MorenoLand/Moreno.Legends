@@ -14,7 +14,15 @@ The normal new-game initializer `0x800C35B0` clears Buster stats at `0x800C3688`
 
 ## Health and reactions
 
-New-game health and maximum health are eighty; the life gauge scales with maximum health instead of showing the enlarged upgrade capacity at startup. The normal starting armor setting two scales contact damage as `max(1,(damage*3)>>2)`. Weak reactions use controls 32/33; strong reactions use 34/38, landing 35/39 and recovery 37/41. Knockback physics and the complete death flow remain unported.
+New-game health and maximum health are eighty; the life gauge scales with maximum health instead of showing the enlarged upgrade capacity at startup. The normal starting armor setting two scales contact damage as `max(1,(damage*3)>>2)`. Weak reactions use controls 32/33; strong reactions use 34/38, landing 35/39 and recovery 37/41. Knockback physics remain unported.
+
+## Death
+
+SLES `0x80044070(actor, delta)` applies damage only while the game block `0x8009C7E8+1` is 2 and flag `0x6F4` is clear. From HP above zero, an overshoot clamps HP to 0 and returns 1; a hit at HP 0 or below (`0x80044020`) stores −1 and returns −1. Any nonzero return selects the strong reaction in `0x800CB678` (state 0xF, `0x800C8C44`), so HP 0 is alive and the next hit kills. Substate 3 recovers with controls 37/41 only when HP ≥ 0; at HP −1 it holds the landing control 35/39, slides to rest and `0x800C8E10` sets player `+8` = 2. `0x800CC724` then writes game block +0 = 8, +1 = 0. Map interaction `0x800C4364` runs only at HP ≥ 0. The ST1E timer routine `0x800E7B88` fails the mission at HP exactly 0 before a killing hit can land.
+
+Mode 8 (`0x800B00D0`): `0x80048944(1)`; transition `0x14` (`0x12` when flag `0x246` is set) with `0x80020984(0x3F, 0xB6, 0)` fading music channels by 182 per update from 0x3FFF; after the fade `0x80020C90` and engine phase 5 reload `COMMON/DEMO.BIN` (state 6, `0x800ADE7C`). With flag `0x246` set the fade completes into `0x800B0B18` instead, restoring mode 3 in ST0B (flag `0x248` clear) or ST1B. The ST0B/ST1B handlers heal the player and clear `0x246`. No zenny or item changes were found, and there is no retry or continue prompt.
+
+DEMO state 6 loads file 4 (`COMMON/G_OVER00.BIN`: GAME/OVER textures at VRAM words (640,256) and (768,256), CLUT row 496, sequence section `0x9000`, bank `0x9800`), clears the transition, starts music 0xC, raises a tint from 0 to 0x80 in steps of 2, then holds `(3−0x1F800005)<<8` updates. Start, Cross or Triangle (`0x5008`) skips it. Transition `0x20` then returns to DEMO state 0, the title. The background is the Gouraud quad colour `(0, 0, tint·14>>7)`; four 8-bit sprites at (72, 208) in 640×480 space carry the text. `G_OVER01.BIN` and `G_OVER02.BIN` hold Japanese-text artwork; no loader for file IDs 5 or 6 was found.
 
 ## Jumping
 

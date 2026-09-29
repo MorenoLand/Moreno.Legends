@@ -1,8 +1,8 @@
 [gd_scene load_steps=5 format=3 uid="uid://cij1ycjevtg54"]
 
-[ext_resource type="Script" uid="uid://bc3oimy5usa4w" path="res://scripts/world/gameplay.gd" id="1"]
+[ext_resource type="Script" uid="uid://bc3oimy5usa4w" path="res://scripts/world/core/gameplay.gd" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/player.tscn" id="3"]
-[ext_resource type="Script" uid="uid://cfpk5e0pa8ubk" path="res://scripts/ui/game_hud.gd" id="4"]
+[ext_resource type="Script" uid="uid://cfpk5e0pa8ubk" path="res://scripts/ui/hud/game_hud.gd" id="4"]
 
 [sub_resource type="Environment" id="Environment"]
 resource_local_to_scene = true

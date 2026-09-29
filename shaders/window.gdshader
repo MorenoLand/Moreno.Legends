@@ -26,7 +26,14 @@ void fragment() {
 		vec3 normal = normalize(NORMAL); vec3 view_direction = normalize(VIEW); float fresnel = pow(1.0 - abs(dot(normal, view_direction)), 5.0);
 		vec3 reflected = normalize((INV_VIEW_MATRIX * vec4(reflect(-view_direction, normal), 0.0)).xyz); float angle = atan(reflected.z, reflected.x) / 6.28318530718 + 0.5; float row = clamp((0.12 - reflected.y) / 0.4, 0.0, 1.0);
 		vec4 reflection = texture(reflection_texture, vec2(fract(angle * 4.0), (row * 127.0 + 0.5) / 256.0));
-		ALBEDO = mix(vec3(0.55, 0.71, 0.77), reflection.rgb, reflection.a * (0.3 + 0.5 * fresnel)); ALPHA = 0.065 + 0.22 * fresnel;
+		// Port-only glass look (the original shows no outside view): tint, sliding diagonal sheen, heavier edges.
+		vec2 glass_uv = (UV - pane_uv_min) / max(pane_uv_max - pane_uv_min, vec2(0.001));
+		float edge = 1.0 - smoothstep(0.0, 0.1, min(min(glass_uv.x, 1.0 - glass_uv.x), min(glass_uv.y, 1.0 - glass_uv.y)));
+		float slide = (INV_VIEW_MATRIX * vec4(view_direction, 0.0)).x * 0.35 + (INV_VIEW_MATRIX * vec4(view_direction, 0.0)).z * 0.2;
+		float band = fract((glass_uv.x + glass_uv.y * 0.55) * 0.9 + slide);
+		float sheen = smoothstep(0.30, 0.36, band) * (1.0 - smoothstep(0.36, 0.46, band)) + 0.55 * smoothstep(0.52, 0.54, band) * (1.0 - smoothstep(0.54, 0.58, band));
+		ALBEDO = mix(vec3(0.58, 0.74, 0.80), reflection.rgb, reflection.a * (0.3 + 0.5 * fresnel)) + vec3(sheen * 0.3);
+		ALPHA = clamp(0.13 + 0.3 * fresnel + sheen * 0.12 + edge * 0.1, 0.0, 0.75);
 	}
 	if (pane > 0.999 && snowfall_enabled) {
 		vec2 pane_uv = (UV - pane_uv_min) / max(pane_uv_max - pane_uv_min, vec2(0.001));

@@ -6,6 +6,7 @@ signal scripted_walk_finished(completed: bool)
 signal footstep
 signal jumped
 signal landed
+signal died
 signal special_sound_requested(sound_id: int)
 @export var projectile_scene: PackedScene = preload("res://scenes/projectile.tscn")
 
@@ -191,7 +192,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		get_viewport().set_input_as_handled()
 		return
-	if event.is_action_pressed("ui_cancel") and get_tree().current_scene.get_script() == preload("res://scripts/ui/main_menu.gd"): return
+	if event.is_action_pressed("ui_cancel") and get_tree().current_scene.get_script() == preload("res://scripts/ui/menus/main_menu.gd"): return
 	if event.is_action_pressed("ui_cancel"):
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		get_viewport().set_input_as_handled()
@@ -229,7 +230,7 @@ func _physics_process(delta: float) -> void:
 			if motion_tree != null: motion_tree.set("parameters/ArmSeek/seek_request", 0.0)
 	elif shot_pose <= 0: gun_pose_active = false
 	camera_pivot.rotation.y -= Input.get_axis("turn_left", "turn_right") * turn_speed * delta
-	var input_vector := Vector2(Input.get_axis("strafe_left", "strafe_right"), Input.get_axis("move_back", "move_forward"))
+	var input_vector := Vector2(Input.get_axis("strafe_left", "strafe_right"), Input.get_axis("move_back", "move_forward")) if health >= 0 else Vector2.ZERO
 	var forward := -camera_pivot.global_basis.z
 	forward.y = 0.0
 	var right := camera_pivot.global_basis.x
@@ -244,7 +245,7 @@ func _physics_process(delta: float) -> void:
 		var air_speed := 640.0 * 30.0 / 4096.0 * (0.6 if aiming else 1.0)
 		velocity.x = move_toward(velocity.x, direction.x * air_speed, 16.0 * 900.0 / 4096.0 * delta)
 		velocity.z = move_toward(velocity.z, direction.z * air_speed, 16.0 * 900.0 / 4096.0 * delta)
-	collision_mask = 0 if no_clip else 25
+	collision_mask = 0 if no_clip else 89
 	var grounded := is_on_floor()
 	if free_flight:
 		jump_phase = JumpPhase.GROUNDED
@@ -252,7 +253,12 @@ func _physics_process(delta: float) -> void:
 		velocity.y = (float(Input.is_action_pressed("jump")) - float(Input.is_action_pressed("fly_down"))) * speed
 	else: _update_jump(delta, grounded, direction)
 	if grounded and not free_flight and not no_clip and velocity.y <= 0.0 and hurt_phase.is_empty(): _step_over_seam(Vector3(velocity.x, 0.0, velocity.z) * delta)
+	var before_slide := global_transform; var intended := Vector3(velocity.x, 0.0, velocity.z) * delta
 	move_and_slide()
+	if not free_flight and not no_clip:
+		var drift := global_position - before_slide.origin; drift.y = 0.0
+		if drift.length() > intended.length() + 0.08:
+			global_position = Vector3(before_slide.origin.x + intended.x, global_position.y, before_slide.origin.z + intended.z); velocity.x = intended.x / delta if delta > 0.0 else 0.0; velocity.z = intended.z / delta if delta > 0.0 else 0.0
 	if not free_flight and is_on_floor() and jump_phase in [JumpPhase.RISING, JumpPhase.RELEASED, JumpPhase.FALLING]:
 		jump_velocity = 0
 		_set_jump_phase(JumpPhase.LANDING)
@@ -453,6 +459,7 @@ func _update_jump(delta: float, grounded: bool, direction: Vector3) -> void:
 			JumpPhase.RELEASED: _release_jump()
 			JumpPhase.FALLING: jump_velocity += 48
 			JumpPhase.LANDING:
+				if jump_ticks == (3 if jump_moving else 1): var ring := preload("res://scripts/player/ground_effect.gd").new() as Node3D; get_parent().add_child(ring); ring.global_position = global_position
 				if jump_ticks >= 3 and _jump_clip_ended(): _set_jump_phase(JumpPhase.GROUNDED)
 	velocity.y = -float(jump_velocity) * 30.0 / 4096.0
 func _release_jump() -> void:
@@ -507,7 +514,7 @@ func _fire() -> void:
 	fired.emit(projectile)
 	if not obstruction.is_empty():
 		projectile.hit_surface.emit(obstruction["position"], obstruction["normal"])
-		projectile._impact(obstruction["position"] + obstruction["normal"] * 0.03)
+		projectile._impact(obstruction["position"] + obstruction["normal"] * 0.03, false)
 		projectile.queue_free()
 func _fit_model() -> void:
 	var bounds := AABB()
@@ -636,7 +643,7 @@ func begin_interaction(role: String = "door_open", quick: bool = false) -> Dicti
 	motion_tree.set("parameters/MotionSpeed/scale", rate)
 	_play_animation(role)
 	motion_tree.advance(0.0)
-	return {"duration": interaction_duration, "vertical_speed": interaction_vertical_speed} if interaction_loop else {"duration": interaction_duration, "open_at": float(source["open_tick"]) / (30.0 * rate), "close_at": float(source["close_tick"]) / (30.0 * rate), "walk_at": float(source["walk_handoff_tick"]) / (30.0 * rate)}
+	return {"duration": interaction_duration, "vertical_speed": interaction_vertical_speed} if interaction_loop else {"duration": interaction_duration, "rate": rate, "open_at": float(source["open_tick"]) / (30.0 * rate), "close_at": float(source["close_tick"]) / (30.0 * rate), "walk_at": float(source["walk_handoff_tick"]) / (30.0 * rate)}
 func begin_scripted_walk(source: Dictionary, yaw: float) -> bool:
 	var role := "walk" if int(source.get("control", -1)) == 2 else "run"; var clip := str(animation_roles.get(role, "")); var step: Array = source.get("local_step_raw", []); var rate := float(source.get("tick_rate", 0)); var ticks := int(source.get("ticks", 0))
 	if motion_tree == null or animation_player == null or not animation_player.has_animation(clip) or int(source.get("control", -1)) not in [1, 2] or step.size() != 3 or rate <= 0.0 or ticks <= 0: return false
@@ -723,7 +730,7 @@ func _apply_native_materials() -> void:
 			material.shader = preload("res://shaders/native_model.gdshader")
 			material.set_shader_parameter("albedo_texture", source.albedo_texture)
 			mesh.set_surface_override_material(surface, material)
-func reset_at(position: Vector3) -> void:
+func reset_at(point: Vector3) -> void:
 	cancel_scripted_walk()
 	interaction_role = ""
 	if is_instance_valid(carried_actor): carried_actor.release_lift(-player_model.global_basis.z, -768, -64)
@@ -731,7 +738,7 @@ func reset_at(position: Vector3) -> void:
 	special_action = ""
 	_set_carry_filter(false)
 	if upper_modifier != null: upper_modifier.active = true
-	global_position = position
+	global_position = point
 	camera_distance = -1.0
 	camera_world_valid = false
 	velocity = Vector3.ZERO
@@ -755,7 +762,7 @@ func reset_at(position: Vector3) -> void:
 	player_model.rotation.y = 0.0
 	_play_animation("idle")
 func take_hit(amount: int = 16, flags: int = 0, incoming: Vector3 = Vector3.ZERO) -> void:
-	if invulnerable or hurt_immunity > 0 or not hurt_phase.is_empty() or health <= 0: return
+	if invulnerable or hurt_immunity > 0 or not hurt_phase.is_empty() or health < 0: return
 	if is_instance_valid(carried_actor): carried_actor.release_lift(-player_model.global_basis.z, -768, -64)
 	carried_actor = null
 	special_action = ""
@@ -763,15 +770,17 @@ func take_hit(amount: int = 16, flags: int = 0, incoming: Vector3 = Vector3.ZERO
 	if upper_modifier != null: upper_modifier.active = true
 	hurt_damage += amount
 	hurt_hits += 1
-	health = clampi(health - amount, 0, max_health)
-	health_changed.emit(health, max_health)
-	var strong := hurt_damage >= 28 or hurt_hits >= 4 or (flags & 0x80000) != 0 or not is_on_floor() or health == 0
+	var lethal := health - amount < 0
+	health = maxi(health - amount, 0 if health > 0 else -1)
+	health_changed.emit(maxi(health, 0), max_health)
+	var strong := hurt_damage >= 28 or hurt_hits >= 4 or (flags & 0x80000) != 0 or not is_on_floor() or lethal
 	var back := incoming.dot(Basis(Vector3.UP, player_model.rotation.y) * Vector3.FORWARD) > 0
 	hurt_phase = "launch" if strong else "weak"
 	hurt_clip = "clip_%03d" % ((38 if back else 34) if strong else (33 if back else 32))
 	hurt_ticks = 0.0
 	gun_pose_active = false
 	pending_shot = false
+	special_sound_requested.emit(0x97 if strong else 0x96)
 	_play_hurt_clip()
 func _play_hurt_clip() -> void:
 	if animation_player == null or not animation_player.has_animation(hurt_clip): return
@@ -797,6 +806,10 @@ func _update_hurt(delta: float) -> void:
 		hurt_clip = "clip_039" if hurt_clip == "clip_038" else "clip_035"
 		hurt_ticks = 0.0
 		_play_hurt_clip()
+		special_sound_requested.emit(0x99)
+	elif hurt_phase == "land" and hurt_ticks >= length and health < 0:
+		hurt_phase = "dead"
+		died.emit()
 	elif hurt_phase == "land" and hurt_ticks >= length:
 		hurt_phase = "recover"
 		hurt_clip = "clip_041" if hurt_clip == "clip_039" else "clip_037"

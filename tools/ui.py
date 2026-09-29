@@ -100,6 +100,13 @@ def export_mission_banner():
 	manifest = {"source": {"archive": "COMMON/GAME.BIN", "executable": "SLES_035.56", "create": "SLES0x8003B918(x,y,style)", "remove": "SLES0x8003B9C4", "draw": "SLES0x8003B9D0 from GAME0x800B0330 once per main loop", "state": "0x8009DF40", "style_table": "0x8006B0A8", "element_tables": "0x8006B324", "trig_table": "0x80073E4C"}, "tick_hz": 25, "atlas": "mission_banner.png", "atlas_uv": atlas, "packet": "GP0 0x64 colour 0x808080; semitransparent (0x66, tpage mode 0 = 0.5B+0.5F, all texels STP) while the pre-step radius is nonzero", "update": "radius=max(radius-step,0); radial: offset+(radius*sin>>11, radius*cos>>11); vertical: offset+(0, radius*2)", "styles": styles}
 	write_if_changed(output_dir / "mission_banner.json", json.dumps(manifest, indent=2) + "\n", encoding="utf-8"); return {"styles": len(styles), "atlas_uv": atlas}
 
+def export_game_over():
+	vram, _ = textures(ROOT / "build/disc-assets/COMMON/G_OVER00.BIN"); output_dir = ROOT / "assets/hud"; output_dir.mkdir(parents=True, exist_ok=True)
+	game = rgba(vram, 640, 256, 256, 64, 8, 0, 496); over = rgba(vram, 768, 256, 256, 64, 8, 0, 496); width = 496
+	rows =[bytes(game[row * 1024:row * 1024 + 1024]) + bytes(over[row * 1024:row * 1024 + 960]) for row in range(64)]
+	write_if_changed(output_dir / "game_over.png", png(width, 64, b"".join(rows)))
+	manifest = {"source": {"archive": "COMMON/G_OVER00.BIN", "file_id": 4, "death_trigger": "GAME0x800C8C44 state 0xF substate 4 sets player +8 = 2; GAME0x800CC724 sets game block 0x8009C7E8 +0 = 8", "mode": "GAME0x800B00D0 (transition 0x14, SLES0x80020984 music fade, then SLES phase 5 reloads COMMON/DEMO.BIN)", "screen": "DEMO0x800ADE7C state 6 (draw DEMO0x800AF338)", "music": "DEMO0x800ADF54 SLES0x800201B0(0xC)"}, "native_size": [640, 480], "tick_hz": 30, "textures": {"file": "game_over.png", "size": [width, 64], "tpage_x_words": [640, 704, 768, 832], "clut": "0x7C00", "sprites": [[72, 208, 128, 64], [200, 208, 128, 64], [328, 208, 128, 64], [456, 208, 112, 64]]}, "background_blue_numerator": 14, "background_blue_shift": 7, "fade_in_step": 2, "fade_in_max": 128, "hold_ticks_formula": "(3-0x1F800005)<<8", "hold_ticks": 512, "skip_mask": "0x5008", "exit_transition": "0x20"}
+	write_if_changed(output_dir / "game_over.json", json.dumps(manifest, indent=2) + "\n", encoding="utf-8"); return manifest
 SOURCE = ROOT / "build" / "disc-assets" / "COMMON" / "GAME.BIN"
 PROJECTILE_OUTPUT = ROOT / "assets" / "effects"
 
@@ -292,6 +299,11 @@ def export_menu():
 		fraction = max(0, min(224, row - 128)); rgb = tuple(start + (end - start) * fraction // 224 for start, end in zip((69, 71, 255), (207, 255, 255))); background.extend(bytes((*rgb, 255)) * 640)
 	write_if_changed(MENU_OUTPUT / "title_background.png", png(640, 480, background))
 	write_if_changed(MENU_OUTPUT / "native_font.fnt", "\n".join(font_lines) + "\n", encoding="utf-8")
+	# Message text colours: FB 0A n selects glyph CLUT 0x80078BF8[n] (SLES0x800498CC); one atlas + font per colour, page file swapped.
+	colour_cluts = struct.unpack_from("<8H", exe, 0x80078BF8 - 0x80010000 + 0x800)
+	for colour in range(1, 7):
+		clut = colour_cluts[colour]; name = f"font_atlas_c{colour}.png"; font_x, font_y = struct.unpack_from("<2H", init_data, 20); write_if_changed(MENU_OUTPUT / name, png(256, 256, rgba(font_vram, font_x, font_y, 256, 256, 4, (clut & 63) * 16, clut >> 6)))
+		write_if_changed(MENU_OUTPUT / f"native_font_c{colour}.fnt", "\n".join(line.replace('file="font_atlas.png"', f'file="{name}"') for line in font_lines) + "\n", encoding="utf-8")
 	manifest = {"sources": {"title": {"archive": "COMMON/TITLE.BIN", "sha256": hashlib.sha256(title.read_bytes()).hexdigest(), "texture_sections": section_count}, "pause": {"archive": "COMMON/SUBSCN.BIN", "sha256": hashlib.sha256(pause_data).hexdigest()}, "font": {"archive": "COMMON/INIT.BIN", "sha256": hashlib.sha256(init_data).hexdigest()}}, "sprites": sprites, "bitmap_font": {"atlas": "font_atlas", "glyphs": glyphs, "space_advance": 6, "native_space_code": 76, "native_width_table": "SLES 0x8006B8F8", "native_uv_formula": "u=(code%20)*12; v=(code//20)*12", "native_renderer": "SLES 0x800498CC", "cell_dimensions": [12, 12]}, "title_reference_layout": {"viewport": [640, 480], "logo_rect": [48, 32, 544, 240], "button_rects": [[212, 272 + index * 40, 216, 40] for index in range(4)], "cursor_rect": [172, 276, 32, 32], "provenance": "Native COMMON/DEMO.BIN functions 0x800AE0D0 and 0x800AE584", "selection_source": "selected page10/clut7C00; others page11/clut7C40", "cursor_animation": "x=172+(signed16(sine(counter<<8))/1024); y=276+40*currentSelection+10*(previousSelection-currentSelection)*transitionByte", "entry_order": ["game_start", "continue", "tutorial", "options"]}, "native_background": {"source": "COMMON/DEMO.BIN 0x800AE0D0, GP0 G4 construction 0x800AE164..0x800AE288", "file": "title_background.png", "viewport": [640, 480], "fade": 128, "rgb_scale": "channel*fade>>7", "top_rgb": [69, 71, 255], "bottom_rgb": [207, 255, 255], "quads": [{"y": [0, 128], "top_rgb": [69, 71, 255], "bottom_rgb": [69, 71, 255]}, {"y": [128, 352], "top_rgb": [69, 71, 255], "bottom_rgb": [207, 255, 255]}, {"y": [352, 480], "top_rgb": [207, 255, 255], "bottom_rgb": [207, 255, 255]}], "bitmap_in_logo": False, "rasterization": "Linear native G4 vertex-color interpolation; PS1 dithering not included"}, "alpha": "Native palette word zero is transparent; nonzero texels are opaque"}; demo = (ROOT / "build/disc-assets/COMMON/DEMO.BIN").read_bytes(); manifest["sources"]["title_overlay"] = {"archive": "COMMON/DEMO.BIN", "sha256": hashlib.sha256(demo).hexdigest(), "native_draw_functions": ["0x800AE0D0", "0x800AE584"]}; manifest["title_entries"] = [{"role": role, "normal_sprite": "title_tutorial_" + role, "selected_sprite": "title_tutorial_tutorial_selected" if role == "tutorial" else "title_training_" + role} for role in ("game_start", "continue", "tutorial", "options")]; manifest["options_layout"] = native_options_geometry(); manifest["press_start_phase"] = {"source": "DEMO 0x800AD308/0x800AE3A0", "prompt_rect": [140, 336, 360, 40], "copyright_rect": [64, 404, 512, 48], "fade_step": 2, "fade_max": 128, "fade_updates": 64, "blink_visible_expression": "(u16(titleState+4)&0x20)!=0", "blink_half_period_updates": 32, "idle_counter_expression": "(3-u8(0x1F800005))*256", "title_buffer_count": 1, "idle_updates": 512, "enter_menu_input_mask": "0x4008", "press_start_audio": "0x0081"}; manifest["startup_logo_phase"] = {"source": "SLES 0x80012D7C..0x80012F28", "resource": "COMMON/LOGO.BIN", "sprite": "startup_capcom", "fade_step": 4, "fade_max": 128, "fade_updates": 32, "hold_counter_initial": 180, "background_at_full_fade_rgb": [255, 255, 255], "next_engine_stage": "ST02", "trial_disclaimer_bitmap_used": False}; manifest["shared_menu_background"] = {"sprite": "native_gear_background", "viewport": [320, 240], "source": "SLES0x80050C20 called by0x80050AB0", "effective_tick": "u16(scratch+6)>>1 when u8(scratch+5)==1; otherwise u16(scratch+6)", "tile_origin_expression": "((effective_tick&63)-16,(effective_tick&63)-16), repeated every64pixels", "native_sprite_grid": [21, 16], "native_sprite_size": [16, 16]}; manifest["load_game_layout"] = native_load_game_geometry(); manifest["hand_cursor_animation"] = {"file": "native_load_cursor.png", "wave": list(struct.unpack_from("<16b", exe, 0x69434)), "phase_shift": 1, "x_bias": -2, "tick_rate": 25, "source": "SLES0x8004BC44..0x8004BD14; wave RAM0x80078C34; GAME0x800AE948 selects two PAL video fields per scratch6 tick; pause inherits display mode"}; write_if_changed(MENU_OUTPUT / "manifest.json", json.dumps(manifest, indent=2) + "\n", encoding="utf-8"); return manifest
 NATIVE_TEXT_CHARACTERS = {12: "'", 13: "!", 14: "?", 17: "(", 18: ")", 19: ":", 72: "&", 73: "\uE049", 75: "/", 76: " ", 79: "-", 80: "\uE050", 89: ",", 90: '"', 91: ".", 97: "\uE061", **{code: chr(0xE000 + code) for code in (0x10, *range(0x51, 0x59), 0x5E)}}
 NATIVE_TEXT_CALLS = {
@@ -305,7 +317,7 @@ NATIVE_NPC_TALK = {
 	"ST2A": {"actor_request_call": "0x800E84B8", "actor_dispatch": "0x800E8038"}
 }
 NATIVE_TEXT_BANKS = {"ST04": {"file": "DAT/ST04.BIN", "section_offset": 0x6800, "file_offset": 0xE800, "index_count": 0xCC, "overlay": "DAT/ST04T.BIN"}, "ST0F": {"file": "DAT/ST0F.BIN", "section_offset": 0xC800, "file_offset": 0x1B000, "index_count": 0xB0, "overlay": "DAT/ST0FT.BIN"}}
-def decode_native_text(raw):
+def decode_native_text(raw, strip=True):
 	characters = []
 	for value in raw:
 		if value in NATIVE_TEXT_CHARACTERS: characters.append(NATIVE_TEXT_CHARACTERS[value])
@@ -316,7 +328,7 @@ def decode_native_text(raw):
 		elif 46 <= value <= 71: characters.append(chr(97 + value - 46))
 		elif value in (0, 0xFF): break
 		else: characters.append(f"⟦{value:02X}⟧")
-	return "".join(characters).strip()
+	return "".join(characters).strip() if strip else "".join(characters)
 def native_text_record(data, start):
 	text_start = start + 4; cursor = text_start
 	while cursor < len(data) and data[cursor] not in (0xFB, 0xFF, 0): cursor += 1
@@ -375,18 +387,19 @@ def native_message_commands(data, payload_offset, payload_size, message_offset, 
 	return native_program_trace(data, payload_offset, payload_size, message_offset, [])['commands']
 def native_run_separator(previous, current):
 	if previous.get("dynamic") == "item_name_text" and current["file_offset"] - previous["file_offset"] in (4, 6): return ""
-	if previous["file_offset"] + (3 if previous.get("dynamic") else len(previous["raw_hex"]) // 2) != current["file_offset"]: return "\n"
+	if previous["file_offset"] + (int(previous.get("native_length", 3)) if previous.get("dynamic") else len(previous["raw_hex"]) // 2) != current["file_offset"]: return "\n"
 	edges = previous["raw_hex"][-2:] + current["raw_hex"][:2]
 	return "\n" if "fc" in (edges[:2], edges[2:]) else (" " if "4c" in (edges[:2], edges[2:]) else "")
 def native_control_texts(argument):
 	executable = (ROOT / "build/disc-assets/SLES_035.56").read_bytes(); offset = lambda address: address - 0x80010000 + 0x800; texts = []
 	for layout in range(6):
-		index = executable[offset(0x8006B8A4) + layout * 12 + argument]; cursor = offset(0x8007019C + struct.unpack_from("<H", executable, offset(0x8007019C) + index * 2)[0]); raw = bytearray()
+		index = executable[offset(0x8006B8A4) + layout * 12 + argument]; cursor = offset(0x8007019C + struct.unpack_from("<H", executable, offset(0x8007019C) + index * 2)[0]); raw = bytearray(); pieces = []
 		while executable[cursor] != 0xFF and executable[cursor:cursor + 2] != bytes((0xFB, 0x1F)):
-			if executable[cursor:cursor + 2] == bytes((0xFB, 0x0A)): cursor += 3; continue
-			if executable[cursor:cursor + 2] == bytes((0xFB, 0x0B)): cursor += 2; continue
+			# FB 0A n / FB 0B: text colour n and restore (renderer SLES0x8004C64C / 0x8004C6B8) -> port colour markers U+E0F0+n / U+E0FF.
+			if executable[cursor:cursor + 2] == bytes((0xFB, 0x0A)): pieces.append(decode_native_text(bytes(raw), False)); raw = bytearray(); color = executable[cursor + 2] & 0x7F; pieces.append(chr(0xE0F0 + (color if color < 8 else 0))); cursor += 3; continue
+			if executable[cursor:cursor + 2] == bytes((0xFB, 0x0B)): pieces.append(decode_native_text(bytes(raw), False)); raw = bytearray(); pieces.append(chr(0xE0FF)); cursor += 2; continue
 			raw.append(executable[cursor]); cursor += 1
-		texts.append(decode_native_text(bytes(raw)))
+		pieces.append(decode_native_text(bytes(raw), False)); texts.append("".join(pieces).strip())
 	return texts
 def native_item_text(code):
 	executable = (ROOT / "build/disc-assets/SLES_035.56").read_bytes(); table = 0x8006CFB8 - 0x80010000 + 0x800; index = code - 0x380
@@ -395,7 +408,7 @@ def native_item_text(code):
 	while executable[cursor] != 0xFF and executable[cursor:cursor + 2] != b"\xFB\x1F": cursor += 1
 	return decode_native_text(executable[start:cursor])
 def native_program_trace(data, payload_offset, payload_size, message_offset, entry_offsets):
-	lengths = {0x05: 4, 0x06: 8, 0x08: 4, 0x0A: 3, 0x0C: 2, 0x1A: 6, 0x22: 3, 0x09: 3, 0x0E: 3, 0x0F: 3, 0x11: 3, 0x15: 13, 0x16: 6, 0x18: 2, 0x19: 4, 0x1D: 2, 0x21: 3, 0x24: 2, 0x26: 4, 0x27: 4, 0x28: 6, 0x29: 3, 0x2A: 7, 0x2B: 2, 0x2C: 3, 0x30: 3, 0x31: 2, 0x33: 3, 0x37: 7, 0x38: 3, 0x39: 3, 0x3E: 4, 0x3F: 5}; cursor = message_offset + 2; text_mode = False; runs = []; commands = []; unresolved = []; status = "bank_end"
+	lengths = {0x05: 4, 0x06: 8, 0x08: 4, 0x0A: 3, 0x0C: 2, 0x1A: 6, 0x22: 3, 0x09: 3, 0x0E: 3, 0x0F: 3, 0x10: 3, 0x11: 3, 0x15: 13, 0x16: 6, 0x18: 2, 0x19: 4, 0x1D: 2, 0x21: 3, 0x24: 2, 0x26: 4, 0x27: 4, 0x28: 6, 0x29: 3, 0x2A: 7, 0x2B: 2, 0x2C: 3, 0x30: 3, 0x31: 2, 0x33: 3, 0x37: 7, 0x38: 3, 0x39: 3, 0x3E: 4, 0x3F: 5}; cursor = message_offset + 2; text_mode = False; runs = []; commands = []; unresolved = []; status = "bank_end"
 	lengths.update({0x0B: 2, 0x20: 4})
 	for _ in range(2048):
 		if cursor >= payload_size: break
@@ -418,7 +431,7 @@ def native_program_trace(data, payload_offset, payload_size, message_offset, ent
 		if opcode not in lengths:
 			status = f"unresolved_opcode_0x{opcode:02X}"; unresolved.append({"opcode": f"0x{opcode:02X}", "file_offset": payload_offset + cursor, "handler": native_message_handler(opcode), "reason": "Primary message operation is not decoded"}); break
 		length = lengths[opcode]
-		if opcode in (0x11, 0x39) and cursor + 3 <= payload_size: length += data[payload_offset + cursor + 2] * (2 if opcode == 0x39 else 1)
+		if opcode in (0x10, 0x11, 0x39) and cursor + 3 <= payload_size: length += data[payload_offset + cursor + 2] * (1 if opcode == 0x11 else 2)
 		if cursor + length > payload_size: status = f"truncated_0x{opcode:02X}"; break
 		args = data[payload_offset + cursor + 2:payload_offset + cursor + length]; command = {"opcode": f"0x{opcode:02X}", "file_offset": payload_offset + cursor, "raw_arguments_hex": args.hex(), "arguments": list(args), "native_length": length, "handler": native_message_handler(opcode), "dispatch_table": "0x8006B61C"}
 		if opcode == 0x05: text_mode = True; command.update(header=data[payload_offset + cursor:payload_offset + cursor + length].hex(), effect="open_text_run")
@@ -430,7 +443,7 @@ def native_program_trace(data, payload_offset, payload_size, message_offset, ent
 		elif opcode == 0x2A: command.update(effect="save_byte16_redirect", selector_address="0x8009C7FE", candidate_indices=list(args), skip_index=255, bank_pointer="message_context+0x28")
 		elif opcode == 0x3F: command.update(effect="native_state_redirect", selector_address="0x8009C82C", selector_signed=True, candidate_indices=list(args), skip_index=255, bank_pointer="message_context+0x28")
 		elif opcode == 0x11: command.update(effect="choice_redirect", candidate_indices=list(args[1:]), choice_count=args[0], skip_index=255, bank_pointer="message_context+0x28")
-		elif opcode == 0x39: command.update(effect="choice_wait", choice_count=args[0], cursor_coordinates=[list(args[index:index + 2]) for index in range(1, len(args), 2)], cancel_selects_index=args[0], selection_source="message_context.flags bits8..11", source="4CA14 accepts Cross and Triangle;4CC94 skips3+2*count")
+		elif opcode in (0x10, 0x39): command.update(effect="choice_wait", choice_count=args[0], cursor_coordinates=[list(args[index:index + 2]) for index in range(1, len(args), 2)], cancel_selects_index=args[0] if opcode == 0x39 else None, cancel_enabled=opcode == 0x39, selection_source="message_context.flags bits8..11", source=("4CA14 accepts Cross and Triangle" if opcode == 0x39 else "4C9A4 calls 4CA14 with a1=0: Triangle is skipped at 4CB7C, only Cross confirms") + ";4CC94 skips3+2*count")
 		elif opcode in (0x18, 0x24): command.update(effect="page_advance_wait", continuation_arrow=opcode == 0x18, native_wait="Cross pressed or Triangle previously held advances the existing page; no branch argument", source="SLES4D060 sets flag10;4DB84 also sets200000 which suppresses arrow at4B7C0..4B7D4")
 		elif opcode in (0x26, 0x27): command.update(effect="event_flag_set" if opcode == 0x26 else "event_flag_clear", flag_id=(args[0] << 8) | args[1])
 		elif opcode == 0x2C: command.update(effect="player_flags_bit2", enabled=bool(args[0]), source_player="0x8008C0A0 byte0 bit0x02", source_consumer="SLES0x80023110 gates231C8; mesh-visibility semantic is not yet established")
@@ -438,13 +451,17 @@ def native_program_trace(data, payload_offset, payload_size, message_offset, ent
 		elif opcode == 0x1D: command.update(effect="message_context_flags", set_mask=0, clear_mask=0x10000, source="SLES0x8004D23C..4D260")
 		elif opcode == 0x19: command.update(effect="native_sound_cue", sound_id=(args[0] << 8) | args[1], source="SLES0x8004D0D8..4D118 calls0x80020160")
 		elif opcode == 0x31: command.update(effect="native_noop", source="SLES0x80048288..4829C advances2 and returns0x101")
-		elif opcode == 0x0A: command.update(effect="native_noop", source="SLES0x800482A0..482B4 advances3 and returns0x101")
+		elif opcode == 0x0A:
+			color = args[0] & 0x7F if args[0] & 0x7F < 8 else 0; command.update(effect="text_color", color=color, source="program SLES0x800482A0 advances3; text renderer FB 0A handler SLES0x8004C64C (table 0x8006B74C) sets context+0x21 = colour (saving +0x22); glyph CLUT from table 0x80078BF8[colour]")
+			runs.append({"file_offset": payload_offset + cursor, "relative_offset": cursor, "raw_hex": "", "text": chr(0xE0F0 + color), "dynamic": "text_color", "native_length": 3})
 		elif opcode == 0x0C: command.update(effect="voice_wait", source="SLES0x8004C6F0..4C740 holds the page while context flag0x8000 (voice playing) is set, then advances2")
 		elif opcode == 0x1A: command.update(effect="voice_xa", xa_id=(args[1] << 16) | (args[2] << 8) | args[3], source="SLES0x8004D11C..4D1BC calls0x8001B9A4(bytes3..5), waits for0x8001AF94 ready, advances6")
 		elif opcode == 0x20:
 			code = (args[0] << 8) | args[1]; text = native_item_text(code); command.update(effect="item_name_text", item_code=code, inserted_text=text, source="SLES0x8004D298: u16 offsets8006CFB8[item_code-0x380]; return through context+0x38")
-			if text: runs.append({"file_offset": payload_offset + cursor, "relative_offset": cursor, "raw_hex": "", "text": text, "dynamic": "item_name_text"})
-		elif opcode == 0x0B: command.update(effect="native_noop", source="SLES0x80048288 advances2; following byte remains a glyph")
+			if text: runs.append({"file_offset": payload_offset + cursor, "relative_offset": cursor, "raw_hex": "", "text": text, "dynamic": "item_name_text", "native_length": 4})
+		elif opcode == 0x0B:
+			command.update(effect="text_color_reset", source="program SLES0x80048288 advances2; text renderer FB 0B handler SLES0x8004C6B8 restores context+0x21 from +0x22")
+			runs.append({"file_offset": payload_offset + cursor, "relative_offset": cursor, "raw_hex": "", "text": chr(0xE0FF), "dynamic": "text_color", "native_length": 2})
 		elif opcode == 0x22:
 			texts = native_control_texts(args[0]); command.update(effect="control_text", inserted_text_by_layout=texts, layout_address="0x8009C834 (byte -3 path when 0x8009BEE4==7)", source="SLES0x8004D47C..4D520: byte table0x8006B8A4[layout*12+arg] -> u16 offsets0x8007019C, returns via context+0x38")
 			if texts and texts[0]: runs.append({"file_offset": payload_offset + cursor, "relative_offset": cursor, "raw_hex": "", "text": texts[0], "dynamic": "control_text"})
@@ -470,7 +487,7 @@ def native_program_trace(data, payload_offset, payload_size, message_offset, ent
 		elif command["opcode"] == "0x0F": command.update(effect="choice_row_marker", row_index=command["arguments"][0], primary_behavior="advance3 only", secondary_handler="0x8004C854", secondary_behavior="Highlight following glyphs when row index equals window choice bits8..11")
 		elif command["opcode"] == "0x30": command.update(effect="message_context_byte23", value=command["arguments"][0])
 		elif command["opcode"] == "0xFD": command.update(wait_updates=command["delay_ticks"] + 1, tick_rate=25)
-		elif command["opcode"] == "0x39":
+		elif command["opcode"] in ("0x10", "0x39"):
 			markers = [item for item in commands if item["opcode"] == "0x0F" and item["file_offset"] < command["file_offset"]][-command["choice_count"]:]; rows = []
 			for index, marker in enumerate(markers):
 				stop = markers[index + 1]["file_offset"] if index + 1 < len(markers) else command["file_offset"]; row_runs = [run for run in runs if marker["file_offset"] < run["file_offset"] < stop]; row_index = marker["arguments"][0]; coordinates = command["cursor_coordinates"][row_index] if row_index < len(command["cursor_coordinates"]) else []

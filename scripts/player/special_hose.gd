@@ -146,8 +146,8 @@ func _collide() -> void:
 			node.receive_spray(int(data["stream"]["hit"]["hitWord"]["value"]), player.global_position); _splash(target, index); count = index; points.resize(count + 1); return
 		var query := PhysicsRayQueryParameters3D.create(origin, target, 1, [player.get_rid()]); var hit := space.intersect_ray(query)
 		if not hit.is_empty(): _splash(hit["position"], index); count = maxi(index - 1, 0); points.resize(count + 1); return
-func _splash(position: Vector3, index: int) -> void:
-	splashes.append({"position": position, "frame": 0, "ticks": 0, "size": 12.0 + 6.0 * float(index)})
+func _splash(point: Vector3, index: int) -> void:
+	splashes.append({"position": point, "frame": 0, "ticks": 0, "size": 12.0 + 6.0 * float(index)})
 	player.special_sound_requested.emit(int(data["sounds"]["splash"]["value"]))
 func _tick_splashes() -> void:
 	for splash: Dictionary in splashes.duplicate():

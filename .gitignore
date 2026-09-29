@@ -29,3 +29,4 @@ assets/fades/
 *.tmp
 !assets/achievements/
 !assets/achievements/**
+SESSION*/

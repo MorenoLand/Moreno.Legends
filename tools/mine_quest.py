@@ -2,6 +2,7 @@ import json
 import struct
 from pathlib import Path
 from disc import write_if_changed
+import tundra_spawner
 def add_items(stage, profile, overlay, dat_dir, output_dir):
 	import models
 	offset = lambda pointer: 48 + pointer - 0x800E7000; pointer = struct.unpack_from("<I", overlay, offset(0x800F0ED4 if stage == "ST0D" else 0x80100E30))[0]; items = []
@@ -57,6 +58,7 @@ def export(dat_dir, output_dir):
 			profile["refractor"] = {"actor_record_ram": "0x80100850", "actor_class": 0x6F, "callback": "0x800F1A8C", "constructor": "0x800F1BC8", "interaction_callback": "0x800F1CEC", "request_call": "0x800F1D90", "request_kind": 0x12, "message_index": 30, "target_bounds_raw": list(struct.unpack_from("<6h", overlay, offset(0x80100F90))), "body_bounds_raw": list(struct.unpack_from("<6h", overlay, offset(0x80100F84))), "yaw_step_raw": 16, "scale_raw": 1024, "boss_defeated_redirect": {"flag": 0x583, "message": 34, "tail_message": 35, "clear_flag": 0x710}, "native_bob": {"callback": "0x800F1B2C..1B6C", "table_ram": "0x800965D8", "table_count": 64, "sample_shift": 8, "sample_bias": -8, "samples_bound": False}, "source": "ST0FT PBDcallbacktable800FF4E0[class6F]->800FF4DC->800F1A8C;message30redirects583to34then35clears710"}
 			executable = (dat_dir.parent / "SLES_035.56").read_bytes(); profile["refractor"]["native_bob"].update(samples_bound=True, samples_raw=[struct.unpack_from("<h", executable, 0x800 + 0x80073E4E - 0x80010000 + phase * 64 * 4)[0] for phase in range(64)], initializer="SLES800112B8..11314 copiescosinefrom80073E4E every64phases into800965D8")
 			raw = overlay[offset(0x80100800):offset(0x80100800) + 20]; profile["procedural_actors"] = [{"stage": "ST0F", "area_index": 0, "source_record_ram": "0x80100800", "record_type": raw[2], "actor_class": raw[4], "source_bytes_hex": raw.hex(), "callback": "0x800FAA44", "dispatch": raw[6], "message_index": struct.unpack_from("<h", raw, 8)[0], "window": 4, "bank_id": "0x8010C000", "message_call": "0x800FB124", "maximum_scenario": struct.unpack_from("<b", raw, 10)[0], "skip_when_flag_set": struct.unpack_from("<h", raw, 18)[0], "message_source": "ST0FT800FB0FC..FB148 configureswindow4andcalls80048474 withsignedactor+0C;recordsource80100800", "source_dispatch": "SLES8003D010 scriptpool->ST0FT800FF784[0x1B]=800FAA44;subtype0table80101344[0]=800FAB48->800FB0FC"}]
+		if stage == "ST0D": tundra_spawner.add(profile, overlay, game, dat_dir, output_dir, archive)
 		add_items(stage, profile, overlay, dat_dir, output_dir); profile["source"] = {"overlay_sha256": world.sha256(overlay), "original_overlay": f"DAT/{stage}T.BIN"}; target = output_dir / stage / "mine_quest.json"; write_if_changed(target, json.dumps(profile, indent=2) + "\n", encoding="utf-8"); result[stage] = profile
 	return result
 if __name__ == "__main__": export(Path("build/disc-assets/DAT"), Path("assets/levels"))
