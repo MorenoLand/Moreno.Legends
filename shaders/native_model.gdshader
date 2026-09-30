@@ -52,8 +52,8 @@ void vertex() {
 		mat4 inverse_view = inverse(MODELVIEW_MATRIX);
 		vec3 view_normal = normalize((transpose(inverse_view) * vec4(NORMAL, 0.0)).xyz);
 		vec3 view_position = (MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
-		float facing = dot(view_normal, -view_position) >= 0.0 ? 1.0 : -1.0;
-		VERTEX += (inverse_view * vec4(view_normal * facing * layer / 256.0, 0.0)).xyz;
+		vec3 toward_eye = normalize(-view_position);
+		VERTEX += (inverse_view * vec4(toward_eye * layer / 256.0 / max(abs(dot(view_normal, toward_eye)), 0.25), 0.0)).xyz;
 	}
 }
 void fragment() {

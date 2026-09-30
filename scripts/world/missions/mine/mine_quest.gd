@@ -58,7 +58,7 @@ func _enter() -> void:
 			state = 3 if _flag(0x580) else 2
 		elif area == int(data["boss"]["area"]) and _flag(0x582) and not _flag(0x583): await _ensure_boss()
 		elif area == int(data["item_gate"]["area"]): _item_wave()
-	if stage == "ST0F": await _attach_items()
+	if stage == "ST0F": _attach_lifts(); await _attach_items()
 	busy = false
 func _tick_mine() -> void:
 	var data: Dictionary = catalogs[stage]
@@ -82,8 +82,9 @@ func _scene(id: int) -> void:
 	var success: bool = await host.native_scenes.run_scene(parent, "res://assets/levels/ST0F/scene_%02x.json" % id, area)
 	if not is_instance_valid(host) or not host.is_inside_tree(): return
 	if not success: host.native_scene_failed.emit(str(host.native_scenes.last_error)); push_error(str(host.native_scenes.last_error))
-	elif id == 0x52: await _ensure_boss()
-	elif id == 0x51: await _spawn_preboss()
+	elif id == 0x52: await _ensure_boss(); _place_boss_after_intro()
+	elif id == 0x51: _clear_registered(); await _spawn_preboss()
+	elif id == 0x54: _clear_registered(); await _spawn_return()
 	if host.native_scenes.transition_requested: return
 	host._update_native_player_pose(); host.area_picker.disabled = false; host.loading = false; host.player.set_physics_process(true); busy = false
 func _spawn_ordinary(address: String) -> Node3D:
@@ -105,6 +106,14 @@ func _spawn_ordinary(address: String) -> Node3D:
 		elif int(record["entry"].get("actor_class", -1)) == 0x6F: behavior = preload("res://scripts/world/missions/mine/native_mine_refractor.gd").new(); behavior.name = "NativeMineRefractor"
 		if behavior != null: node.add_child(behavior); behavior.configure(host, node, record["entry"], record["model"])
 	return node
+func _clear_registered() -> void:
+	for node in parent.find_children("*", "Node3D", true, false):
+		if is_instance_valid(node) and node.has_meta("native_scene_registration"): node.get_parent().remove_child(node); node.free()
+func _spawn_return() -> void:
+	var was_busy := busy
+	busy = true
+	for address in ["0x8010194c", "0x80101960", "0x80101974"]: await _spawn_ordinary(address)
+	busy = was_busy
 func _spawn_preboss() -> void:
 	var was_busy := busy
 	busy = true
@@ -119,9 +128,14 @@ func _ensure_boss() -> void:
 		if str(node.get_meta("native_actor_source", {}).get("source_record_ram", "")).to_lower() == address: existing = node; break
 	var controller := load("res://scripts/world/missions/mine/native_mine_boss.gd") as GDScript
 	if controller == null: push_error("Missing native mine boss controller"); return
-	boss = controller.new(); host.actors.add_child(boss); boss.configure(record["entry"], record["model"], "res://assets/levels/ST0F"); boss.target = host.player; boss.contact_hit.connect(host._actor_contact); boss.sound_requested.connect(host.audio.play_at); boss.defeated.connect(_boss_died); boss.add_to_group("lock_targets"); boss.add_to_group("native_pool_actors")
+	boss = controller.new(); host.actors.add_child(boss); boss.configure(record["entry"], record["model"], "res://assets/levels/ST0F"); boss.target = host.player; boss.contact_hit.connect(host._actor_contact); boss.sound_requested.connect(host.audio.play_at); boss.defeated.connect(_boss_died); boss.drop_requested.connect(host._spawn_actor_drops); host.actor_manifest["pickups"] = "pickups.json"; boss.add_to_group("lock_targets"); boss.add_to_group("native_pool_actors")
 	if is_instance_valid(existing): boss.global_transform = existing.global_transform; existing.get_parent().remove_child(existing); existing.queue_free()
 	preload("res://scripts/world/rendering/native_material.gd").depth_cue(boss.model, host.depth_cue_parameters)
+	host.game_hud.bind_boss(boss, 1, Color8(254, 160, 32))
+func _place_boss_after_intro() -> void:
+	if not is_instance_valid(boss): return
+	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://assets/levels/ST0F/scene_52_callbacks.json")); var keyframes: Array = parsed["actor_controllers"]["0"]["track"]["keyframes"]; var last: Dictionary = keyframes[-1]; var raw: Array = last["position_raw"]
+	boss.global_position = parent.to_global(Vector3(-float(raw[0]), -float(raw[1]), float(raw[2])) / 256.0); boss.native_yaw = (-int(last["yaw_raw"])) & 4095; boss._state(1)
 func _boss_died(_actor: CharacterBody3D) -> void:
 	if stage != "ST0F" or area != int(catalogs["ST0F"]["boss"]["area"]) or state == 2: return
 	state = 2; _set_flag(0x583, true); _set_flag(0x710, false); _scene(int(catalogs["ST0F"]["boss"]["scene_defeat"]))
@@ -168,6 +182,7 @@ func _start_popups() -> void:
 	for candidate: Dictionary in catalogs["ST0D"]["models"]:
 		if int(candidate["model_index"]) == int(profile["enemy"]["model_index"]): model = candidate; break
 	host.actor_manifest["pickups"] = "pickups.json"; popups = preload("res://scripts/world/enemies/native_tundra_spawner.gd").new(); popups.name = "NativeTundraSpawner"; add_child(popups); popups.configure(host, profile, model, area, "res://assets/levels/ST0D")
+func _attach_lifts() -> void: preload("res://scripts/world/missions/mine/native_mine_lift.gd").attach_all(host, parent)
 func _attach_items() -> void:
 	var controller := load("res://scripts/world/missions/mine/native_mine_item.gd") as GDScript
 	if controller == null: return

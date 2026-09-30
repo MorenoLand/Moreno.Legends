@@ -26,6 +26,21 @@ var interaction_layout: Dictionary = {}
 var interaction_font: Font
 var interaction_generation := 0
 var interaction_closing := false
+var boss_actor: Node
+var boss_bound := false
+var boss_blocked := false
+var boss_state := 0
+var boss_x := 0
+var boss_shift := 1
+var boss_row := 0
+var boss_current := 0
+var boss_trail := 0
+var boss_counter := 0
+var boss_health := 0
+var boss_max := 0
+var boss_color := Color8(254, 160, 32)
+var boss_clock := 0.0
+var boss_frame := 0
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -38,7 +53,7 @@ func _ready() -> void:
 		var entry: Variant = sprites.get(key)
 		if entry is Dictionary: textures[key] = load("res://assets/hud/" + str(entry["file"])) as Texture2D
 	for key in sprites:
-		if str(key).ends_with("_alert") or str(key).begins_with("lifter_"): textures[key] = load("res://assets/hud/" + str(sprites[key]["file"])) as Texture2D
+		if str(key).ends_with("_alert") or str(key).begins_with("lifter_") or str(key).begins_with("boss_gauge"): textures[key] = load("res://assets/hud/" + str(sprites[key]["file"])) as Texture2D
 	reticle = Label.new()
 	reticle.text = "+"
 	reticle.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
@@ -97,6 +112,8 @@ func set_threat_alert(value: bool) -> void:
 	if threat_alert == value: return
 	threat_alert = value; queue_redraw()
 func _process(delta: float) -> void:
+	boss_clock += delta * 25.0
+	while boss_clock >= 1.0: boss_clock -= 1.0; _boss_tick()
 	var pupil_rate := 30.0 if threat_alert else 7.5
 	var pupil_frame := int(clock * pupil_rate) % 6
 	var warning_phase := int(clock * 30) % 32
@@ -113,6 +130,7 @@ func _draw() -> void:
 	var right := size.x / factor - 320.0
 	if special_capacity > 0 and special_power_max > 0: _draw_special(right)
 	else: _draw_lifter(right)
+	if boss_state != 0: _draw_boss(right)
 	if not interaction_text.is_empty() and interaction_font != null and not interaction_layout.is_empty():
 		var key_width := interaction_font.get_string_size(interaction_key, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x + 8.0 if not interaction_key.is_empty() else 0.0
 		var width := interaction_font.get_string_size(interaction_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x + 14.0 + (key_width + 4.0 if key_width > 0.0 else 0.0)
@@ -127,6 +145,48 @@ func _draw() -> void:
 			draw_string(interaction_font, text_position + Vector2(2, -2), interaction_key, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color8(255, 222, 99))
 			text_position.x += key_width + 4.0
 		draw_string(interaction_font, text_position, interaction_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
+func bind_boss(actor: Node, shift: int = 1, color: Color = Color8(254, 160, 32)) -> void:
+	if boss_bound and boss_actor == actor: return
+	boss_actor = actor; boss_bound = true; boss_shift = shift; boss_color = color; boss_row = 0; boss_state = 0; boss_counter = 0
+	boss_max = int(actor.get("max_health")) >> shift; boss_health = int(actor.get("health")); boss_current = boss_health >> shift; boss_trail = boss_current; boss_x = boss_max + 0x150
+func _boss_tick() -> void:
+	if not boss_bound: return
+	boss_frame += 1
+	var alive := is_instance_valid(boss_actor) and not boss_actor.is_queued_for_deletion()
+	if not alive:
+		boss_actor = null
+		if boss_state == 0: boss_bound = false; return
+		boss_state = 3
+	elif not boss_blocked and boss_state == 0: boss_state = 1
+	if boss_blocked and boss_state in [1, 2]: boss_state = 3
+	if boss_state == 1:
+		boss_x -= 16
+		if boss_x <= 304: boss_x = 304; boss_state = 2
+	elif boss_state == 3:
+		boss_x += 16
+		if boss_x >= 464: boss_x = 464; boss_state = 0
+	var health := int(boss_actor.get("health")) if alive else boss_health
+	boss_current = health >> boss_shift if health >= 0 else 0
+	if alive and boss_counter == 0 and boss_health != health: boss_counter = 1
+	elif not alive and boss_counter == 0: boss_counter = 1
+	boss_health = health
+	if boss_counter != 0:
+		if boss_current < boss_trail:
+			boss_counter += 1
+			if boss_frame & 1 and boss_counter >= 9: boss_trail -= 1
+		else: boss_trail = boss_current; boss_counter = 0
+	queue_redraw()
+func _draw_boss(right: float) -> void:
+	var edge := right + boss_x - 16.0; var top := 18.0 + 17.0 * boss_row; var width := boss_max - 4.0
+	var cap_right: Texture2D = textures.get("boss_gauge_cap_right"); var stretch: Texture2D = textures.get("boss_gauge_stretch"); var cap_left: Texture2D = textures.get("boss_gauge_cap_left")
+	if cap_right != null: draw_texture_rect(cap_right, Rect2(edge, top, 16, 16), false)
+	if stretch != null: draw_texture_rect(stretch, Rect2(edge - width, top, width, 16), false)
+	if cap_left != null: draw_texture_rect(cap_left, Rect2(edge - width - 16.0, top, 16, 16), false)
+	var base := Color8(boss_color.r8 & 0xfe, boss_color.g8 & 0xfe, boss_color.b8 & 0xfe); var y := 25.0 + 17.0 * boss_row
+	draw_rect(Rect2(edge - boss_trail, y, boss_trail, 3), Color8(base.r8 >> 1, base.g8 >> 1, base.b8 >> 1))
+	if boss_current > 0:
+		draw_rect(Rect2(edge - boss_current, y, boss_current, 3), Color8(base.r8 * 9 / 10, base.g8 * 9 / 10, base.b8 * 9 / 10))
+		draw_rect(Rect2(edge - boss_current, y + 1.0, boss_current, 1), base)
 func set_lifter_state(carrying: bool, grabbing: bool, target_valid: bool, target_disabled: bool, activate_held: bool) -> void:
 	if lifter_carrying == carrying and lifter_grabbing == grabbing and lifter_target_valid == target_valid and lifter_target_disabled == target_disabled and lifter_activate_held == activate_held: return
 	lifter_carrying = carrying; lifter_grabbing = grabbing; lifter_target_valid = target_valid; lifter_target_disabled = target_disabled; lifter_activate_held = activate_held; queue_redraw()

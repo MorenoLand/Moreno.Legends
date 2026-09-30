@@ -1,5 +1,6 @@
 extends RefCounted
 static func fade_profile(route: Dictionary) -> Dictionary:
+	if route.get("native_lift", null) is Dictionary: return {"exit": int(route["native_lift"]["fade_code"]), "entry": int(route["native_lift"]["entry_fade_code"]), "native_contact_type": 0xE, "source": "ST0FT0x800FC548"}
 	for contact: Dictionary in route.get("native_contacts", []):
 		var type := int(contact.get("type", -1)); var cover := -1; var reveal := 0x02; var source := ""
 		if type in [2, 3, 8, 9]:
@@ -14,6 +15,7 @@ static func fade_profile(route: Dictionary) -> Dictionary:
 		if cover >= 0: return {"exit": cover, "entry": reveal, "native_contact_type": type, "source": source}
 	return {}
 static func is_elevator(route: Dictionary) -> bool:
+	if route.get("native_lift", null) is Dictionary: return true
 	if str(route.get("native_door", {}).get("style", "")) == "elevator": return true
 	for contact: Dictionary in route.get("native_contacts", []):
 		if int(contact.get("type", -1)) == 4: return true
@@ -25,7 +27,7 @@ static func is_ladder(route: Dictionary) -> bool:
 static func manual_contact(route: Dictionary, position: Vector3, yaw: float) -> bool:
 	var start := Vector3(-position.x, -position.y, position.z) * 256.0
 	for contact: Dictionary in route.get("native_contacts", []):
-		if bool(contact.get("automatic", false)): continue
+		if bool(contact.get("automatic", false)) or int(contact.get("type", -1)) == 1: continue
 		var step := float(contact.get("probe_forward_raw", 0)); var finish := start + Vector3(-sin(yaw) * step, 0, cos(yaw) * step); var minimum := Vector3(contact["x"][0], contact["y"][0], contact["z"][0]) - Vector3.ONE; var maximum := Vector3(contact["x"][1], contact["y"][1], contact["z"][1]) + Vector3.ONE; var direction := finish - start; var entry := 0.0; var exit := 1.0
 		for axis in 3:
 			if is_zero_approx(direction[axis]):
@@ -46,3 +48,15 @@ static func is_automatic(route: Dictionary) -> bool:
 	for contact: Dictionary in route.get("native_contacts", []):
 		if bool(contact.get("automatic", false)): return true
 	return false
+static func is_warp(route: Dictionary) -> bool:
+	for contact: Dictionary in route.get("native_contacts", []):
+		if int(contact.get("type", -1)) == 1: return true
+	return false
+static func warp_route(routes: Array, position: Vector3) -> Dictionary:
+	var native := Vector3i(int(-position.x * 256.0), int(-position.y * 256.0), int(position.z * 256.0))
+	for route: Dictionary in routes:
+		for contact: Dictionary in route.get("native_contacts", []):
+			if int(contact.get("type", -1)) != 1: continue
+			var x: Array = contact["x"]; var y: Array = contact["y"]; var z: Array = contact["z"]
+			if native.x > int(x[0]) - 1 and native.x < int(x[1]) + 1 and native.y > int(y[0]) - 1 and native.y < int(y[1]) + 1 and native.z > int(z[0]) - 1 and native.z < int(z[1]) + 1: return route
+	return {}

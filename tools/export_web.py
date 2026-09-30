@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -44,6 +45,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--engine", type=Path, required=True, metavar="EDITOR_EXECUTABLE", help="Path to the Godot or Redot editor executable (.exe on Windows); not an exported .pck, .html, or .wasm file")
     parser.add_argument("--chunk-mib", type=int, default=4)
+    parser.add_argument("--output", type=Path, default=None, help="Folder to export into (index.html + packs/); defaults to bin/web")
     args = parser.parse_args()
     if args.engine.suffix.lower() in {".pck", ".html", ".wasm", ".zip"}:
         parser.error("--engine must point to the Godot or Redot editor executable, not an exported game asset")
@@ -60,7 +62,7 @@ def main():
     if args.chunk_mib < 1 or args.chunk_mib > 16:
         parser.error("--chunk-mib must be between 1 and 16")
     build = ROOT / "build" / "web"
-    output = ROOT / "bin" / "web"
+    output = args.output.resolve() if args.output else ROOT / "bin" / "web"
     packs = output / "packs"
     build.mkdir(parents=True, exist_ok=True)
     packs.mkdir(parents=True, exist_ok=True)
@@ -71,8 +73,10 @@ def main():
     library = ROOT / "assets" / "library"
     if library.is_dir():
         groups.update({"library-" + path.parent.name + "-" + path.name: [path] for path in sorted(library.glob("*/*")) if path.is_dir()})
+    dialogue = json.loads((ROOT / "assets" / "dialogue" / "manifest.json").read_text(encoding="utf-8"))
+    groups.update({"dialogue-" + stage: [ROOT / "assets" / "dialogue" / bank["file"]] for stage, bank in sorted(dialogue["banks"].items())})
     groups["opening"] = [ROOT / "assets" / "opening", ROOT / "assets" / "video"]
-    groups["shared"] = [ROOT / "assets" / name for name in ("minimap", "flutter", "stage_props", "weather")]
+    groups["shared"] = [ROOT / "assets" / name for name in ("minimap", "flutter", "stage_props", "weather", "shops")]
     groups["shared"].append(ROOT / "assets" / "opening" / "effects")
     audio_directory = ROOT / "assets" / "audio" / "ST0F"
     audio = json.loads((audio_directory / "manifest.json").read_text(encoding="utf-8"))
@@ -114,6 +118,7 @@ def main():
         if "packs/" + chunk_path.name not in current_paths and re.fullmatch(r"[a-f0-9]{64}\.part", chunk_path.name):
             chunk_path.unlink()
     run(args.engine, "--export-release", "Web", str(output / "index.html"))
+    shutil.copyfile(ROOT / "assets" / "menu" / "native_gear_background.png", output / "loading_background.png")
     print(json.dumps({"core_bytes": (output / "index.pck").stat().st_size, "groups": {group: {"bytes": entry["bytes"], "chunks": len(entry["chunks"])} for group, entry in manifest["groups"].items()}}, indent=2))
 
 if __name__ == "__main__":

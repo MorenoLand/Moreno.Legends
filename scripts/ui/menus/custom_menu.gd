@@ -11,7 +11,11 @@ var font: Font
 var surface: Control
 var pages: Dictionary = {}
 var active_page := "extra"
-var game_controls: Dictionary = {}
+var option_list: Control
+var help_label: Label
+var back_row: Control
+var gear: Texture2D
+var elapsed := 0.0
 func configure(owner: Node) -> void:
 	host = owner
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -19,6 +23,8 @@ func configure(owner: Node) -> void:
 	var manifest: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://assets/menu/manifest.json"))
 	layout = manifest["load_game_layout"]
 	font = load("res://assets/menu/native_font.fnt") as Font
+	gear = load("res://assets/menu/" + str(manifest["sprites"]["native_gear_background"]["file"])) as Texture2D
+	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	var native_theme := Theme.new()
 	native_theme.default_font = font
 	native_theme.default_font_size = 10
@@ -26,15 +32,7 @@ func configure(owner: Node) -> void:
 	surface = Control.new()
 	surface.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(surface)
-	var settings := _page("extra")
-	_scroll_page(settings)
-	for entry: Array in [["controller", "Controller", ["A", "B", "C"]], ["view", "Camera direction", ["Reverse", "Normal"]], ["buster_lock_on", "Buster lock-on", ["Manual", "Auto"]], ["special_lock_on", "Special weapon lock-on", ["Manual", "Auto"]], ["vibration", "Vibration", ["On", "Off"]], ["sound", "Sound", ["Stereo", "Monaural"]]]: _game_choice(settings, str(entry[0]), str(entry[1]), entry[2])
-	for entry: Array in [["bgm_volume", "BGM volume", 0, 127], ["se_volume", "Sound effects volume", 0, 127], ["screen_x", "Screen position X", -12, 12], ["screen_y", "Screen position Y", 0, 12]]:
-		var key := str(entry[0]); game_controls[key] = _slider(settings, str(entry[1]), float(entry[2]), float(entry[3]), 1, float(host.options.values[key]), func(value): host.options._set_value(key, int(value)))
-	_slider(settings, "Mouse sensitivity", 0.0005, 0.01, 0.0001, float(host.settings.get_value("controls", "mouse_sensitivity", 0.003)), host._sensitivity_changed)
-	_slider(settings, "Camera FOV", 45, 100, 1, float(host.settings.get_value("camera", "fov", 65)), _fov_changed)
-	_toggle(settings, "Fullscreen", DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN, func(value): DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if value else DisplayServer.WINDOW_MODE_WINDOWED))
-	_button(settings, "Restore defaults", func(): host.options.selected_row = 7; host.options._activate_row(); sync_game_options())
+	_build_options()
 	var cheat_page := _page("cheats")
 	_scroll_page(cheat_page)
 	cheat_page.add_theme_constant_override("separation", 3)
@@ -73,20 +71,65 @@ func configure(owner: Node) -> void:
 	back.size = Vector2(110, 16)
 	surface.add_child(back)
 	_button(back, "Back", func(): self.back())
+	back_row = back
 	resized.connect(_layout)
 	_layout()
 	open_page("extra")
 func _scroll_page(page: VBoxContainer) -> void:
-	var wrapper := ScrollContainer.new(); wrapper.position = page.position; wrapper.size = page.size; wrapper.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; wrapper.follow_focus = true; surface.add_child(wrapper); page.reparent(wrapper); page.size_flags_horizontal = Control.SIZE_EXPAND_FILL; page.set_meta("scroll_wrapper", wrapper)
-func _game_choice(parent: Control, key: String, caption: String, choices: Array) -> void:
-	_label(parent, caption); var picker := OptionButton.new(); _style_picker(picker)
-	for index in choices.size(): picker.add_item(str(choices[index]), index)
-	picker.select(int(host.options.values[key])); picker.item_selected.connect(func(index): host.options._set_value(key, index)); parent.add_child(picker); game_controls[key] = picker
+	var wrapper := ScrollContainer.new(); wrapper.position = page.position; wrapper.size = page.size; wrapper.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED; wrapper.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER; wrapper.follow_focus = true; surface.add_child(wrapper); page.reparent(wrapper); page.size_flags_horizontal = Control.SIZE_EXPAND_FILL; page.set_meta("scroll_wrapper", wrapper)
+	# Native-style scrollbar (same track/thumb as the options list) drawn beside the hidden default one.
+	var bar := Control.new(); bar.mouse_filter = Control.MOUSE_FILTER_IGNORE; bar.position = wrapper.position + Vector2(wrapper.size.x + 3.0, 0.0); bar.size = Vector2(5.0, wrapper.size.y); wrapper.add_sibling(bar)
+	bar.draw.connect(func() -> void:
+		var maximum := maxf(page.size.y - wrapper.size.y, 0.0)
+		if not wrapper.visible or maximum <= 0.0: return
+		var track := Rect2(1.0, 1.0, 3.0, bar.size.y - 2.0)
+		bar.draw_rect(track.grow(1.0), Color(0.16, 0.16, 0.23)); bar.draw_rect(track.grow(1.0), Color(0.76, 0.79, 0.69, 0.7), false, 1.0)
+		var thumb := maxf(8.0, track.size.y * wrapper.size.y / page.size.y)
+		bar.draw_rect(Rect2(track.position.x, track.position.y + (track.size.y - thumb) * float(wrapper.scroll_vertical) / maximum, track.size.x, thumb), Color(0.76, 0.79, 0.69)))
+	wrapper.get_v_scroll_bar().value_changed.connect(func(_value: float) -> void: bar.queue_redraw())
+	wrapper.visibility_changed.connect(bar.queue_redraw); page.resized.connect(bar.queue_redraw)
+func _build_options() -> void:
+	option_list = preload("res://scripts/ui/menus/options_list.gd").new()
+	option_list.position = Vector2(38, 59)
+	option_list.size = Vector2(244, 104)
+	surface.add_child(option_list)
+	option_list.configure(font)
+	option_list.sound.connect(func(sound_name: String): host.audio.play_ui(sound_name))
+	pages["extra"] = option_list
+	help_label = Label.new()
+	help_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	help_label.add_theme_font_override("font", font)
+	help_label.add_theme_font_size_override("font_size", 10)
+	help_label.position = Vector2(44, 178)
+	help_label.size = Vector2(232, 24)
+	help_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	help_label.clip_text = true
+	surface.add_child(help_label)
+	option_list.help_changed.connect(func(text: String): help_label.text = text)
+	var rows: Array = [{"kind": "heading", "label": "Game"}]
+	for entry: Array in [["controller", "Controller", ["A", "B", "C"], "Select the controller layout."], ["view", "Camera direction", ["Reverse", "Normal"], "Select the camera direction."], ["buster_lock_on", "Buster lock-on", ["Manual", "Auto"], "Select how the Buster locks on."], ["special_lock_on", "Special weapon lock-on", ["Manual", "Auto"], "Select how special weapons lock on."], ["vibration", "Vibration", ["On", "Off"], "Turn vibration on or off."], ["sound", "Sound", ["Stereo", "Monaural"], "Select the sound output."]]:
+		var key := str(entry[0])
+		rows.append({"kind": "choice", "label": entry[1], "choices": entry[2], "help": entry[3], "silent": true, "get": func(): return int(host.options.values[key]), "set": func(value): host.options._set_value(key, value)})
+	rows.append({"kind": "heading", "label": "Sound"})
+	for entry: Array in [["bgm_volume", "BGM volume", "Adjust the music volume."], ["se_volume", "Sound effects volume", "Adjust the sound effects volume."]]:
+		var key := str(entry[0])
+		rows.append({"kind": "range", "label": entry[1], "min": 0, "max": 127, "step": 4, "help": entry[2], "silent": true, "get": func(): return int(host.options.values[key]), "set": func(value): host.options._set_value(key, value)})
+	rows.append({"kind": "heading", "label": "Display"})
+	for entry: Array in [["screen_x", "Screen position X", -12, 12, "Shift the screen horizontally."], ["screen_y", "Screen position Y", 0, 12, "Shift the screen vertically."]]:
+		var key := str(entry[0])
+		rows.append({"kind": "range", "label": entry[1], "min": entry[2], "max": entry[3], "step": 1, "help": entry[4], "silent": true, "get": func(): return int(host.options.values[key]), "set": func(value): host.options._set_value(key, value)})
+	rows.append({"kind": "range", "label": "Camera FOV", "min": 45, "max": 100, "step": 1, "help": "Adjust the field of view.", "get": func(): return int(host.settings.get_value("camera", "fov", 65)), "set": func(value): _fov_changed(float(value))})
+	rows.append({"kind": "choice", "label": "Fullscreen", "choices": ["Off", "On"], "help": "Switch between windowed and fullscreen.", "get": func(): return int(DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN), "set": func(value): DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if value == 1 else DisplayServer.WINDOW_MODE_WINDOWED)})
+	rows.append({"kind": "heading", "label": "Controls"})
+	rows.append({"kind": "range", "label": "Mouse sensitivity", "min": 0.0005, "max": 0.01, "step": 0.0005, "float": true, "scale": 10000.0, "format": "%d", "help": "Adjust the mouse look speed.", "get": func(): return float(host.settings.get_value("controls", "mouse_sensitivity", 0.003)), "set": func(value): host._sensitivity_changed(float(value))})
+	rows.append({"kind": "heading", "label": "Online"})
+	rows.append({"kind": "choice", "label": "Discord status", "choices": ["On", "Off"], "help": "Show what you are playing on Discord.", "get": func(): return 0 if DiscordPresence.enabled else 1, "set": func(value): _discord_changed(value == 0)})
+	rows.append({"kind": "heading", "label": ""})
+	rows.append({"kind": "action", "label": "Restore defaults", "help": "Restore all settings to their defaults.", "do": func(): host.options.selected_row = 7; host.options._activate_row(); sync_game_options()})
+	rows.append({"kind": "action", "label": "Back", "cancel": true, "help": "Return to the previous menu.", "do": func(): self.back()})
+	option_list.set_rows(rows)
 func sync_game_options() -> void:
-	for key: String in game_controls:
-		var control: Control = game_controls[key]
-		if control is OptionButton: control.select(int(host.options.values[key]))
-		elif control is Slider: control.set_value_no_signal(float(host.options.values[key])); (control.get_meta("value_label") as Label).text = str(control.get_meta("caption")) + ": " + str(int(host.options.values[key]))
+	if option_list != null: option_list.queue_redraw()
 func _page(key: String) -> VBoxContainer:
 	var page := VBoxContainer.new()
 	page.position = Vector2(43, 64)
@@ -109,6 +152,8 @@ func open_page(key: String) -> void:
 		var area: int = int(host.gameplay.areas[host.gameplay.area_picker.selected]["index"])
 		for index in range(room_picker.item_count):
 			if room_picker.get_item_id(index) == area: room_picker.select(index); break
+	help_label.visible = key == "extra"
+	back_row.visible = key != "extra"
 	queue_redraw()
 func back() -> void:
 	if active_page == "locations": open_page("cheats"); focus_first()
@@ -121,6 +166,7 @@ func animate_exit(context: String) -> void:
 	await FRAME.exit(self, layout, context)
 func focus_first() -> void:
 	if not is_visible_in_tree(): return
+	if active_page == "extra": option_list.grab_focus(); return
 	for child in pages[active_page].get_children():
 		if child is BaseButton or child is Slider: child.grab_focus(); return
 func _label(parent: Control, text: String) -> Label:
@@ -161,8 +207,12 @@ func _draw() -> void:
 	var factor := size.y / 240.0
 	var offset := Vector2((size.x - 320.0 * factor) * 0.5, 0)
 	draw_set_transform(offset, 0, Vector2.ONE * factor)
+	if not is_instance_valid(host.gameplay):
+		var phase: int = (int(elapsed * 30.0) >> 1) & 63
+		draw_texture_rect(gear, Rect2(Vector2(-offset.x / factor, 0) + Vector2(phase - 80, phase - 80), Vector2(size.x / factor, 240) + Vector2(160, 160)), true)
 	FRAME.draw(self, layout, "header", Rect2(34, 25, 252, 23))
-	FRAME.draw(self, layout, "selector", Rect2(34, 57, 252, 145))
+	if active_page == "extra": FRAME.draw(self, layout, "selector", Rect2(34, 54, 252, 114)); FRAME.draw(self, layout, "prompt", Rect2(34, 174, 252, 32))
+	else: FRAME.draw(self, layout, "selector", Rect2(34, 57, 252, 145))
 	if FRAME.content_visible(self): draw_string(font, Vector2(44, 31 + font.get_ascent(12)), "Options" if active_page == "extra" else active_page.capitalize(), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
 func _location_selected(index: int) -> void:
 	room_picker.clear()
@@ -175,18 +225,6 @@ func _load_room() -> void:
 	host._load_location(stage, room_picker.get_selected_id())
 func set_location_message(text: String) -> void:
 	if location_message != null: location_message.text = text
-func _slider(parent: Control, caption: String, minimum: float, maximum: float, step: float, value: float, action: Callable) -> HSlider:
-	var label := _label(parent, caption)
-	label.text = caption + ": " + ("%.4f" % value if step < 1.0 else "%d" % int(value))
-	var slider := HSlider.new()
-	slider.min_value = minimum
-	slider.max_value = maximum
-	slider.step = step
-	slider.value = value
-	slider.value_changed.connect(action)
-	slider.value_changed.connect(func(current): label.text = caption + ": " + ("%.4f" % current if step < 1.0 else "%d" % int(current)))
-	parent.add_child(slider)
-	slider.set_meta("value_label", label); slider.set_meta("caption", caption); return slider
 func _toggle(parent: Control, caption: String, value: bool, action: Callable) -> void:
 	var button := Button.new()
 	button.toggle_mode = true
@@ -221,6 +259,10 @@ func _picker_changed(value: bool) -> void:
 func _cheat_changed(key: String, value: bool) -> void:
 	cheats[key] = value
 	apply_player()
+func _discord_changed(value: bool) -> void:
+	host.settings.set_value("interface", "discord_status", value)
+	host.settings.save("user://settings.cfg")
+	DiscordPresence.set_enabled(value)
 func _fov_changed(value: float) -> void:
 	host.settings.set_value("camera", "fov", value)
 	host.settings.save("user://settings.cfg")
@@ -229,3 +271,6 @@ func apply_player() -> void:
 	if not is_instance_valid(host.gameplay): return
 	for key in cheats: host.gameplay.player.set(key, cheats[key])
 	host.gameplay.player.camera.fov = float(host.settings.get_value("camera", "fov", 65))
+func _process(delta: float) -> void:
+	elapsed += delta
+	if visible and not is_instance_valid(host.gameplay): queue_redraw()

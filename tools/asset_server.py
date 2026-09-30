@@ -2,7 +2,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 import re
-from disc import write_if_changed
+from disc import configure_overwrite, write_output
 
 ROOT = Path(__file__).resolve().parents[1]
 VIEWER = ROOT / "build" / "mml2-mesh-viewer"
@@ -31,7 +31,7 @@ class Handler(SimpleHTTPRequestHandler):
             return
         OUTPUT.mkdir(parents=True, exist_ok=True)
         target = OUTPUT / name
-        changed = write_if_changed(target, data)
+        changed = write_output(target, data)
         body = f"{'Saved' if changed else 'Unchanged'} {target.relative_to(ROOT).as_posix()}".encode()
         self.send_response(201 if changed else 200)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
@@ -44,4 +44,5 @@ class Handler(SimpleHTTPRequestHandler):
         print(format % args)
 
 if __name__ == "__main__":
+    configure_overwrite(True)
     ThreadingHTTPServer(("127.0.0.1", 8765), Handler).serve_forever()

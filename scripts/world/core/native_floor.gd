@@ -1,6 +1,7 @@
 extends RefCounted
 const SIMPLE_RAMP_ORIENTATION := {0x04: 0, 0x05: 1, 0x06: 2, 0x07: 3, 0x10: 0, 0x11: 1, 0x12: 2, 0x13: 3, 0x25: 0, 0x26: 2, 0x35: 2, 0x36: 1, 0x45: 1, 0x46: 3, 0x55: 3, 0x56: 0}
 const DIAGONAL_ORIENTATION := {0x14: 4, 0x16: 2, 0x17: 3, 0x15: 5, 0x23: 2, 0x24: 2, 0x33: 3, 0x34: 3, 0x43: 4, 0x44: 4, 0x53: 5, 0x54: 5}
+const BOX_KINDS := [0, 2, 3, 0x1C]
 const TRIANGULAR_PRISM := [0x22, 0x32, 0x42, 0x52]
 static func apply(level: Node3D, source: Dictionary, area: int, native_context: Dictionary = {}) -> int:
 	var groups := {}; var automatic := {}; var manual := {}; var elevators := {}; var count := 0
@@ -8,14 +9,14 @@ static func apply(level: Node3D, source: Dictionary, area: int, native_context: 
 		var placement := int(record["placement"])
 		if not groups.has(placement): groups[placement] = []
 		if int(record["kind"]) >> 8 == 15 and (int(record["mask"]) & 0x8000) == 0: automatic[placement] = true
-		if int(record["kind"]) >= 0x100 and int(record["kind"]) >> 8 != 15: manual[placement] = true
+		if int(record["kind"]) >= 0x100 and int(record["kind"]) >> 8 not in [1, 15, 16]: manual[placement] = true
 		if int(record["kind"]) >> 8 == 4: elevators[placement] = true
 		if int(record["kind"]) < 0x100 and (int(record["mask"]) & 1) != 0: groups[placement].append(record)
 	for placement: int in groups:
 		var records: Array = groups[placement]; var ramp := false; var unported := false
 		for record: Dictionary in records:
 			var kind := int(record["kind"]); ramp = ramp or (SIMPLE_RAMP_ORIENTATION.has(kind) and kind not in [0x04, 0x05, 0x06, 0x07]) or DIAGONAL_ORIENTATION.has(kind)
-			if kind not in [0, 2, 0x1C] and kind not in TRIANGULAR_PRISM and not SIMPLE_RAMP_ORIENTATION.has(kind) and not DIAGONAL_ORIENTATION.has(kind): unported = true
+			if kind not in BOX_KINDS and kind not in TRIANGULAR_PRISM and not SIMPLE_RAMP_ORIENTATION.has(kind) and not DIAGONAL_ORIENTATION.has(kind): unported = true
 		if not elevators.has(placement) and not ramp and not automatic.has(placement) and (unported or records.is_empty() or manual.has(placement)): continue
 		var meshes := level.find_children("placement_%03d_model_*" % placement, "MeshInstance3D", true, false)
 		if meshes.is_empty(): continue
@@ -23,9 +24,9 @@ static func apply(level: Node3D, source: Dictionary, area: int, native_context: 
 		for record: Dictionary in records:
 			var kind := int(record["kind"]); var x: Array = record["x"]; var y: Array = record["y"]; var z: Array = record["z"]
 			if kind == 0x1C and (elevators.has(placement) or not _volume_enabled(native_context)): continue
-			if kind not in [0, 2, 0x1C] and kind not in TRIANGULAR_PRISM and not SIMPLE_RAMP_ORIENTATION.has(kind) and not DIAGONAL_ORIENTATION.has(kind): continue
+			if kind not in BOX_KINDS and kind not in TRIANGULAR_PRISM and not SIMPLE_RAMP_ORIENTATION.has(kind) and not DIAGONAL_ORIENTATION.has(kind): continue
 			var shape := CollisionShape3D.new()
-			if kind in [0, 2, 0x1C]:
+			if kind in BOX_KINDS:
 				var box := BoxShape3D.new(); box.size = Vector3(float(x[1]) - float(x[0]), float(y[1]) - float(y[0]), float(z[1]) - float(z[0])) / 256.0
 				if box.size.x <= 0.0 or box.size.y <= 0.0 or box.size.z <= 0.0: continue
 				shape.shape = box; shape.position = Vector3(-float(x[0]) - float(x[1]), -float(y[0]) - float(y[1]), float(z[0]) + float(z[1])) / 512.0; shape.set_meta("native_volume", kind == 0x1C)

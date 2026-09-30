@@ -19,6 +19,7 @@ config/custom_user_dir_name="MorenoLand/Legends"
 [autoload]
 
 AssetStore="*res://scripts/data/asset_store.gd"
+DiscordPresence="*res://scripts/system/discord_presence.gd"
 
 [display]
 

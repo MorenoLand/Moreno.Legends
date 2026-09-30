@@ -64,3 +64,16 @@ Scene 0x68 (camera 0x800F225C, timeline 0x800F229C) is a later ST39:1 revisit ga
 - ST1E area 0 -> 1 -> 2 transitions (likely doors).
 - Whether the ST3A request is the final timeline step.
 - Flags set by dialogue opcodes 0x26/0x27 inside these scenes.
+
+## Flutter repairs and furnishings
+
+- Flag 0xD1 (set by the first-visit scene 0x4C) is the damaged state: the ST06 stage frame `0x800E729C` (GAME table `0x800DC66C[6]`) sets 0x717/0x719 while it is set, which locks the Deck 2 doors to the Living Room and Storage (blocked message ST06:1). Clearing 0xD1 unlocks them.
+- Roll's menu (ST04 messages 0x52-0x54 via Talk to Roll): Repairs -> message 0x28/0x29 (cost 2,000/4,000/6,000/8,000 by flags 0x129/0x12A from the fire mission). Yes runs op 0x42 (SLES `0x8004EA14`: wallet below price -> message 0x2B), sets 0xDF, spends zenny (op 0x37) and adds 3000 to save+0x42 (op 0x40, SLES `0x8004E8F8`). ST04T `0x800E7828` then sets save byte 0x7C to 1 and flag 0x134. Op 0x47 (SLES `0x8004ECC4`) compares byte 0x7C against 2/3/4/5; message 0x7C clears 0xD1. GAME `0x800BA420` increments non-zero bytes 0x7C-0x83 whenever a stage >= 8 in a different region (table `0x800DBDA0`, saved as byte 0x12/0x84) is entered.
+- Furniture is a placement variant chosen on room entry: ST06T Living Room handler `0x800E73A4` calls GAME `0x800C010C(tile (63,64), 1)` while flag 0xD6 (TV bought, 25,000 zenny) is clear, so the television is absent until bought; Kitchen handler `0x800E7510` does the same for the refrigerator while 0xD4 (5,000 zenny) is clear. 0xD5 (newspaper) spawns an extra actor in the Living Room (unported).
+
+## Abandoned Mine refractor
+
+- Scene 0x54 (ST0FT `0x800FED6C`, finish `0x800FEF20`) registers the refractor `0x8010194C`, Joe `0x80101960` and Roll `0x80101974` (the scene's own copies `0x80101924`/`0x80101938` are removed), sets 0x710 and calls GAME `0x800C0360` at `0x800FF024`: the pending story byte `0x8009C7FD` += 1. GAME `0x800B04B4..0x800B04E0` (and `0x800AED5C..0x800AED80`) commit it to `0x8009C7FC` on the next area request and clear flags 0x580..0x65F (`0x800C037C` -> memclear `0x80015A5C`).
+- The refractor actor (class 0x6F, `0x800F1A8C`; talk `0x800F1CEC`, request `0x800BE2E0` kind 0x12) only plays message 30. With 0x583 set it redirects (`FB28`) to 34 ("You got: A refractor!") -> `FB0E` -> 35 ("All right, then, let's go, MegaMan!"), which clears 0x710 and ends with `FB3C` (SLES `0x8004E528`): request block `0x80078D08` type 2, ST47 area 2 at (0,0,0), exit fade 0x22 (`0x8001392C`), arrival fade 2. No item or flag is stored; the refractor is gone because byte14 becomes 1 and the mine handlers (byte14 0 rows) stop spawning it.
+- ST47 (Joseph's Room) area 2 row byte14 1 (`0x800E74F4`): flag 0x5B0 clear -> set, GAME `0x800C0B0C(0x12)` (handler `0x800E77B4`, camera `0x800ECD94`, timeline `0x800ECE2C`, states `0x800ECE84`), spawns Joe in bed `0x800ECB38`. Scene: Roll `0x800ECD80`, messages 100, 103, 105, 114, 115, 50-tick hold, fade 0x12, reveal fade 1, music 0x16.
+- No original prompt text was found for interactions: target selection (GAME `0x800CC2F0`, `0x800CFAC0`) only latches the actor in player+0x1D0 and enters player state 0x10; no draw call references it. The port's panel is a convenience: "Talk" for NPCs, "Examine" for the refractor, "Open" for chests.

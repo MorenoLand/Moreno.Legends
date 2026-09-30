@@ -24,6 +24,9 @@ var locked_target: Node3D
 var lock_on: Node3D
 var input_blocker: Callable
 var camera_yaw_constraint: Callable
+var camera_shake_raw := 0
+var camera_shake_decay := 0
+var camera_shake_clock := 0.0
 var health := 80
 var zenny := 0
 var inventory: Dictionary = {"items": {}, "key_items": {}, "special_weapons": {"0": 1}, "body_parts": {}, "buster_parts": {}}
@@ -212,7 +215,7 @@ func _physics_process(delta: float) -> void:
 	if input_blocker.is_valid() and input_blocker.call(): velocity = Vector3.ZERO; return
 	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and (Input.is_action_just_pressed("special") or active_special() == 15 and Input.is_action_just_pressed("fire")): use_special()
 	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and Input.is_action_just_pressed("kick"): kick()
-	lock_on.update(delta, combat_allowed and hurt_phase.is_empty() and not is_instance_valid(carried_actor) and Input.is_action_pressed("lock_on"))
+	lock_on.update(delta, combat_allowed and hurt_phase.is_empty() and not is_instance_valid(carried_actor) and (Input.is_action_pressed("lock_on") or Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and (buster_auto_lock and buster_allowed and active_special() == 0 or special_auto_lock and active_special() != 0) and (Input.is_action_pressed("fire") or Input.is_action_pressed("aim"))))
 	if not special_action.is_empty(): return
 	if locked_target != null and not is_instance_valid(locked_target): locked_target = null
 	shot_timer = maxf(shot_timer - delta, 0.0)
@@ -253,6 +256,7 @@ func _physics_process(delta: float) -> void:
 		velocity.y = (float(Input.is_action_pressed("jump")) - float(Input.is_action_pressed("fly_down"))) * speed
 	else: _update_jump(delta, grounded, direction)
 	if grounded and not free_flight and not no_clip and velocity.y <= 0.0 and hurt_phase.is_empty(): _step_over_seam(Vector3(velocity.x, 0.0, velocity.z) * delta)
+	if grounded and not free_flight and not no_clip and jump_phase == JumpPhase.GROUNDED and velocity.y <= 0.0: velocity.y = _slope_velocity()
 	var before_slide := global_transform; var intended := Vector3(velocity.x, 0.0, velocity.z) * delta
 	move_and_slide()
 	if not free_flight and not no_clip:
@@ -264,7 +268,7 @@ func _physics_process(delta: float) -> void:
 		_set_jump_phase(JumpPhase.LANDING)
 		landed.emit()
 	_update_camera(delta)
-	if aiming: player_model.rotation.y += clampf(wrapf(camera.global_rotation.y - player_model.rotation.y, -PI, PI), -4.5 * delta, 4.5 * delta)
+	if aiming and direction.length_squared() <= 0.001 and not lock_on.locked(): player_model.rotation.y += clampf(wrapf(camera.global_rotation.y - player_model.rotation.y, -PI, PI), -4.5 * delta, 4.5 * delta)
 	elif direction.length_squared() > 0.001 and not lock_on.locked(): player_model.rotation.y = lerp_angle(player_model.rotation.y, atan2(-direction.x, -direction.z), minf(delta * 12.0, 1.0))
 	var arm_role := "shoot_alternate_upper" if not grounded or (direction.length_squared() > 0.001 and not slow_walking) else "shoot_upper"
 	var arm_name := str(animation_roles.get(arm_role, animation_roles.get("shoot_upper", "")))
@@ -538,6 +542,8 @@ func _fit_model() -> void:
 	if camera_pivot is SpringArm3D: (camera_pivot as SpringArm3D).spring_length = body_height * 3.4
 	if camera_pivot is SpringArm3D: ((camera_pivot as SpringArm3D).shape as SphereShape3D).radius = capsule.radius * 0.8
 func _update_camera(delta: float) -> void:
+	camera_shake_clock += delta * 25.0
+	while camera_shake_clock >= 1.0: camera_shake_clock -= 1.0; camera_shake_raw = maxi(camera_shake_raw - camera_shake_decay, 0)
 	if camera_yaw_constraint.is_valid(): camera_pivot.rotation.y = lerp_angle(camera_pivot.rotation.y, camera_yaw_constraint.call(global_position, camera_pivot.rotation.y), 1.0 - exp(-delta * 10.0))
 	if not camera_pivot is SpringArm3D: return
 	var arm := camera_pivot as SpringArm3D
@@ -554,7 +560,10 @@ func _update_camera(delta: float) -> void:
 	query.margin = 0.01
 	var fractions := get_world_3d().direct_space_state.cast_motion(query)
 	if not fractions.is_empty(): offset *= fractions[0]
-	arm.position = Vector3(offset.x, body_height * 0.78, offset.z)
+	arm.position = Vector3(offset.x, body_height * 0.78 + float(camera_shake_raw >> 8) / 256.0, offset.z)
+func _slope_velocity() -> float:
+	var normal := get_floor_normal()
+	return -(normal.x * velocity.x + normal.z * velocity.z) / normal.y if normal.y > 0.1 and normal.y < 0.9999 else velocity.y
 func _step_over_seam(motion: Vector3) -> void:
 	if motion.is_zero_approx(): return
 	var contact := KinematicCollision3D.new()
@@ -562,15 +571,15 @@ func _step_over_seam(motion: Vector3) -> void:
 	if contact.get_normal().y + 0.001 >= cos(floor_max_angle): return
 	var collider := contact.get_collider() as Node
 	if collider != null and (collider.is_in_group("world_npcs") or collider.name == "NativeActorCollision"): return
-	var height := minf(0.125, body_height * 0.25); var up := Vector3.UP * height
+	var height := minf(0.25 + safe_margin * 4.0, body_height * 0.375); var up := Vector3.UP * height
 	if test_move(global_transform, up): return
 	var raised := global_transform; raised.origin += up
 	if test_move(raised, motion): return
-	raised.origin += motion
-	var landing := KinematicCollision3D.new()
-	if not test_move(raised, Vector3.DOWN * (height + safe_margin * 2.0), landing): return
-	if landing.get_normal().y + 0.001 < cos(floor_max_angle): return
-	var rise := height + landing.get_travel().y
+	var ahead := global_position + motion.normalized() * (motion.length() + ($Collision.shape as CapsuleShape3D).radius + 0.03)
+	var query := PhysicsRayQueryParameters3D.create(ahead + up + Vector3.UP * safe_margin, ahead + Vector3.DOWN * safe_margin * 2.0, collision_mask, [get_rid()])
+	var landing := get_world_3d().direct_space_state.intersect_ray(query)
+	if landing.is_empty() or (landing["normal"] as Vector3).y + 0.001 < cos(floor_max_angle): return
+	var rise := (landing["position"] as Vector3).y - global_position.y
 	if rise <= safe_margin or rise > height: return
 	global_position.y += rise; velocity.y = 0.0
 func _move_camera(start: Vector3, destination: Vector3) -> Vector3:
@@ -652,6 +661,8 @@ func begin_scripted_walk(source: Dictionary, yaw: float) -> bool:
 	if upper_modifier != null: upper_modifier.active = true; upper_modifier.track_target = false; upper_modifier.set_source_aim_angles(0, 0)
 	motion_tree.set("parameters/UpperBody/blend_amount", 0.0); motion_tree.set("parameters/MotionSpeed/scale", rate / 30.0); player_model.rotation.y = yaw; scripted_walk = {"elapsed": 0.0, "duration": float(ticks) / rate, "velocity": Basis(Vector3.UP, yaw) * Vector3(-float(step[0]), -float(step[1]), float(step[2])) * rate / 4096.0}; motion_role = ""; _play_animation(role); motion_tree.advance(0.0)
 	return true
+func camera_shake(mode: int, magnitude: int, decay: int) -> void:
+	if mode == 0 or magnitude > camera_shake_raw: camera_shake_raw = magnitude; camera_shake_decay = decay
 func refresh_room_camera(preserve_world: bool = false) -> void:
 	if not preserve_world: camera_world_valid = false; camera_distance = -1.0
 	_update_camera(0.0)
@@ -754,6 +765,9 @@ func reset_at(point: Vector3) -> void:
 	jump_phase = JumpPhase.GROUNDED
 	jump_velocity = 0
 	jump_accumulator = 0.0
+	jump_ticks = 0
+	# Arrivals and scenes disable physics right after placement, so set the idle pose now instead of waiting for the next movement tick.
+	if hurt_phase.is_empty() and animation_player != null: _play_animation("idle")
 	look_head_units = 0
 	look_root_units = 0
 	look_accumulator = 0.0

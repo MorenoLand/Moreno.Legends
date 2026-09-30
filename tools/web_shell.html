@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0">
+		<title>$GODOT_PROJECT_NAME</title>
+		<style>
+html, body, #canvas { margin: 0; padding: 0; border: 0; }
+body { color: white; background-color: black; overflow: hidden; touch-action: none; }
+#canvas { display: block; }
+#canvas:focus { outline: none; }
+#status { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; visibility: hidden; background: #14141c url("loading_background.png") repeat; background-size: 128px 128px; image-rendering: pixelated; animation: gears 4.3s steps(64) infinite; }
+@keyframes gears { to { background-position: 128px 128px; } }
+#status-box { box-sizing: border-box; width: min(504px, 92vw); padding: 14px 18px 16px; background: #2a2a3c; border: 3px solid; border-color: #f8f8f8 #606060 #606060 #f8f8f8; outline: 2px solid #808080; box-shadow: 0 0 0 5px #16161f; font: 700 18px/1.3 "Courier New", Consolas, monospace; letter-spacing: 1px; text-shadow: 1px 1px 0 #000; }
+#status-title { margin-bottom: 14px; }
+#status-bar { height: 12px; background: #292938; border: 2px solid #c2c9b0; box-sizing: content-box; }
+#status-fill { height: 100%; width: 0; background: #ffde63; }
+#status-fill.indeterminate { width: 20%; animation: slide 1.1s linear infinite; }
+@keyframes slide { from { margin-left: -20%; } to { margin-left: 100%; } }
+#status-detail { margin-top: 10px; font-size: 15px; color: #ffde63; min-height: 1.3em; }
+#status-notice { display: none; margin-top: 12px; color: #ff9c9c; font-size: 15px; letter-spacing: 0; text-shadow: none; }
+		</style>
+		$GODOT_HEAD_INCLUDE
+	</head>
+	<body>
+		<canvas id="canvas">
+			Your browser does not support the canvas tag.
+		</canvas>
+		<noscript>
+			Your browser does not support JavaScript.
+		</noscript>
+		<div id="status">
+			<div id="status-box">
+				<div id="status-title">Downloading Legends...</div>
+				<div id="status-bar"><div id="status-fill" class="indeterminate"></div></div>
+				<div id="status-detail"></div>
+				<div id="status-notice"></div>
+			</div>
+		</div>
+		<script src="$GODOT_URL"></script>
+		<script>
+const GODOT_CONFIG = $GODOT_CONFIG;
+const GODOT_THREADS_ENABLED = $GODOT_THREADS_ENABLED;
+const engine = new Engine(GODOT_CONFIG);
+
+(function () {
+	const statusOverlay = document.getElementById('status');
+	const statusTitle = document.getElementById('status-title');
+	const statusFill = document.getElementById('status-fill');
+	const statusDetail = document.getElementById('status-detail');
+	const statusNotice = document.getElementById('status-notice');
+
+	let initializing = true;
+	let statusMode = '';
+
+	function setStatusMode(mode) {
+		if (statusMode === mode || !initializing) {
+			return;
+		}
+		if (mode === 'hidden') {
+			statusOverlay.remove();
+			initializing = false;
+			return;
+		}
+		statusOverlay.style.visibility = 'visible';
+		statusNotice.style.display = mode === 'notice' ? 'block' : 'none';
+		statusMode = mode;
+	}
+
+	function setStatusNotice(text) {
+		while (statusNotice.lastChild) {
+			statusNotice.removeChild(statusNotice.lastChild);
+		}
+		const lines = text.split('\n');
+		lines.forEach((line) => {
+			statusNotice.appendChild(document.createTextNode(line));
+			statusNotice.appendChild(document.createElement('br'));
+		});
+	}
+
+	function displayFailureNotice(err) {
+		console.error(err);
+		if (err instanceof Error) {
+			setStatusNotice(err.message);
+		} else if (typeof err === 'string') {
+			setStatusNotice(err);
+		} else {
+			setStatusNotice('An unknown error occurred.');
+		}
+		setStatusMode('notice');
+		initializing = false;
+	}
+
+	const missing = Engine.getMissingFeatures({
+		threads: GODOT_THREADS_ENABLED,
+	});
+
+	if (missing.length !== 0) {
+		if (GODOT_CONFIG['serviceWorker'] && GODOT_CONFIG['ensureCrossOriginIsolationHeaders'] && 'serviceWorker' in navigator) {
+			let serviceWorkerRegistrationPromise;
+			try {
+				serviceWorkerRegistrationPromise = navigator.serviceWorker.getRegistration();
+			} catch (err) {
+				serviceWorkerRegistrationPromise = Promise.reject(new Error('Service worker registration failed.'));
+			}
+			Promise.race([
+				serviceWorkerRegistrationPromise.then((registration) => {
+					if (registration != null) {
+						return Promise.reject(new Error('Service worker already exists.'));
+					}
+					return registration;
+				}).then(() => engine.installServiceWorker()),
+				new Promise((resolve) => {
+					setTimeout(() => resolve(), 2000);
+				}),
+			]).then(() => {
+				window.location.reload();
+			}).catch((err) => {
+				console.error('Error while registering service worker:', err);
+			});
+		} else {
+			const missingMsg = 'Error\nThe following features required to run Redot projects on the Web are missing:\n';
+			displayFailureNotice(missingMsg + missing.join('\n'));
+		}
+	} else {
+		setStatusMode('progress');
+		engine.startGame({
+			'onProgress': function (current, total) {
+				if (current > 0 && total > 0) {
+					statusFill.classList.remove('indeterminate');
+					statusFill.style.width = (100 * current / total).toFixed(1) + '%';
+					statusDetail.textContent = (current / 1048576).toFixed(1) + ' / ' + (total / 1048576).toFixed(1) + ' MB';
+				} else {
+					statusFill.classList.add('indeterminate');
+					statusFill.style.width = '';
+					statusDetail.textContent = '';
+				}
+				if (current > 0 && current >= total) {
+					statusTitle.textContent = 'Starting Legends...';
+				}
+			},
+		}).then(() => {
+			setStatusMode('hidden');
+		}, displayFailureNotice);
+	}
+}());
+		</script>
+	</body>
+</html>

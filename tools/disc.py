@@ -7,17 +7,59 @@ import hashlib
 import json
 import shutil
 import subprocess
+import importlib
 import os
+import sys
 from collections import Counter
 ROOT = Path(__file__).resolve().parents[1]
 SECTOR_SIZE = 2352
 USER_OFFSET = 24
 USER_SIZE = 2048
 SYNC = b"\x00" + b"\xff" * 10 + b"\x00"
-def write_if_changed(path, data, encoding="utf-8"):
+OVERWRITE = {"all": False, "patterns": [], "verbose": False}
+WRITTEN = set()
+KEPT = []
+def glob_regex(pattern):
+    pattern = pattern.replace("\\", "/").strip("/"); parts = []; index = 0
+    while index < len(pattern):
+        if pattern.startswith("**/", index): parts.append("(?:.*/)?"); index += 3
+        elif pattern.startswith("**", index): parts.append(".*"); index += 2
+        elif pattern[index] == "*": parts.append("[^/]*"); index += 1
+        elif pattern[index] == "?": parts.append("[^/]"); index += 1
+        else: parts.append(re.escape(pattern[index])); index += 1
+    return re.compile("".join(parts))
+def configure_overwrite(overwrite=False, patterns=(), verbose=False):
+    OVERWRITE.update({"all": bool(overwrite), "patterns": [glob_regex(pattern) for pattern in patterns], "verbose": verbose}); WRITTEN.clear(); KEPT.clear()
+def relative_output(path):
+    try: return Path(path).resolve().relative_to(ROOT).as_posix()
+    except ValueError: return None
+def may_write(path):
+    path = Path(path); relative = relative_output(path)
+    if relative is None or not path.exists() or str(path.resolve()) in WRITTEN: return True
+    if relative.startswith("build/") and not relative.startswith("build/disc-assets/"): return True
+    if OVERWRITE["all"]: return True
+    parts = relative.split("/")
+    return any(pattern.fullmatch("/".join(parts[:count])) for pattern in OVERWRITE["patterns"] for count in range(1, len(parts) + 1))
+def claim(path):
+    """Return True when the run may create or replace this output; existing files are kept unless an overwrite flag allows them."""
+    if may_write(path): WRITTEN.add(str(Path(path).resolve())); return True
+    KEPT.append(relative_output(path))
+    if OVERWRITE["verbose"]: print("kept existing " + KEPT[-1])
+    return False
+def kept_summary():
+    return f"Kept {len(KEPT)} existing files; use --overwrite or --overwrite-only PATTERN to replace them." if KEPT else None
+def write_output(path, data, encoding="utf-8"):
     path = Path(path); payload = data.replace("\n", os.linesep).encode(encoding) if isinstance(data, str) else bytes(data)
+    if not claim(path): return False
     if path.is_file() and path.stat().st_size == len(payload) and path.read_bytes() == payload: return False
     path.parent.mkdir(parents=True, exist_ok=True); temporary = path.with_name(path.name + ".tmp"); temporary.write_bytes(payload); temporary.replace(path); return True
+def ensure_package(module, requirement):
+    """Import a pip dependency from build/pydeps, installing it there on first use."""
+    sys.path.insert(0, str(ROOT / "build/pydeps"))
+    try: importlib.import_module(module)
+    except ImportError:
+        subprocess.run([sys.executable, "-m", "pip", "install", "--target", str(ROOT / "build/pydeps"), "--no-cache-dir", requirement], check=True)
+    importlib.invalidate_caches()
 
 def cue_time(value: str) -> int:
     minute, second, frame = (int(part) for part in value.split(":"))
@@ -171,11 +213,11 @@ def extract(cue_path: Path, output: Path, includes: set[str], reuse: bool = Fals
                     continue
                 append = pending_multi == target
                 if reuse and (output / target).is_file() and not append and not multi_extent:
-                    if (output / target).read_bytes() != reader.read_file(file_extent, file_size):
-                        raise ValueError(f"cached file differs from the selected disc: {target}")
-                    count += 1
-                    total_bytes += file_size
-                    continue
+                    if (output / target).read_bytes() == reader.read_file(file_extent, file_size):
+                        count += 1
+                        total_bytes += file_size
+                        continue
+                    if not may_write(output / target): raise ValueError(f"cached file differs from the selected disc: {target} (rerun with --overwrite to replace it)")
                 reader.copy_file(file_extent, file_size, output / target, append)
                 pending_multi = target if multi_extent else None
                 if not multi_extent:
@@ -291,7 +333,7 @@ def extract_stage(path, output_dir):
 	for decoded, metadata, destination in results:
 		if destination.exists() and destination.read_bytes() != decoded: raise FileExistsError(f"refusing to replace different output: {destination}")
 		destination.parent.mkdir(parents=True, exist_ok=True)
-		write_if_changed(destination, decoded)
+		write_output(destination, decoded)
 		metadata["output"] = str(destination)
 		written.append(metadata)
 	return written
@@ -354,9 +396,11 @@ def export_movies(cue):
 		for index, group in enumerate(audit["str_groups"]):
 			ffmpeg = shutil.which("ffmpeg")
 			if not ffmpeg: raise RuntimeError("FFmpeg is required to transcode original STR movies")
-			name = f"native_{index:03d}"; raw = WORK / (name + ".str"); destination = OUTPUT / (name + ".ogv"); copy_raw_sectors(reader, group["first_lba"], group["last_lba"] + 1, raw); subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(raw), "-map", "0:v:0", "-map", "0:a:0?", "-c:v", "libtheora", "-q:v", "9", "-c:a", "libvorbis", "-q:a", "6", str(destination)], check=True); movies.append({"file": destination.name, "source": group, "raw_sector_bytes": 2352, "raw_sha256": hashlib.sha256(raw.read_bytes()).hexdigest()})
+			name = f"native_{index:03d}"; raw = WORK / (name + ".str"); destination = OUTPUT / (name + ".ogv"); copy_raw_sectors(reader, group["first_lba"], group["last_lba"] + 1, raw)
+			if claim(destination): subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(raw), "-map", "0:v:0", "-map", "0:a:0?", "-c:v", "libtheora", "-q:v", "9", "-c:a", "libvorbis", "-q:a", "6", str(destination)], check=True)
+			movies.append({"file": destination.name, "source": group, "raw_sector_bytes": 2352, "raw_sha256": hashlib.sha256(raw.read_bytes()).hexdigest()})
 	finally: reader.stream.close()
-	manifest = {"movies": movies, "transport_audit": audit, "xa_archives": [entry for entry in files if entry["file"].startswith("XA/")], "native_startup": {"source": "SLES 0x80012D7C..0x80012F28", "logo_resource": "COMMON/LOGO.BIN", "logo_renderer": "0x800132F8", "logo_rect": [48, 192, 544, 96], "logo_fade_step": 4, "logo_fade_max": 128, "logo_hold_counter": 180, "next_scene": {"stage": "ST02", "area": 0, "engine_phase": 4}, "intro_type": "Original engine scene; no standard STR/XA video sectors present on this disc"}, "native_attract": {"source": "DEMO 0x800AD308..0x800AD5FC", "counter_updates": 512, "counter_formula": "(3-titleFrameBufferCount)*256; titleFrameBufferCount=1", "cycle_index_update": "(index+1)&3", "stages": [{"cycle_index": 0, "stage": "ST02", "demo_mode": 0, "source_pc": "0x800AD48C"}, {"cycle_index": 1, "stage": "ST50", "demo_mode": 2, "area_fields": [13, 13], "source_pc": "0x800AD4B4"}, {"cycle_index": 2, "stage": "ST22", "demo_mode": 3, "area_fields": [8, 8], "source_pc": "0x800AD4F8"}, {"cycle_index": 3, "stage": "ST51", "demo_mode": 4, "area_fields": [0, 0], "source_pc": "0x800AD548"}], "mode_consumer": "GAME 0x800C3780 and jump table 0x800AE154 configure native player equipment for modes2/3/4", "recorded_input_stream": "not yet identified; stages are engine scenes rather than STR movie playback"}, "limits": ["No substitute movies are generated for native engine scenes", "Tick counts are verified; PAL wall-clock conversion remains unverified"]}; write_if_changed(OUTPUT / "manifest.json", json.dumps(manifest, indent=2) + "\n", encoding="utf-8"); return manifest
+	manifest = {"movies": movies, "transport_audit": audit, "xa_archives": [entry for entry in files if entry["file"].startswith("XA/")], "native_startup": {"source": "SLES 0x80012D7C..0x80012F28", "logo_resource": "COMMON/LOGO.BIN", "logo_renderer": "0x800132F8", "logo_rect": [48, 192, 544, 96], "logo_fade_step": 4, "logo_fade_max": 128, "logo_hold_counter": 180, "next_scene": {"stage": "ST02", "area": 0, "engine_phase": 4}, "intro_type": "Original engine scene; no standard STR/XA video sectors present on this disc"}, "native_attract": {"source": "DEMO 0x800AD308..0x800AD5FC", "counter_updates": 512, "counter_formula": "(3-titleFrameBufferCount)*256; titleFrameBufferCount=1", "cycle_index_update": "(index+1)&3", "stages": [{"cycle_index": 0, "stage": "ST02", "demo_mode": 0, "source_pc": "0x800AD48C"}, {"cycle_index": 1, "stage": "ST50", "demo_mode": 2, "area_fields": [13, 13], "source_pc": "0x800AD4B4"}, {"cycle_index": 2, "stage": "ST22", "demo_mode": 3, "area_fields": [8, 8], "source_pc": "0x800AD4F8"}, {"cycle_index": 3, "stage": "ST51", "demo_mode": 4, "area_fields": [0, 0], "source_pc": "0x800AD548"}], "mode_consumer": "GAME 0x800C3780 and jump table 0x800AE154 configure native player equipment for modes2/3/4", "recorded_input_stream": "not yet identified; stages are engine scenes rather than STR movie playback"}, "limits": ["No substitute movies are generated for native engine scenes", "Tick counts are verified; PAL wall-clock conversion remains unverified"]}; write_output(OUTPUT / "manifest.json", json.dumps(manifest, indent=2) + "\n", encoding="utf-8"); return manifest
 def movies_cli():
 	parser = argparse.ArgumentParser(); parser.add_argument("--cue", type=Path, required=True); args = parser.parse_args(); manifest = export_movies(args.cue); print(json.dumps({"movies": len(manifest["movies"]), "video_submode_sectors": manifest["transport_audit"]["xa_video_submode_sectors"], "manifest": str(OUTPUT / "manifest.json")}))
 

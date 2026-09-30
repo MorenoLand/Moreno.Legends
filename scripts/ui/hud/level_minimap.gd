@@ -52,14 +52,14 @@ func set_area(index: int) -> void:
 func set_player(position: Vector3, yaw: float) -> void:
 	position_in_area = position
 	heading = -yaw
-	var next_scroll := Vector2(floorf(-position.x * 4), -floorf(position.z * 4))
-	if bitmap_mode and not area.is_empty():
-		var center: Array = area["native_center"]; next_scroll = Vector2(clampf(floorf(-position.x * 4.0) - float(center[0]), -92, 92), clampf(-floorf(position.z * 4.0) - float(center[1]), -92, 92))
+	var center: Array = area.get("native_center", [0, 0]) if not area.is_empty() else [0, 0]
+	var native := Vector2(floorf(-position.x * 4.0) - float(center[0]), float(center[1]) - floorf(position.z * 4.0))
+	var limit := Vector2(92, 92) if bitmap_mode else Vector2(8.0 * float(area.get("width", 0)) - 4.0, 8.0 * float(area.get("height", 0)) - 4.0)
+	var next_scroll := native.clamp(-limit, limit) if not area.is_empty() else native
 	var next_arrow := PackedVector2Array()
 	for vertex in [Vector2(0, 6), Vector2(-3, -5), Vector2(3, -5)]:
 		var point: Vector2 = vertex.rotated(heading)
-		var marker_offset := Vector2(floorf(-position.x * 4.0), -floorf(position.z * 4.0)) - next_scroll if bitmap_mode else Vector2.ZERO
-		next_arrow.append(Vector2(36, 36) + marker_offset + Vector2(floorf(snappedf(point.x, 0.0001)), floorf(snappedf(point.y, 0.0001))))
+		next_arrow.append(Vector2(36, 36) + native - next_scroll + Vector2(floorf(snappedf(point.x, 0.0001)), floorf(snappedf(point.y, 0.0001))))
 	var changed := scroll != next_scroll or arrow != next_arrow
 	scroll = next_scroll
 	arrow = next_arrow

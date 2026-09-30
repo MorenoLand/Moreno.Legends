@@ -7,6 +7,8 @@ static func attach(node: Node3D, record: Dictionary) -> bool:
 	return true
 static func binding(node: Node3D) -> Dictionary:
 	return node.get_meta("native_interaction", {}) if is_instance_valid(node) else {}
+static func label(node: Node3D) -> String:
+	return str(node.get_meta("native_interaction_label", "Talk")) if is_instance_valid(node) else ""
 static func is_data_service(node: Node3D) -> bool:
 	var source := binding(node)
 	var record: Dictionary = node.get_meta("native_actor_source", {}) if is_instance_valid(node) else {}

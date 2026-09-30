@@ -44,7 +44,7 @@ var external_routes: Array = []
 var parked_exterior_enabled := false
 func can_show_parked_exterior() -> bool: return parked_exterior_enabled
 static func layout_path_for(stage: String, area: int) -> String:
-	var path := "res://assets/locations/room_layout.json" if stage in ["ST04", "ST05", "ST06", "ST07"] else "res://assets/locations/mine_room_layout.json" if stage == "ST0F" else "res://assets/locations/town_room_layout.json"
+	var path := "res://assets/locations/room_layout.json" if stage in ["ST04", "ST05", "ST06", "ST07"] else "res://assets/locations/mine_room_layout.json" if stage == "ST0F" else "res://assets/locations/landing_room_layout.json" if stage == "ST08" else "res://assets/locations/town_room_layout.json"
 	var data: Variant = JSON.parse_string(FileAccess.get_file_as_string(path)) if FileAccess.file_exists(path) else null
 	if data is Dictionary:
 		for room: Dictionary in data.get("rooms", []):
@@ -238,11 +238,11 @@ func _ensure_room_loaded(stage: String, area: int) -> bool:
 		loading_rooms.erase(key)
 		push_error("Cannot preload room " + scene_path)
 		return false
-	var stage_manifest_path := "res://assets/levels/%s/manifest.json" % stage; var stage_manifest: Variant = await read_json_threaded(stage_manifest_path); var map_face_flags := false
+	var stage_manifest_path := "res://assets/levels/%s/manifest.json" % stage; var stage_manifest: Variant = await read_json_threaded(stage_manifest_path); var map_face_flags := false; var area_variants: Array = []
 	if stage_manifest is Dictionary:
 		for area_entry: Dictionary in stage_manifest.get("areas", []):
-			if int(area_entry["index"]) == area: map_face_flags = bool(area_entry.get("native_map_face_flags_in_alpha", false)); break
-	var room := scene.instantiate() as Node3D; room.name = key.replace(":", "_"); room.position = room_offsets[key]; room.visible = key == active_room_key; room.set_meta("native_map_face_flags", map_face_flags); room.set_meta("native_stream_room_active", key == active_room_key)
+			if int(area_entry["index"]) == area: map_face_flags = bool(area_entry.get("native_map_face_flags_in_alpha", false)); area_variants = area_entry.get("placement_variants", []); break
+	var room := scene.instantiate() as Node3D; preload("res://scripts/world/flutter/room_variants.gd").apply_placements(room, area_variants, native_context); room.name = key.replace(":", "_"); room.position = room_offsets[key]; room.visible = key == active_room_key; room.set_meta("native_map_face_flags", map_face_flags); room.set_meta("native_stream_room_active", key == active_room_key)
 	await get_tree().process_frame
 	add_child(room); rooms[key] = room; var nodes: Dictionary = {}; mesh_nodes[key] = nodes
 	await get_tree().process_frame
@@ -289,7 +289,9 @@ func _apply_room_lighting(room: Node3D, stage: String, area: int) -> void:
 	material.depth_cue(room, parameters)
 func _load_room_props(room: Node3D, stage: String, area: int, excluded_roles: Array[String] = []) -> void:
 	var loader := preload("res://scripts/world/actors/native_props.gd"); var previous_flags: Variant = native_context.get("event_flags", {}); var flags_before: Dictionary = previous_flags.duplicate(true) if previous_flags is Dictionary else {}
-	if excluded_roles.is_empty() and _room_key(stage, area) == active_room_key: await loader.initialize_into(room, stage, area, native_context)
+	if excluded_roles.is_empty() and _room_key(stage, area) == active_room_key:
+		await loader.initialize_into(room, stage, area, native_context)
+		preload("res://scripts/world/flutter/room_variants.gd").apply_stage_flags(native_context, loader._read_manifest("res://assets/levels/%s/manifest.json" % stage).get("stage_flag_rules", []))
 	else: await loader.load_into(room, stage, area, native_context, excluded_roles)
 	var current_flags: Variant = native_context.get("event_flags", {}); var flags_after: Dictionary = current_flags if current_flags is Dictionary else {}
 	if flags_before != flags_after and _room_key(stage, area) == active_room_key: native_context_changed.emit(stage, area)
@@ -492,7 +494,7 @@ func _open_leaf(portal: Dictionary, source_side: bool) -> bool:
 	if scene == null: return false
 	var raw: Array = portal["source_contact_raw"] if source_side else portal["reverse_source_contact_raw"]; var yaw := int(raw[3]); var quadrant := ((yaw + (0x200 if controller == 2 else 0)) & 4095) >> 10; var directions := [-1, 0, 1, 0, -1]; var a := int(directions[quadrant]); var b := int(directions[quadrant + 1]); var offsets: Array = profile.get("offset_raw", [80, 64]); var c := int(offsets[0]); var e := int(offsets[1]); var hinge: Vector3 = Vector3(-float(raw[0] + a * c + b * e), -float(raw[1]), float(raw[2] + b * c - a * e)) / 256.0 + room_offsets[room_key]; var closed_yaw := -float((yaw + 0x800) & 4095) * TAU / 4096.0
 	var pivot := Node3D.new(); pivot.name = "OpenDoor_" + room_key.replace(":", "_"); add_child(pivot); pivot.global_position = hinge; pivot.rotation.y = closed_yaw; pivot.set_meta("closed_yaw", closed_yaw); var panel := scene.instantiate() as Node3D; pivot.add_child(panel); var scale: Array = model["native_scale_raw"]; panel.scale = Vector3(float(scale[0]), float(scale[1]), float(scale[2])) / 512.0; preload("res://scripts/world/rendering/native_material.gd").apply(panel, 128.0)
-	if portal.has("destination_panel") and not _compose_leaf_faces(portal, panel): pivot.queue_free(); return false
+	if portal.has("destination_panel") and not _compose_leaf_faces(portal, panel, controller == 2): pivot.queue_free(); return false
 	if controller == 2:
 		var companion_model: Dictionary = {}
 		for candidate: Dictionary in props.get(stage, {}).get("native_doors", []):

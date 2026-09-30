@@ -8,7 +8,7 @@ var phase := 0
 var base_y := 0.0
 var bob_samples: Array = []
 func configure(gameplay: Node, target: Node3D, entry: Dictionary, _metadata: Dictionary) -> void:
-	host = gameplay; actor = target; var raw := str(entry.get("source_bytes_hex", "")).hex_decode()
+	host = gameplay; actor = target; actor.set_meta("native_interaction_label", "Examine"); var raw := str(entry.get("source_bytes_hex", "")).hex_decode()
 	if raw.size() != 20: return
 	native_yaw = int(entry.get("transform_raw", [0, 0, 0, 0])[3]); yaw_step = int(raw[10]); base_y = actor.position.y; actor.scale = Vector3.ONE * float(int(raw[9]) << 5) / 512.0
 	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://assets/levels/ST0F/mine_quest.json")); var profile: Dictionary = parsed.get("refractor", {}) if parsed is Dictionary else {}; var binding: Dictionary = actor.get_meta("native_interaction", {})

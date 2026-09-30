@@ -35,76 +35,76 @@
    "0": "Junk Shop",
    "1": "General Store",
    "2": "Bar",
-   "3": "Junk Shop - Room 2",
-   "4": "Bar - Room 2"
+   "3": "Junk Shop - Zone 2",
+   "4": "Bar - Zone 2"
   },
   "ST0B": {
    "0": "Gallery",
-   "1": "Gallery - Room 2"
+   "1": "Gallery - Zone 2"
   },
   "ST0C": {
    "0": "Post Office",
    "1": "Interior",
-   "2": "Interior - Room 2"
+   "2": "Interior - Zone 2"
   },
   "ST0D": {
    "0": "Calinca Tundra",
-   "1": "Calinca Tundra - Room 2"
+   "1": "Calinca Tundra - Zone 2"
   },
   "ST0E": {
    "0": "Calinca Tundra",
-   "1": "Calinca Tundra - Room 2",
-   "2": "Calinca Tundra - Room 3"
+   "1": "Calinca Tundra - Zone 2",
+   "2": "Calinca Tundra - Zone 3"
   },
   "ST0F": {
-   "0": "Floor B1 - Room 1",
-   "1": "Floor B1 - Room 2",
-   "2": "Floor B1 - Room 3",
-   "3": "Floor B1 - Room 4",
-   "4": "Floor B1 - Room 5",
-   "5": "Floor B2 - Room 1",
-   "6": "Floor B2 - Room 2",
-   "7": "Floor B2 - Room 3",
-   "8": "Floor B2 - Room 4",
-   "9": "Floor B2 - Room 5",
-   "10": "Floor B3 - Room 1",
-   "11": "Floor B3 - Room 2",
-   "12": "Floor B3 - Room 3"
+   "0": "Floor B1 - Zone 1",
+   "1": "Floor B1 - Zone 2",
+   "2": "Floor B1 - Zone 3",
+   "3": "Floor B1 - Zone 4",
+   "4": "Floor B1 - Zone 5",
+   "5": "Floor B2 - Zone 1",
+   "6": "Floor B2 - Zone 2",
+   "7": "Floor B2 - Zone 3",
+   "8": "Floor B2 - Zone 4",
+   "9": "Floor B2 - Zone 5",
+   "10": "Floor B3 - Zone 1",
+   "11": "Floor B3 - Zone 2",
+   "12": "Floor B3 - Zone 3"
   },
   "ST10": {
    "0": "Icefield",
-   "1": "Icefield - Room 2"
+   "1": "Icefield - Zone 2"
   },
   "ST11": {
    "0": "Icefield"
   },
   "ST12": {
-   "0": "Floor B3 - Room 1",
-   "1": "Floor B3 - Room 2",
-   "2": "Floor B3 - Room 3",
-   "3": "Floor B3 - Room 4",
-   "4": "Floor B3 - Room 5",
-   "5": "Floor B3 - Room 6"
+   "0": "Floor B3 - Zone 1",
+   "1": "Floor B3 - Zone 2",
+   "2": "Floor B3 - Zone 3",
+   "3": "Floor B3 - Zone 4",
+   "4": "Floor B3 - Zone 5",
+   "5": "Floor B3 - Zone 6"
   },
   "ST13": {
-   "0": "Floor B2 - Room 1",
-   "1": "Floor B2 - Room 2",
-   "2": "Floor B2 - Room 3",
-   "3": "Floor B2 - Room 4",
-   "4": "Floor B2 - Room 5",
-   "5": "Floor B2 - Room 6",
-   "6": "Floor B2 - Room 7",
-   "7": "Floor B2 - Room 8",
-   "8": "Floor B2 - Room 9",
-   "9": "Floor B2 - Room 10",
-   "10": "Floor B2 - Room 11"
+   "0": "Floor B2 - Zone 1",
+   "1": "Floor B2 - Zone 2",
+   "2": "Floor B2 - Zone 3",
+   "3": "Floor B2 - Zone 4",
+   "4": "Floor B2 - Zone 5",
+   "5": "Floor B2 - Zone 6",
+   "6": "Floor B2 - Zone 7",
+   "7": "Floor B2 - Zone 8",
+   "8": "Floor B2 - Zone 9",
+   "9": "Floor B2 - Zone 10",
+   "10": "Floor B2 - Zone 11"
   },
   "ST14": {
-   "0": "Floor B1 - Room 1",
-   "1": "Floor B1 - Room 2",
-   "2": "Floor B1 - Room 3",
-   "3": "Floor B1 - Room 4",
-   "4": "Floor B1 - Room 5"
+   "0": "Floor B1 - Zone 1",
+   "1": "Floor B1 - Zone 2",
+   "2": "Floor B1 - Zone 3",
+   "3": "Floor B1 - Zone 4",
+   "4": "Floor B1 - Zone 5"
   },
   "ST15": {
    "0": "Defense Platform"
@@ -117,7 +117,7 @@
   },
   "ST18": {
    "0": "Roof",
-   "1": "Roof - Room 2",
+   "1": "Roof - Zone 2",
    "2": "Hanger"
   },
   "ST19": {
@@ -137,8 +137,8 @@
   },
   "ST1D": {
    "0": "Icefield",
-   "1": "Icefield - Room 2",
-   "2": "Icefield - Room 3"
+   "1": "Icefield - Zone 2",
+   "2": "Icefield - Zone 3"
   },
   "ST1E": {
    "0": "Deck 2",
@@ -171,36 +171,36 @@
    "1": "Junk Shop",
    "2": "General Store",
    "3": "Interior",
-   "4": "Interior - Room 2",
-   "6": "Pokte Village - Room 2"
+   "4": "Interior - Zone 2",
+   "6": "Pokte Village - Zone 2"
   },
   "ST26": {
-   "0": "Floor B1 - Room 1",
-   "1": "Floor B1 - Room 2",
-   "2": "Floor B1 - Room 3",
-   "3": "Floor B1 - Room 4",
-   "4": "Floor B1 - Room 5",
+   "0": "Floor B1 - Zone 1",
+   "1": "Floor B1 - Zone 2",
+   "2": "Floor B1 - Zone 3",
+   "3": "Floor B1 - Zone 4",
+   "4": "Floor B1 - Zone 5",
    "5": "Floor B2",
    "6": "Floor B3"
   },
   "ST27": {
-   "0": "Floor B3 - Room 1",
-   "1": "Floor B3 - Room 2",
-   "2": "Floor B3 - Room 3",
-   "3": "Floor B3 - Room 4",
-   "4": "Floor B3 - Room 5",
-   "5": "Floor B3 - Room 6",
-   "6": "Floor B3 - Room 7",
-   "7": "Floor B3 - Room 8",
-   "8": "Floor B3 - Room 9"
+   "0": "Floor B3 - Zone 1",
+   "1": "Floor B3 - Zone 2",
+   "2": "Floor B3 - Zone 3",
+   "3": "Floor B3 - Zone 4",
+   "4": "Floor B3 - Zone 5",
+   "5": "Floor B3 - Zone 6",
+   "6": "Floor B3 - Zone 7",
+   "7": "Floor B3 - Zone 8",
+   "8": "Floor B3 - Zone 9"
   },
   "ST28": {
-   "0": "Floor B1 - Room 1",
-   "1": "Floor B1 - Room 2",
-   "2": "Floor B1 - Room 3",
-   "3": "Floor B1 - Room 4",
-   "4": "Floor B1 - Room 5",
-   "5": "Floor B1 - Room 6"
+   "0": "Floor B1 - Zone 1",
+   "1": "Floor B1 - Zone 2",
+   "2": "Floor B1 - Zone 3",
+   "3": "Floor B1 - Zone 4",
+   "4": "Floor B1 - Zone 5",
+   "5": "Floor B1 - Zone 6"
   },
   "ST29": {
    "0": "Kimotoma City",
@@ -208,64 +208,64 @@
   },
   "ST2A": {
    "0": "Kimotoma City",
-   "1": "Kimotoma City - Room 2",
-   "2": "Kimotoma City - Room 3",
-   "3": "Kimotoma City - Room 4",
-   "4": "Kimotoma City - Room 5"
+   "1": "Kimotoma City - Zone 2",
+   "2": "Kimotoma City - Zone 3",
+   "3": "Kimotoma City - Zone 4",
+   "4": "Kimotoma City - Zone 5"
   },
   "ST2B": {
    "0": "Kimotoma City",
-   "1": "Kimotoma City - Room 2",
-   "2": "Kimotoma City - Room 3",
-   "3": "Kimotoma City - Room 4"
+   "1": "Kimotoma City - Zone 2",
+   "2": "Kimotoma City - Zone 3",
+   "3": "Kimotoma City - Zone 4"
   },
   "ST2C": {
    "0": "Kimotoma City"
   },
   "ST2D": {
-   "0": "Floor B1 - Room 1",
-   "1": "Floor B1 - Room 2",
-   "2": "Floor B1 - Room 3",
-   "3": "Floor B1 - Room 4",
-   "4": "Floor B1 - Room 5",
-   "5": "Floor B1 - Room 6",
-   "6": "Floor B1 - Room 7",
-   "7": "Floor B1 - Room 8",
-   "8": "Floor B1 - Room 9"
+   "0": "Floor B1 - Zone 1",
+   "1": "Floor B1 - Zone 2",
+   "2": "Floor B1 - Zone 3",
+   "3": "Floor B1 - Zone 4",
+   "4": "Floor B1 - Zone 5",
+   "5": "Floor B1 - Zone 6",
+   "6": "Floor B1 - Zone 7",
+   "7": "Floor B1 - Zone 8",
+   "8": "Floor B1 - Zone 9"
   },
   "ST2E": {
-   "0": "Floor B2 - Room 1",
-   "1": "Floor B2 - Room 2",
-   "2": "Floor B2 - Room 3",
-   "3": "Floor B2 - Room 4",
-   "4": "Floor B2 - Room 5",
-   "5": "Floor B2 - Room 6",
-   "6": "Floor B2 - Room 7",
-   "7": "Floor B2 - Room 8",
-   "8": "Floor B2 - Room 9",
-   "9": "Floor B2 - Room 10",
-   "10": "Floor B2 - Room 11",
+   "0": "Floor B2 - Zone 1",
+   "1": "Floor B2 - Zone 2",
+   "2": "Floor B2 - Zone 3",
+   "3": "Floor B2 - Zone 4",
+   "4": "Floor B2 - Zone 5",
+   "5": "Floor B2 - Zone 6",
+   "6": "Floor B2 - Zone 7",
+   "7": "Floor B2 - Zone 8",
+   "8": "Floor B2 - Zone 9",
+   "9": "Floor B2 - Zone 10",
+   "10": "Floor B2 - Zone 11",
    "11": "Floor B3"
   },
   "ST2F": {
-   "0": "Floor B4 - Room 1",
-   "1": "Floor B4 - Room 2",
-   "2": "Floor B4 - Room 3",
-   "3": "Floor B4 - Room 4",
-   "4": "Floor B4 - Room 5",
-   "5": "Floor B4 - Room 6",
-   "6": "Floor B5 - Room 1",
-   "7": "Floor B5 - Room 2",
-   "8": "Floor B5 - Room 3"
+   "0": "Floor B4 - Zone 1",
+   "1": "Floor B4 - Zone 2",
+   "2": "Floor B4 - Zone 3",
+   "3": "Floor B4 - Zone 4",
+   "4": "Floor B4 - Zone 5",
+   "5": "Floor B4 - Zone 6",
+   "6": "Floor B5 - Zone 1",
+   "7": "Floor B5 - Zone 2",
+   "8": "Floor B5 - Zone 3"
   },
   "ST30": {
    "0": "Glyde's Base",
-   "1": "Glyde's Base - Room 2",
-   "2": "Glyde's Base - Room 3"
+   "1": "Glyde's Base - Zone 2",
+   "2": "Glyde's Base - Zone 3"
   },
   "ST31": {
    "0": "Glyde's Base",
-   "1": "Glyde's Base - Room 2"
+   "1": "Glyde's Base - Zone 2"
   },
   "ST32": {
    "0": "Mayor's Home"
@@ -274,95 +274,95 @@
    "0": "Floor B3"
   },
   "ST34": {
-   "0": "Floor B3 - Room 1",
-   "1": "Floor B3 - Room 2",
-   "2": "Floor B3 - Room 3",
-   "3": "Floor B3 - Room 4",
-   "4": "Floor B3 - Room 5",
-   "5": "Floor B3 - Room 6"
+   "0": "Floor B3 - Zone 1",
+   "1": "Floor B3 - Zone 2",
+   "2": "Floor B3 - Zone 3",
+   "3": "Floor B3 - Zone 4",
+   "4": "Floor B3 - Zone 5",
+   "5": "Floor B3 - Zone 6"
   },
   "ST35": {
-   "0": "Floor B1 - Room 1",
-   "1": "Floor B1 - Room 2",
-   "2": "Floor B1 - Room 3",
-   "3": "Floor B5 - Room 1",
-   "4": "Floor B5 - Room 2",
-   "5": "Floor B5 - Room 3"
+   "0": "Floor B1 - Zone 1",
+   "1": "Floor B1 - Zone 2",
+   "2": "Floor B1 - Zone 3",
+   "3": "Floor B5 - Zone 1",
+   "4": "Floor B5 - Zone 2",
+   "5": "Floor B5 - Zone 3"
   },
   "ST36": {
-   "0": "Floor B2 - Room 1",
-   "1": "Floor B2 - Room 2",
-   "2": "Floor B2 - Room 3",
-   "3": "Floor B2 - Room 4",
-   "4": "Floor B2 - Room 5",
-   "5": "Floor B2 - Room 6",
-   "6": "Floor B2 - Room 7",
-   "7": "Floor B2 - Room 8",
-   "8": "Floor B2 - Room 9",
-   "9": "Floor B2 - Room 10",
-   "10": "Floor B2 - Room 11",
-   "11": "Floor B2 - Room 12",
-   "12": "Floor B2 - Room 13",
-   "13": "Floor B2 - Room 14"
+   "0": "Floor B2 - Zone 1",
+   "1": "Floor B2 - Zone 2",
+   "2": "Floor B2 - Zone 3",
+   "3": "Floor B2 - Zone 4",
+   "4": "Floor B2 - Zone 5",
+   "5": "Floor B2 - Zone 6",
+   "6": "Floor B2 - Zone 7",
+   "7": "Floor B2 - Zone 8",
+   "8": "Floor B2 - Zone 9",
+   "9": "Floor B2 - Zone 10",
+   "10": "Floor B2 - Zone 11",
+   "11": "Floor B2 - Zone 12",
+   "12": "Floor B2 - Zone 13",
+   "13": "Floor B2 - Zone 14"
   },
   "ST37": {
-   "0": "Floor B3 - Room 1",
-   "1": "Floor B3 - Room 2",
-   "2": "Floor B3 - Room 3",
-   "3": "Floor B3 - Room 4",
-   "4": "Floor B3 - Room 5",
-   "5": "Floor B3 - Room 6",
-   "6": "Floor B3 - Room 7",
-   "7": "Floor B3 - Room 8",
-   "8": "Floor B3 - Room 9",
-   "9": "Floor B3 - Room 10",
-   "10": "Floor B3 - Room 11",
-   "11": "Floor B3 - Room 12",
-   "12": "Floor B3 - Room 13",
-   "13": "Floor B3 - Room 14",
-   "14": "Floor B3 - Room 15",
-   "15": "Floor B3 - Room 16"
+   "0": "Floor B3 - Zone 1",
+   "1": "Floor B3 - Zone 2",
+   "2": "Floor B3 - Zone 3",
+   "3": "Floor B3 - Zone 4",
+   "4": "Floor B3 - Zone 5",
+   "5": "Floor B3 - Zone 6",
+   "6": "Floor B3 - Zone 7",
+   "7": "Floor B3 - Zone 8",
+   "8": "Floor B3 - Zone 9",
+   "9": "Floor B3 - Zone 10",
+   "10": "Floor B3 - Zone 11",
+   "11": "Floor B3 - Zone 12",
+   "12": "Floor B3 - Zone 13",
+   "13": "Floor B3 - Zone 14",
+   "14": "Floor B3 - Zone 15",
+   "15": "Floor B3 - Zone 16"
   },
   "ST38": {
-   "0": "Floor B4 - Room 1",
-   "1": "Floor B4 - Room 2",
-   "2": "Floor B4 - Room 3",
-   "3": "Floor B4 - Room 4",
-   "4": "Floor B4 - Room 5",
-   "5": "Floor B4 - Room 6",
-   "6": "Floor B4 - Room 7",
-   "7": "Floor B4 - Room 8",
-   "8": "Floor B4 - Room 9",
-   "9": "Floor B4 - Room 10",
-   "10": "Floor B4 - Room 11",
-   "11": "Floor B4 - Room 12",
-   "12": "Floor B4 - Room 13",
-   "13": "Floor B4 - Room 14"
+   "0": "Floor B4 - Zone 1",
+   "1": "Floor B4 - Zone 2",
+   "2": "Floor B4 - Zone 3",
+   "3": "Floor B4 - Zone 4",
+   "4": "Floor B4 - Zone 5",
+   "5": "Floor B4 - Zone 6",
+   "6": "Floor B4 - Zone 7",
+   "7": "Floor B4 - Zone 8",
+   "8": "Floor B4 - Zone 9",
+   "9": "Floor B4 - Zone 10",
+   "10": "Floor B4 - Zone 11",
+   "11": "Floor B4 - Zone 12",
+   "12": "Floor B4 - Zone 13",
+   "13": "Floor B4 - Zone 14"
   },
   "ST3B": {
    "0": "Kimotoma City",
-   "1": "Kimotoma City - Room 2"
+   "1": "Kimotoma City - Zone 2"
   },
   "ST3C": {
    "0": "Kimotoma City",
-   "1": "Kimotoma City - Room 2",
+   "1": "Kimotoma City - Zone 2",
    "2": "Ruin Gate",
    "3": "Landing Pad",
-   "4": "Kimotoma City - Room 3"
+   "4": "Kimotoma City - Zone 3"
   },
   "ST3D": {
    "0": "Guest Deck",
    "1": "Ship Interior",
-   "2": "Ship Interior - Room 2",
-   "3": "Ship Interior - Room 3"
+   "2": "Ship Interior - Zone 2",
+   "3": "Ship Interior - Zone 3"
   },
   "ST3E": {
    "0": "Crew Deck",
    "1": "Bluecher's Room",
    "2": "Storage Room",
    "3": "Ship Interior",
-   "4": "Ship Interior - Room 2",
-   "5": "Ship Interior - Room 3"
+   "4": "Ship Interior - Zone 2",
+   "5": "Ship Interior - Zone 3"
   },
   "ST3F": {
    "0": "Flying Ship Dock",
@@ -372,78 +372,78 @@
    "0": "Center Area",
    "1": "Shuttle Bay",
    "2": "Side Area",
-   "3": "Side Area - Room 2",
-   "4": "Side Area - Room 3",
-   "5": "Side Area - Room 4",
-   "6": "Side Area - Room 5",
-   "7": "Side Area - Room 6",
-   "8": "Side Area - Room 7",
-   "9": "Side Area - Room 8",
-   "10": "Side Area - Room 9",
-   "11": "Side Area - Room 10",
-   "12": "Side Area - Room 11",
-   "13": "Side Area - Room 12"
+   "3": "Side Area - Zone 2",
+   "4": "Side Area - Zone 3",
+   "5": "Side Area - Zone 4",
+   "6": "Side Area - Zone 5",
+   "7": "Side Area - Zone 6",
+   "8": "Side Area - Zone 7",
+   "9": "Side Area - Zone 8",
+   "10": "Side Area - Zone 9",
+   "11": "Side Area - Zone 10",
+   "12": "Side Area - Zone 11",
+   "13": "Side Area - Zone 12"
   },
   "ST41": {
-   "0": "Floor B2 - Room 1",
-   "1": "Floor B2 - Room 2",
-   "2": "Floor B2 - Room 3",
-   "3": "Floor B2 - Room 4",
-   "4": "Floor B2 - Room 5",
-   "5": "Floor B2 - Room 6",
-   "6": "Floor B2 - Room 7",
-   "7": "Floor B2 - Room 8",
-   "8": "Floor B2 - Room 9",
-   "9": "Floor B2 - Room 10",
-   "10": "Floor B2 - Room 11",
-   "11": "Floor B2 - Room 12",
-   "12": "Floor B2 - Room 13",
-   "13": "Floor B2 - Room 14",
-   "14": "Floor B2 - Room 15"
+   "0": "Floor B2 - Zone 1",
+   "1": "Floor B2 - Zone 2",
+   "2": "Floor B2 - Zone 3",
+   "3": "Floor B2 - Zone 4",
+   "4": "Floor B2 - Zone 5",
+   "5": "Floor B2 - Zone 6",
+   "6": "Floor B2 - Zone 7",
+   "7": "Floor B2 - Zone 8",
+   "8": "Floor B2 - Zone 9",
+   "9": "Floor B2 - Zone 10",
+   "10": "Floor B2 - Zone 11",
+   "11": "Floor B2 - Zone 12",
+   "12": "Floor B2 - Zone 13",
+   "13": "Floor B2 - Zone 14",
+   "14": "Floor B2 - Zone 15"
   },
   "ST42": {
-   "0": "Floor B1 - Room 1",
-   "1": "Floor B1 - Room 2",
-   "2": "Floor B1 - Room 3",
-   "3": "Floor B1 - Room 4",
-   "4": "Floor B1 - Room 5",
-   "5": "Floor B1 - Room 6",
-   "6": "Floor B1 - Room 7",
-   "7": "Floor B1 - Room 8",
-   "8": "Floor B1 - Room 9",
-   "9": "Floor B1 - Room 10",
-   "10": "Floor B1 - Room 11",
-   "11": "Floor B1 - Room 12",
-   "12": "Floor B1 - Room 13",
-   "13": "Floor B1 - Room 14",
-   "14": "Floor B1 - Room 15",
-   "15": "Floor B1 - Room 16"
+   "0": "Floor B1 - Zone 1",
+   "1": "Floor B1 - Zone 2",
+   "2": "Floor B1 - Zone 3",
+   "3": "Floor B1 - Zone 4",
+   "4": "Floor B1 - Zone 5",
+   "5": "Floor B1 - Zone 6",
+   "6": "Floor B1 - Zone 7",
+   "7": "Floor B1 - Zone 8",
+   "8": "Floor B1 - Zone 9",
+   "9": "Floor B1 - Zone 10",
+   "10": "Floor B1 - Zone 11",
+   "11": "Floor B1 - Zone 12",
+   "12": "Floor B1 - Zone 13",
+   "13": "Floor B1 - Zone 14",
+   "14": "Floor B1 - Zone 15",
+   "15": "Floor B1 - Zone 16"
   },
   "ST43": {
-   "0": "Floor B4 - Room 1",
-   "1": "Floor B4 - Room 2",
-   "2": "Floor B4 - Room 3",
-   "3": "Floor B4 - Room 4",
-   "4": "Floor B4 - Room 5"
+   "0": "Floor B4 - Zone 1",
+   "1": "Floor B4 - Zone 2",
+   "2": "Floor B4 - Zone 3",
+   "3": "Floor B4 - Zone 4",
+   "4": "Floor B4 - Zone 5"
   },
   "ST44": {
-   "0": "Floor B6 - Room 1",
-   "1": "Floor B6 - Room 2",
-   "2": "Floor B6 - Room 3",
-   "3": "Floor B6 - Room 4",
-   "4": "Floor B6 - Room 5"
+   "0": "Floor B6 - Zone 1",
+   "1": "Floor B6 - Zone 2",
+   "2": "Floor B6 - Zone 3",
+   "3": "Floor B6 - Zone 4",
+   "4": "Floor B6 - Zone 5"
   },
   "ST45": {
-   "0": "Floor B7 - Room 1",
-   "1": "Floor B7 - Room 2",
-   "2": "Floor B7 - Room 3",
-   "3": "Floor B7 - Room 4",
-   "4": "Floor B7 - Room 5",
-   "5": "Floor B7 - Room 6"
+   "0": "Floor B7 - Zone 1",
+   "1": "Floor B7 - Zone 2",
+   "2": "Floor B7 - Zone 3",
+   "3": "Floor B7 - Zone 4",
+   "4": "Floor B7 - Zone 5",
+   "5": "Floor B7 - Zone 6"
   },
   "ST47": {
    "0": "Condominium",
-   "1": "Condominium - Room 2",
+   "1": "Condominium - Zone 2",
    "2": "Joseph's Room"
   },
   "ST48": {
@@ -454,83 +454,83 @@
    "5": "Deck"
   },
   "ST4C": {
-   "0": "Floor B8 - Room 1",
-   "1": "Floor B8 - Room 2",
-   "2": "Floor B8 - Room 3",
-   "3": "Floor B8 - Room 4",
+   "0": "Floor B8 - Zone 1",
+   "1": "Floor B8 - Zone 2",
+   "2": "Floor B8 - Zone 3",
+   "3": "Floor B8 - Zone 4",
    "4": "Library"
   },
   "ST4D": {
-   "0": "Floor B1 - Room 1",
-   "1": "Floor B1 - Room 2",
-   "2": "Floor B1 - Room 3",
-   "3": "Floor B1 - Room 4",
-   "4": "Floor B1 - Room 5",
-   "5": "Floor B1 - Room 6",
-   "6": "Floor B1 - Room 7",
-   "7": "Floor B1 - Room 8",
-   "8": "Floor B1 - Room 9"
+   "0": "Floor B1 - Zone 1",
+   "1": "Floor B1 - Zone 2",
+   "2": "Floor B1 - Zone 3",
+   "3": "Floor B1 - Zone 4",
+   "4": "Floor B1 - Zone 5",
+   "5": "Floor B1 - Zone 6",
+   "6": "Floor B1 - Zone 7",
+   "7": "Floor B1 - Zone 8",
+   "8": "Floor B1 - Zone 9"
   },
   "ST4E": {
-   "0": "Floor B1 - Room 1",
-   "1": "Floor B1 - Room 2",
-   "2": "Floor B1 - Room 3",
-   "3": "Floor B1 - Room 4",
-   "4": "Floor B1 - Room 5",
-   "5": "Floor B1 - Room 6",
-   "6": "Floor B1 - Room 7",
-   "7": "Floor B1 - Room 8",
-   "8": "Floor B1 - Room 9",
-   "9": "Floor B1 - Room 10"
+   "0": "Floor B1 - Zone 1",
+   "1": "Floor B1 - Zone 2",
+   "2": "Floor B1 - Zone 3",
+   "3": "Floor B1 - Zone 4",
+   "4": "Floor B1 - Zone 5",
+   "5": "Floor B1 - Zone 6",
+   "6": "Floor B1 - Zone 7",
+   "7": "Floor B1 - Zone 8",
+   "8": "Floor B1 - Zone 9",
+   "9": "Floor B1 - Zone 10"
   },
   "ST4F": {
-   "0": "Floor B1 - Room 1",
-   "1": "Floor B1 - Room 2",
-   "2": "Floor B1 - Room 3",
-   "3": "Floor B1 - Room 4",
-   "4": "Floor B1 - Room 5",
-   "5": "Floor B1 - Room 6",
-   "6": "Floor B1 - Room 7",
-   "7": "Floor B1 - Room 8",
-   "8": "Floor B1 - Room 9",
-   "9": "Floor B1 - Room 10",
-   "10": "Floor B1 - Room 11",
-   "11": "Floor B1 - Room 12",
-   "12": "Floor B1 - Room 13",
+   "0": "Floor B1 - Zone 1",
+   "1": "Floor B1 - Zone 2",
+   "2": "Floor B1 - Zone 3",
+   "3": "Floor B1 - Zone 4",
+   "4": "Floor B1 - Zone 5",
+   "5": "Floor B1 - Zone 6",
+   "6": "Floor B1 - Zone 7",
+   "7": "Floor B1 - Zone 8",
+   "8": "Floor B1 - Zone 9",
+   "9": "Floor B1 - Zone 10",
+   "10": "Floor B1 - Zone 11",
+   "11": "Floor B1 - Zone 12",
+   "12": "Floor B1 - Zone 13",
    "13": "Floor B2"
   },
   "ST50": {
-   "0": "Floor B1 - Room 1",
-   "1": "Floor B1 - Room 2",
-   "2": "Floor B1 - Room 3",
-   "3": "Floor B1 - Room 4",
-   "4": "Floor B1 - Room 5",
-   "5": "Floor B1 - Room 6",
-   "6": "Floor B1 - Room 7",
-   "7": "Floor B1 - Room 8",
-   "8": "Floor B1 - Room 9",
-   "9": "Floor B1 - Room 10",
-   "10": "Floor B1 - Room 11",
-   "11": "Floor B1 - Room 12",
-   "12": "Floor B1 - Room 13",
-   "13": "Floor B1 - Room 14",
-   "14": "Floor B1 - Room 15",
-   "15": "Floor B1 - Room 16"
+   "0": "Floor B1 - Zone 1",
+   "1": "Floor B1 - Zone 2",
+   "2": "Floor B1 - Zone 3",
+   "3": "Floor B1 - Zone 4",
+   "4": "Floor B1 - Zone 5",
+   "5": "Floor B1 - Zone 6",
+   "6": "Floor B1 - Zone 7",
+   "7": "Floor B1 - Zone 8",
+   "8": "Floor B1 - Zone 9",
+   "9": "Floor B1 - Zone 10",
+   "10": "Floor B1 - Zone 11",
+   "11": "Floor B1 - Zone 12",
+   "12": "Floor B1 - Zone 13",
+   "13": "Floor B1 - Zone 14",
+   "14": "Floor B1 - Zone 15",
+   "15": "Floor B1 - Zone 16"
   },
   "ST51": {
-   "0": "Floor B2 - Room 1",
-   "1": "Floor B2 - Room 2",
-   "2": "Floor B2 - Room 3"
+   "0": "Floor B2 - Zone 1",
+   "1": "Floor B2 - Zone 2",
+   "2": "Floor B2 - Zone 3"
   },
   "ST56": {
    "0": "Master's Room"
   },
   "ST58": {
-   "0": "Floor B5 - Room 1",
-   "1": "Floor B5 - Room 2",
-   "2": "Floor B5 - Room 3",
-   "3": "Floor B5 - Room 4",
-   "4": "Floor B5 - Room 5"
+   "0": "Floor B5 - Zone 1",
+   "1": "Floor B5 - Zone 2",
+   "2": "Floor B5 - Zone 3",
+   "3": "Floor B5 - Zone 4",
+   "4": "Floor B5 - Zone 5"
   }
  }
 }

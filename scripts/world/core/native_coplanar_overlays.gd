@@ -3,6 +3,7 @@ const PLANE_SCALE := 10000.0
 const DISTANCE_EPSILON := 0.0001
 static var mesh_cache: Dictionary = {}
 static var scan_cache: Dictionary = {}
+static var cross_cache: Dictionary = {}
 static func apply(root: Node3D) -> void:
 	for node: MeshInstance3D in root.find_children("*", "MeshInstance3D", true, false):
 		if node.mesh != null and mesh_cache.has(node.mesh.get_instance_id()): node.mesh = mesh_cache[node.mesh.get_instance_id()]
@@ -11,7 +12,7 @@ static func apply(root: Node3D) -> void:
 		var node: MeshInstance3D = entry["node"]
 		if not nodes.has(node): nodes[node] = {}
 		var surface := int(entry["surface_index"]); var layers: Dictionary = nodes[node].get(surface, {})
-		for index in entry["triangle_indices"].size(): layers[int(entry["triangle_indices"][index])] = int(entry["layers"][index])
+		for index in entry["triangle_indices"].size(): layers[int(entry["triangle_indices"][index])] = maxi(int(layers.get(int(entry["triangle_indices"][index]), 0)), int(entry["layers"][index]))
 		nodes[node][surface] = layers
 	for node: MeshInstance3D in nodes:
 		var original: Mesh = node.mesh; var id := original.get_instance_id()
@@ -51,37 +52,131 @@ static func _expanded_arrays(arrays: Array) -> Array:
 	result[Mesh.ARRAY_INDEX] = expanded_indices; return result
 static func collect(root: Node3D) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
-	for node: MeshInstance3D in root.find_children("*", "MeshInstance3D", true, false): result.append_array(_collect_node(node, root))
+	var scannable: Array[MeshInstance3D] = []
+	for node: MeshInstance3D in root.find_children("*", "MeshInstance3D", true, false):
+		result.append_array(_collect_node(node, root))
+		if _scannable(node): scannable.append(node)
+	result.append_array(_cross_entries(scannable))
 	return result
 static func warm(root: Node3D) -> void:
 	var tree := root.get_tree(); var jobs: Array[Dictionary] = []; var face_flags := bool(root.get_meta("native_map_face_flags", false))
 	for node: MeshInstance3D in root.find_children("*", "MeshInstance3D", true, false):
 		if not is_instance_valid(node) or not node.is_inside_tree(): break
 		if not _scannable(node): continue
-		var scan_key := "%s|%s|%s" % [node.mesh.resource_path, var_to_str(node.global_transform), face_flags] if node.mesh.resource_path.contains("::") else ""
+		var partial := _placement(node); var scan_key := "%s|%s|%s|%s" % [node.mesh.resource_path, var_to_str(node.global_transform), face_flags, partial] if node.mesh.resource_path.contains("::") else ""
 		if scan_key.is_empty() or scan_cache.has(scan_key): continue
-		var job := {"scan_key": scan_key, "holder": {}}; job["task"] = WorkerThreadPool.add_task(_scan_job.bind(_surface_data(node), node.global_transform, face_flags, job["holder"])); jobs.append(job)
+		var job := {"scan_key": scan_key, "holder": {}}; job["task"] = WorkerThreadPool.add_task(_scan_job.bind(_surface_data(node), node.global_transform, face_flags, partial, job["holder"])); jobs.append(job)
 		await tree.process_frame
+	var cross_nodes: Array[MeshInstance3D] = []
+	for node: MeshInstance3D in root.find_children("*", "MeshInstance3D", true, false):
+		if is_instance_valid(node) and node.is_inside_tree() and _scannable(node): cross_nodes.append(node)
+	var cross_signature := _cross_signature(cross_nodes); var cross_holder := {}; var cross_task := -1
+	if not cross_signature.is_empty() and not cross_cache.has(cross_signature):
+		var cross_jobs: Array = []; var cross_partners := _cross_partners(cross_nodes); var slice_start := Time.get_ticks_usec()
+		for index: int in cross_partners:
+			if not is_instance_valid(cross_nodes[index]) or not cross_nodes[index].is_inside_tree(): cross_jobs.clear(); break
+			cross_jobs.append(_cross_job_data(cross_nodes, index, cross_partners))
+			if Time.get_ticks_usec() - slice_start > 1500: await tree.process_frame; slice_start = Time.get_ticks_usec()
+		if cross_jobs.is_empty(): cross_cache[cross_signature] = []
+		else: cross_task = WorkerThreadPool.add_task(_cross_job.bind(cross_jobs, cross_holder))
+	if cross_task >= 0:
+		while not WorkerThreadPool.is_task_completed(cross_task): await tree.process_frame
+		WorkerThreadPool.wait_for_task_completion(cross_task); cross_cache[cross_signature] = cross_holder["result"]
 	for job in jobs:
 		while not WorkerThreadPool.is_task_completed(int(job["task"])): await tree.process_frame
 		WorkerThreadPool.wait_for_task_completion(int(job["task"])); scan_cache[job["scan_key"]] = job["holder"]["result"]
-static func _scan_job(surfaces: Array, world: Transform3D, face_flags: bool, holder: Dictionary) -> void: holder["result"] = _scan(surfaces, world, face_flags)
+static func _scan_job(surfaces: Array, world: Transform3D, face_flags: bool, partial: bool, holder: Dictionary) -> void: holder["result"] = _scan(surfaces, world, face_flags, partial)
 static func _collect_node(node: MeshInstance3D, root: Node3D, cacheable_only: bool = false) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	if not _scannable(node): return result
-	var scan_key := "%s|%s|%s" % [node.mesh.resource_path, var_to_str(node.global_transform), bool(root.get_meta("native_map_face_flags", false))] if node.mesh.resource_path.contains("::") else ""
+	var partial := _placement(node); var scan_key := "%s|%s|%s|%s" % [node.mesh.resource_path, var_to_str(node.global_transform), bool(root.get_meta("native_map_face_flags", false)), partial] if node.mesh.resource_path.contains("::") else ""
 	if cacheable_only and scan_key.is_empty(): return result
 	if scan_cache.has(scan_key):
 		for cached: Dictionary in scan_cache[scan_key]: var entry := cached.duplicate(true); entry["node"] = node; result.append(entry)
 		return result
-	var face_flags := bool(root.get_meta("native_map_face_flags", false)); var found := _scan(_surface_data(node), node.global_transform, face_flags)
+	var face_flags := bool(root.get_meta("native_map_face_flags", false)); var found := _scan(_surface_data(node), node.global_transform, face_flags, partial)
 	if not scan_key.is_empty():
 		var stored: Array = []
 		for entry: Dictionary in found: stored.append(entry.duplicate(true))
 		scan_cache[scan_key] = stored
 	for entry: Dictionary in found: entry["node"] = node; result.append(entry)
 	return result
-static func _scan(surfaces: Array, world: Transform3D, face_flags: bool) -> Array[Dictionary]:
+static func _cross_signature(nodes: Array[MeshInstance3D]) -> String:
+	if nodes.size() < 2: return ""
+	var parts: Array[String] = []
+	for node: MeshInstance3D in nodes:
+		if not node.mesh.resource_path.contains("::"): return ""
+		parts.append("%s|%s" % [node.mesh.resource_path, var_to_str(node.global_transform)])
+	return str("|".join(parts).hash())
+static func _cross_entries(nodes: Array[MeshInstance3D]) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	if nodes.size() < 2: return result
+	var signature := _cross_signature(nodes); var found: Array = []
+	if not signature.is_empty() and cross_cache.has(signature): found = cross_cache[signature]
+	else:
+		found = _cross_scan(_cross_jobs(nodes))
+		if not signature.is_empty(): cross_cache[signature] = found
+	for cached: Dictionary in found: var entry := cached.duplicate(true); entry["node"] = nodes[int(entry["node_index"])]; result.append(entry)
+	return result
+static func _cross_partners(nodes: Array[MeshInstance3D]) -> Dictionary:
+	var boxes: Array[AABB] = []; var partners := {}
+	for node: MeshInstance3D in nodes: boxes.append(node.global_transform * node.mesh.get_aabb())
+	for first in nodes.size():
+		for second in range(first + 1, nodes.size()):
+			if not boxes[first].grow(0.01).intersects(boxes[second].grow(0.01)): continue
+			if not partners.has(first): partners[first] = []
+			if not partners.has(second): partners[second] = []
+			partners[first].append(boxes[second].grow(0.01)); partners[second].append(boxes[first].grow(0.01))
+	return partners
+static func _cross_job_data(nodes: Array[MeshInstance3D], index: int, partners: Dictionary) -> Dictionary: return {"node_index": index, "placement": _placement(nodes[index]), "world": nodes[index].global_transform, "surfaces": _surface_data(nodes[index]), "partners": partners[index]}
+static func _cross_jobs(nodes: Array[MeshInstance3D]) -> Array:
+	var jobs: Array = []; var partners := _cross_partners(nodes)
+	for index: int in partners: jobs.append(_cross_job_data(nodes, index, partners))
+	return jobs
+static func _cross_job(jobs: Array, holder: Dictionary) -> void: holder["result"] = _cross_scan(jobs)
+static func _cross_scan(jobs: Array) -> Array[Dictionary]:
+	var groups := {}; var result: Array[Dictionary] = []
+	for job: Dictionary in jobs:
+		var world: Transform3D = job["world"]
+		for item: Dictionary in job["surfaces"]:
+			var arrays: Array = item["arrays"]; var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]; var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX] if arrays[Mesh.ARRAY_INDEX] is PackedInt32Array else PackedInt32Array(); var colors: PackedColorArray = arrays[Mesh.ARRAY_COLOR] if arrays[Mesh.ARRAY_COLOR] is PackedColorArray else PackedColorArray(); var triangle_count := indices.size() / 3 if not indices.is_empty() else vertices.size() / 3
+			for triangle in triangle_count:
+				var i0 := int(indices[triangle * 3]) if not indices.is_empty() else triangle * 3; var i1 := int(indices[triangle * 3 + 1]) if not indices.is_empty() else triangle * 3 + 1; var i2 := int(indices[triangle * 3 + 2]) if not indices.is_empty() else triangle * 3 + 2
+				var points := [world * vertices[i0], world * vertices[i1], world * vertices[i2]]; var low: Vector3 = points[0].min(points[1]).min(points[2]); var near := false
+				for partner: AABB in job["partners"]:
+					if partner.intersects(AABB(low, (points[0].max(points[1]).max(points[2])) - low)): near = true; break
+				if not near: continue
+				var normal: Vector3 = (points[1] - points[0]).cross(points[2] - points[0]); var doubled_area: float = normal.length()
+				if doubled_area <= 0.000001: continue
+				var canonical := _canonical_normal(normal / doubled_area); var key := Vector4i(roundi(canonical.x * PLANE_SCALE), roundi(canonical.y * PLANE_SCALE), roundi(canonical.z * PLANE_SCALE), roundi(canonical.dot(points[0]) * PLANE_SCALE)); var axis := _dominant_axis(canonical); var polygon := PackedVector2Array()
+				for point: Vector3 in points: polygon.append(_project(point, axis))
+				var existing := 0
+				if not colors.is_empty() and colors[i0].a < 0.5: existing = maxi(1, roundi(colors[i0].a * 255.0))
+				if not groups.has(key): groups[key] = []
+				groups[key].append({"node": int(job["node_index"]), "placement": bool(job["placement"]), "surface": int(item["surface"]), "triangle": triangle, "polygon": polygon, "bounds": _polygon_bounds(polygon), "layer": existing})
+	var by_surface := {}
+	for key: Vector4i in groups:
+		var group: Array = groups[key]
+		if group.size() < 2: continue
+		group.sort_custom(_cross_before); var prior_faces: Array = []
+		for face: Dictionary in group:
+			var support := -1; var polygon: PackedVector2Array = face["polygon"]; var original_area := _polygon_area(polygon); var epsilon := DISTANCE_EPSILON * DISTANCE_EPSILON * maxf(1.0, original_area)
+			for prior: Dictionary in prior_faces:
+				if int(prior["node"]) == int(face["node"]) or not (face["bounds"] as Rect2).intersects(prior["bounds"], true): continue
+				var outside_area := 0.0
+				for piece: PackedVector2Array in _subtract_triangle(polygon, prior["polygon"]): outside_area += _polygon_area(piece)
+				if original_area - outside_area > epsilon: support = maxi(support, int(prior["layer"]))
+			prior_faces.append(face)
+			if support < 0 or not bool(face["placement"]) or mini(support + 1, 127) <= int(face["layer"]): continue
+			face["layer"] = mini(support + 1, 127); var slot := "%d:%d" % [face["node"], face["surface"]]
+			if not by_surface.has(slot): by_surface[slot] = {"node_index": int(face["node"]), "surface_index": int(face["surface"]), "triangle_indices": PackedInt32Array(), "layers": PackedInt32Array()}
+			by_surface[slot]["triangle_indices"].append(int(face["triangle"])); by_surface[slot]["layers"].append(int(face["layer"]))
+	for slot: String in by_surface: result.append(by_surface[slot])
+	return result
+static func _cross_before(first: Dictionary, second: Dictionary) -> bool:
+	if int(first["node"]) != int(second["node"]): return int(first["node"]) < int(second["node"])
+	return _comes_after(second, first)
+static func _scan(surfaces: Array, world: Transform3D, face_flags: bool, partial: bool = false) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	var planes := {}
 	for item: Dictionary in surfaces:
@@ -111,13 +206,14 @@ static func _scan(surfaces: Array, world: Transform3D, face_flags: bool) -> Arra
 				remaining = next_remaining
 			var uncovered_area := 0.0
 			for piece: PackedVector2Array in remaining: uncovered_area += _polygon_area(piece)
-			var marked: bool = not parent.is_empty() and (uncovered_area <= epsilon or _source_decorator(overlay)); overlay["layer"] = mini(supporting_layer + 1, 127) if marked else 0; parents.append(overlay)
+			var marked: bool = not parent.is_empty() and (partial or uncovered_area <= epsilon or _source_decorator(overlay)); overlay["layer"] = mini(supporting_layer + 1, 127) if marked else 0; parents.append(overlay)
 			if not marked: continue
 			var surface_index := int(overlay["surface"])
 			if not by_surface.has(surface_index): by_surface[surface_index] = {"surface_index": surface_index, "triangle_indices": PackedInt32Array(), "layers": PackedInt32Array(), "render_normals": PackedVector3Array(), "parent_surfaces": PackedInt32Array(), "parent_triangles": PackedInt32Array()}
 			var entry: Dictionary = by_surface[surface_index]; entry["triangle_indices"].append(int(overlay["triangle"])); entry["layers"].append(int(overlay["layer"])); entry["render_normals"].append(parent["normal"]); entry["parent_surfaces"].append(int(parent["surface"])); entry["parent_triangles"].append(int(parent["triangle"]))
 		for surface_index: int in by_surface: result.append(by_surface[surface_index])
 	return result
+static func _placement(node: MeshInstance3D) -> bool: return str(node.name).begins_with("placement_")
 static func _scannable(node: MeshInstance3D) -> bool:
 	if node.mesh == null or bool(node.mesh.get_meta("coplanar_scanned", false)) or node.mesh.get_blend_shape_count() > 0: return false
 	var skinned := false

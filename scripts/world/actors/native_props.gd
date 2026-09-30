@@ -273,6 +273,15 @@ static func _npc_source_offsets(stage: String) -> Dictionary:
 				if area >= 0: result[_source_key(area, offset, raw)] = true
 	_npc_source_cache[stage] = result; return result
 static func _source_key(area: int, offset: int, raw: String) -> String: return "%d:%d:%s" % [area, offset, raw]
+static func _spawn_enemy(parent: Node3D, path: String, entry: Dictionary, model: Dictionary) -> Node3D:
+	var gameplay: Node = parent
+	while gameplay != null and gameplay.get_node_or_null("Player") == null: gameplay = gameplay.get_parent()
+	if gameplay == null: return null
+	gameplay.actor_manifest["pickups"] = "pickups.json"; var script: GDScript = preload("res://scripts/world/enemies/native_icefield_burrower.gd") if int(entry["actor_class"]) == 41 else preload("res://scripts/world/enemies/native_icefield_spitter.gd"); var enemy: CharacterBody3D = script.new(); parent.add_child(enemy)
+	if not enemy.configure(gameplay, entry, model, path): enemy.queue_free(); return null
+	enemy.sound_requested.connect(gameplay.audio.play_at); enemy.drop_requested.connect(gameplay._spawn_actor_drops); enemy.contact_hit.connect(gameplay._actor_contact)
+	preload("res://scripts/world/rendering/native_material.gd").depth_cue(enemy.model, gameplay.depth_cue_parameters)
+	return enemy
 static func _load_actor(parent: Node3D, path: String, entry: Dictionary, model: Dictionary, native_context: Dictionary = {}) -> Node3D:
 	if not is_instance_valid(parent) or path.ends_with("/") or not path.ends_with(".glb"): return null
 	if entry.has("native_kickable") and not preload("res://scripts/world/actors/native_kickable_prop.gd").spawn_allowed(entry, native_context): return null
@@ -280,6 +289,7 @@ static func _load_actor(parent: Node3D, path: String, entry: Dictionary, model: 
 	if entry.has("native_pose_resolver"):
 		transform = preload("res://scripts/world/actors/native_interaction.gd").resolve_pose(entry, native_context)
 		if transform.is_empty(): return null
+	if entry.has("native_enemy") and int(entry.get("actor_class", -1)) in [23, 41]: return _spawn_enemy(parent, path, entry, model)
 	var packed := await _threaded_scene(path)
 	if packed == null or not is_instance_valid(parent): return null
 	var node := packed.instantiate() as Node3D
@@ -331,6 +341,7 @@ static func _load_actor(parent: Node3D, path: String, entry: Dictionary, model: 
 			collider.set_meta("native_stream_actor_layer", collider.collision_layer)
 			if not bool(parent.get_meta("native_stream_room_active")): collider.collision_layer = 0
 	if int(entry.get("actor_class", -1)) == 0 and entry.has("native_hitbox") and not entry.has("native_pose_resolver"): preload("res://scripts/world/actors/native_actor_motion.gd").settle_on_floor.call_deferred(node)
+	if entry.has("native_floor_snap"): preload("res://scripts/world/actors/native_actor_motion.gd").snap_to_floor.call_deferred(node, int(entry["native_floor_snap"]["offset_raw"]))
 	return node
 static func _prefetchable(entry: Dictionary) -> bool: return str(entry.get("model_file", "")).ends_with(".glb") and not entry.has("native_kickable") and not entry.has("native_pose_resolver")
 static func _prefetch(paths: Array[String]) -> void:

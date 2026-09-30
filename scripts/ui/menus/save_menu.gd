@@ -203,7 +203,7 @@ func _focus_row(index: int) -> void:
 		details.text = "%d:%s" % [int(entry["slot"]), "No save data" if bool(entry["empty"]) else str(entry["error"]) if not str(entry.get("error", "")).is_empty() else str(entry["name"])]
 		details_time.text = "--:--:--" if bool(entry["empty"]) else _playtime(float(entry.get("play_time_seconds", 0)))
 	else: details.text = ""; details_time.text = ""
-	pointer.select_at(Vector2(40, 77 + selected_index * 18) if selected_index < entries.size() else Vector2(40, 163))
+	pointer.select_at(Vector2(40, 77 + selected_index * 18) if selected_index < entries.size() else Vector2(40, cancel.position.y + (cancel.size.y - pointer.size.y) * 0.5))
 	queue_redraw()
 func _playtime(seconds: float) -> String:
 	var total := maxi(int(seconds), 0)

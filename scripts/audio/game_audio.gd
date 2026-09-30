@@ -275,7 +275,7 @@ func _voice_request(sound_id: int, point: Vector3, mode: int) -> void:
 	var entry: Dictionary = _sound_entry(key); var player := _voice_player(voice)
 	var scale := db_to_linear(float(entry.get("volume_db", 0)) - float(source.get("volume_db", 0))) / 16384.0; var left := float(levels.x) * scale; var right := float(levels.y) * scale
 	player.stream = _sound_stream(key, entry); player.volume_db = linear_to_db((left + right) * 0.5) if left + right > 0.0 else -80.0
-	(AudioServer.get_bus_effect(AudioServer.get_bus_index(player.bus), 0) as AudioEffectPanner).pan = (right - left) / (right + left) if left + right > 0.0 else 0.0
+	if not OS.has_feature("web"): (AudioServer.get_bus_effect(AudioServer.get_bus_index(player.bus), 0) as AudioEffectPanner).pan = (right - left) / (right + left) if left + right > 0.0 else 0.0
 	voices[voice] = {"until": now + int(float(source.get("duration_seconds", 0.0)) * 1000.0), "priority": priority, "distance": int(voices.get(voice, {}).get("distance", 0)), "levels": levels, "native_distance": distance, "sound": sound_id}
 	player.play()
 func _native_sqrt(value: int) -> int:
@@ -292,8 +292,8 @@ func _native_levels(strength: int, angle: int, distance: int) -> Vector2i:
 	return levels * (7000 - distance) / 7000 if distance > 0 and distance < 7000 else Vector2i.ZERO if distance >= 7000 else levels
 func _voice_player(voice: int) -> AudioStreamPlayer:
 	if voice_players.has(voice): return voice_players[voice]
-	var bus := "SE Voice %02d" % voice
-	if AudioServer.get_bus_index(bus) < 0: AudioServer.add_bus(); AudioServer.set_bus_name(AudioServer.bus_count - 1, bus); AudioServer.set_bus_send(AudioServer.bus_count - 1, "SE"); AudioServer.add_bus_effect(AudioServer.bus_count - 1, AudioEffectPanner.new())
+	var bus := "SE" if OS.has_feature("web") else "SE Voice %02d" % voice
+	if AudioServer.get_bus_index(bus) < 0: AudioServer.add_bus(AudioServer.bus_count); AudioServer.set_bus_name(AudioServer.bus_count - 1, bus); AudioServer.set_bus_send(AudioServer.bus_count - 1, "SE"); AudioServer.add_bus_effect(AudioServer.bus_count - 1, AudioEffectPanner.new())
 	var player := AudioStreamPlayer.new(); player.bus = bus; add_child(player); voice_players[voice] = player
 	return player
 func play_sound(sound_id: int) -> void:
@@ -301,7 +301,7 @@ func play_sound(sound_id: int) -> void:
 func _ensure_buses() -> void:
 	for name in ["BGM", "SE"]:
 		if AudioServer.get_bus_index(name) >= 0: continue
-		AudioServer.add_bus()
+		AudioServer.add_bus(AudioServer.bus_count)
 		var index := AudioServer.bus_count - 1
 		AudioServer.set_bus_name(index, name)
 		AudioServer.set_bus_send(index, "Master")

@@ -139,6 +139,8 @@ func _arrival_message(index: int) -> void:
 	var original := preload("res://scripts/world/actors/native_interaction.gd").binding(actor).duplicate(true); var source := original.duplicate(true); source["message_index"] = index; source["request_kind"] = 0x10; actor.set_meta("native_interaction", source); await gameplay._talk_to_npc(actor)
 	if is_instance_valid(actor): actor.set_meta("native_interaction", original)
 func _physics_process(delta: float) -> void:
+	if is_instance_valid(gameplay) and gameplay.has_meta("native_landing_active") and bool(gameplay.get_meta("native_landing_active")): actor.visible = false; return
+	actor.visible = true
 	if not is_instance_valid(gameplay) or not bool(gameplay.get("preparation_finished")) or not bool(gameplay.get("playable")): return
 	if mode != 4 and (bool(gameplay.get("loading")) or not player.is_physics_processing()): return
 	elapsed += delta * 25.0

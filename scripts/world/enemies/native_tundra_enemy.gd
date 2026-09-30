@@ -124,5 +124,7 @@ func _drops() -> Array:
 		for type in range(7):
 			for item in range(int(row[group * 8 + type])):
 				if group > 0 and (_random() & 255) > int(row[group * 8 + 7]): continue
-				var yaw := _random() & 4095; var vertical := -512 - ((type + (_random() & 15) - 8) << 5); var forward := 256 - ((type + (_random() & 15) - 8) << 5); var angle := float(yaw) * TAU / 4096.0; entries.append({"group": group, "type": type, "value": int(pickup_data["values"][group][type]), "position": global_position, "yaw_raw": yaw, "velocity": Vector3(sin(angle) * forward, -vertical, -cos(angle) * forward) * 25.0 / 4096.0})
+				entries.append({"group": group, "type": type, "value": int(pickup_data["values"][group][type]), "position": global_position})
+	for entry: Dictionary in entries:
+		var type := int(entry["type"]); var yaw := _random() & 4095; var vertical := -512 - ((type + (_random() & 15) - 8) << 5); var forward := 256 - ((type + (_random() & 15) - 8) << 5); var angle := float(yaw) * TAU / 4096.0; entry["yaw_raw"] = yaw; entry["velocity"] = Vector3(sin(angle) * forward, -vertical, -cos(angle) * forward) * 25.0 / 4096.0
 	return entries

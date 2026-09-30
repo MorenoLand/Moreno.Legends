@@ -37,7 +37,9 @@ static func load_bank(loaded: Dictionary, stage: String) -> bool:
 	if loaded["banks"].has(stage): return true
 	var source: Variant = loaded["data"]["banks"].get(stage, null); var path := str(loaded["directory"]).path_join(str(source.get("file", ""))) if source is Dictionary else ""
 	var bank: Variant = JSON.parse_string(FileAccess.get_file_as_string(path)) if not path.is_empty() and FileAccess.file_exists(path) else null
-	if not bank is Dictionary: loaded["missing"][stage] = true; return false
+	if not bank is Dictionary:
+		if FileAccess.file_exists(path): loaded["missing"][stage] = true
+		return false
 	var indexed := {}
 	for entry: Dictionary in bank.get("messages", []): indexed[int(entry["index"])] = entry
 	loaded["banks"][stage] = bank; loaded["entries"][stage] = indexed; return true
@@ -45,6 +47,7 @@ func prepare_stage(stage: String) -> bool: return load_bank(catalog, stage)
 func prepare_stage_async(stage: String) -> bool:
 	if catalog.is_empty() or catalog["missing"].has(stage): return false
 	if catalog["banks"].has(stage): return true
+	if not await AssetStore.ensure_group("dialogue-" + stage, true): return false
 	var source: Variant = catalog["data"]["banks"].get(stage, null); var path := str(catalog["directory"]).path_join(str(source.get("file", ""))) if source is Dictionary else ""
 	if path.is_empty() or not FileAccess.file_exists(path): return load_bank(catalog, stage)
 	var holder := {}; var task := WorkerThreadPool.add_task(_parse_bank.bind(path, holder))
@@ -60,13 +63,13 @@ static func _parse_bank(path: String, holder: Dictionary) -> void:
 	for entry: Dictionary in bank.get("messages", []): indexed[int(entry["index"])] = entry
 	holder["indexed"] = indexed
 func update_native_context(context: Dictionary) -> void: native_context = context
-static func native_stat_mutation(context: Dictionary, delta: int) -> Dictionary:
-	if not context.has("native_save_word40") or not context.has("native_save_byte44"): return {}
-	var value := clampi(int(context["native_save_word40"]) + delta, -32767, 32767); var state := int(context["native_save_byte44"])
+static func native_stat_mutation(context: Dictionary, delta: int, word_key := "native_save_word40", state_key := "native_save_byte44") -> Dictionary:
+	if not context.has(state_key) or word_key == "native_save_word40" and not context.has(word_key): return {}
+	var value := clampi(int(context.get(word_key, 0)) + delta, -32767, 32767); var state := int(context[state_key])
 	if state == 0 and value < 0x3000 or state == 2 and value >= -0x2fff: state = 1
 	if value > 0x4000: state = 0
 	elif value < -0x4000: state = 2
-	return {"native_save_word40": value, "native_save_byte44": state}
+	return {word_key: value, state_key: state}
 func apply_native_stat_delta(delta: int, stage: String) -> bool:
 	var mutation := native_stat_mutation(native_context, delta)
 	if mutation.is_empty(): return false
@@ -127,7 +130,7 @@ func _present_entry(stage: String, index: int, source_address: String, source_ac
 		var pages: Array = resolved.get("pages", []); var has_text := false
 		for page: String in pages:
 			if not page.strip_edges().is_empty(): has_text = true; break
-		if not has_text and not bool(resolved.get("needs_choice", false)) and resolved.get("tail_commands", []).is_empty():
+		if not has_text and not bool(resolved.get("needs_choice", false)) and resolved.get("tail_commands", []).is_empty() and not continuation:
 			push_error("Native message %s:%02X resolves to no displayable text" % [stage, index]); active_program_stage = ""; active_program_index = -1; active_source_actor = null; active_page_commands.clear(); active_tail_commands.clear(); active_window_state.clear(); return false
 		active_program_index = int(resolved.get("program_index", program_index)); active_page_commands = resolved.get("page_commands", []); active_tail_commands = resolved.get("tail_commands", [])
 		if not has_text and not bool(resolved.get("needs_choice", false)):
@@ -227,8 +230,9 @@ func _resolve_program(stage: String, initial_index: int, window_state: Dictionar
 				0x21:
 					if arguments.size() != 1: return {"supported": false}
 					var dynamic: Dictionary = command.get("dynamic_text", {}); var value_key := str(dynamic.get("value_key", "zenny" if arguments[0] & 0x80 else "")); if value_key.is_empty() or not simulated_context.has("native_wallet") and value_key == "zenny": return {"supported": false}
-					if value_key != "zenny" or not simulated_context.has("native_wallet"): return {"supported": false}
-					var inserted := _format_native_number(int(simulated_context["native_wallet"]), arguments[0], dynamic); page_text += inserted; _append_speed(page_speed_counts, inserted, page_speed)
+					var number_key := "native_wallet" if value_key == "zenny" else value_key
+					if not value_key in ["zenny", "native_message_number"] or not simulated_context.has(number_key): return {"supported": false}
+					var inserted := _format_native_number(int(simulated_context[number_key]), arguments[0], dynamic); page_text += inserted; _append_speed(page_speed_counts, inserted, page_speed)
 				0x2A:
 					if arguments.size() != 5 or not simulated_context.has("native_save_byte16"): return {"supported": false}
 					var selector := int(simulated_context["native_save_byte16"]); if selector < 0 or selector >= arguments.size(): return {"supported": false}; target = arguments[selector]
@@ -267,6 +271,15 @@ func _resolve_program(stage: String, initial_index: int, window_state: Dictionar
 				0x3E:
 					if arguments.size() != 2 or not simulated_context.has("native_save_word40") or not simulated_context.has("native_save_byte44"): return {"supported": false}
 					var mutation := native_stat_mutation(simulated_context, _signed_be16(arguments[0], arguments[1])); simulated_context.merge(mutation, true); current_page_commands.append({"opcode": opcode, "arguments": arguments, "source_command": command.duplicate(true), "native_context_mutation": mutation})
+				0x40:
+					if arguments.size() != 2 or not simulated_context.has("native_save_byte45"): return {"supported": false}
+					var mutation := native_stat_mutation(simulated_context, _signed_be16(arguments[0], arguments[1]), "native_save_word42", "native_save_byte45"); simulated_context.merge(mutation, true); current_page_commands.append({"opcode": opcode, "arguments": arguments, "source_command": command.duplicate(true), "native_context_mutation": mutation})
+				0x42:
+					if arguments.size() != 7 or arguments[0] != 0 or not simulated_context.has("native_wallet"): return {"supported": false}
+					var price := (int(arguments[1]) << 24) | (int(arguments[2]) << 16) | (int(arguments[3]) << 8) | int(arguments[4]); target = int(arguments[6] if int(simulated_context["native_wallet"]) < price else arguments[5])
+				0x47:
+					if arguments.size() != 4 or arguments[0] >= 8: return {"supported": false}
+					target = int(arguments[3] if int(simulated_context.get("native_save_byte%x" % (0x7C + arguments[0]), 0)) < arguments[1] else arguments[2])
 				0x3F:
 					if arguments.size() != 3 or not simulated_context.has("native_save_byte44"): return {"supported": false}
 					var state := int(simulated_context["native_save_byte44"]); target = int(arguments[state]) if state >= 0 and state < 3 else 0xFF
@@ -281,15 +294,16 @@ func _resolve_program(stage: String, initial_index: int, window_state: Dictionar
 					current_page_commands.append({"opcode": opcode, "arguments": arguments, "source_command": command.duplicate(true)})
 				0x0A, 0x0B, 0x20, 0x22:
 					pass
-				0x0C, 0x1A:
+				0x0C, 0x1A, 0x3C:
+					if opcode == 0x3C and arguments.size() != 12: return {"supported": false}
 					current_page_commands.append({"opcode": opcode, "arguments": arguments, "source_command": command.duplicate(true)})
 				0x31:
 					pass
 				_:
 					return {"supported": false}
-			if opcode in [0x0E, 0x11, 0x16, 0x28, 0x2A, 0x3F] and target < 0: return {"supported": false}
-			if opcode in [0x11, 0x16, 0x28, 0x2A, 0x3F] and target == 0xFF: continue
-			if opcode in [0x0E, 0x11, 0x16, 0x28, 0x2A, 0x3F] and target >= 0:
+			if opcode in [0x0E, 0x11, 0x16, 0x28, 0x2A, 0x3F, 0x42, 0x47] and target < 0: return {"supported": false}
+			if opcode in [0x11, 0x16, 0x28, 0x2A, 0x3F, 0x42, 0x47] and target == 0xFF: continue
+			if opcode in [0x0E, 0x11, 0x16, 0x28, 0x2A, 0x3F, 0x42, 0x47] and target >= 0:
 				message_index = target; start_offset = -1; redirected = true; break
 		if redirected: continue
 		if not page_text.strip_edges().is_empty(): pages.append(page_text); page_speeds.append(page_speed_counts.duplicate()); page_wait_updates.append(0); page_choices.append({}); page_commands.append(current_page_commands)

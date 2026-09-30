@@ -60,8 +60,12 @@ func _ember(fire: Node3D) -> void:
 	var ember: Node3D = preload("res://scripts/world/missions/fire/native_ember.gd").new(); ember.name = "Ember"; level.add_child(ember); ember.configure(data, start, yaw, vertical, trig, atlas, host.player, kitchen_data if is_instance_valid(kitchen_data) else null); ember.contact_hit.connect(_contact)
 func _spawn(entry: Dictionary) -> void:
 	var fire: Node3D = preload("res://scripts/world/missions/fire/native_fire.gd").new(); fire.name = "Fire_%02d" % int(entry["index"]); level.add_child(fire); fire.configure(data, entry, atlas, host.player)
-	fire.extinguished.connect(_fire_out); fire.sound_requested.connect(host.audio.play_at); fire.contact_hit.connect(_contact); fire.ember_requested.connect(_ember); fires.append(fire)
+	fire.extinguished.connect(_fire_out); fire.sound_requested.connect(host.audio.play_at); fire.contact_hit.connect(_contact); fire.ember_requested.connect(_ember); fire.exploded.connect(_explode); fires.append(fire)
 	fire.controller = self; fire.ember_timer = int(data["kitchen_data"]["ember_init_timer"][0]) + (_rand() & int(data["kitchen_data"]["ember_init_timer"][1]))
+func _explode(fire: Node3D) -> void:
+	var shake: Dictionary = data["fire"]["explosion"]["blast"]["init"]["shake"]; host.player.camera_shake(int(shake["mode"]), int(shake["magnitude"]), int(shake["decay"]))
+	var change: Dictionary = fire.record.get("map_change", {})
+	if not change.is_empty(): preload("res://scripts/world/flutter/room_variants.gd").apply_runtime(level, str(change["node"]))
 func _contact(fire: Node3D, damage: int) -> void:
 	if host.player.no_clip or not host.player.hurt_phase.is_empty(): return
 	host.player.take_hit(maxi(1, (damage * 3) >> 2), 0, host.player.global_position - fire.global_position)
@@ -109,7 +113,10 @@ func _finish(success: bool) -> void:
 	var completion: Dictionary = data["completion"]
 	if success:
 		_set_flag(int(completion["flag"]), true)
-		if int(timers.get(0, 0)) + int(timers.get(1, 0)) + int(timers.get(2, 0)) < int(completion["fast_limit"]): _set_flag(int(completion["fast_flag"]), true)
+		# RetroAchievements 83148 "Dammit Data!": every fire (Data included) out before the sprinklers, i.e. any successful clear (the sprinklers come with the timer failure).
+		host.achievement_earned.emit("83148")
+		if int(timers.get(0, 0)) + int(timers.get(1, 0)) + int(timers.get(2, 0)) < int(completion["fast_limit"]):
+			_set_flag(int(completion["fast_flag"]), true)
 	elif extinguished_total >= int(completion["failure_fast_count"]): _set_flag(int(completion["fast_flag"]), true)
 	while is_inside_tree() and (host.loading or bool(host.dialogue_box.get("active"))): await get_tree().process_frame
 	host.loading = true; host.player.set_physics_process(false)

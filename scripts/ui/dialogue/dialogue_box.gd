@@ -130,7 +130,8 @@ func present_message(stage: String, entry: Dictionary) -> Dictionary:
 	visible = false; active = false; current_native_choice.clear(); queue_redraw(); message_finished.emit(active_stage, active_index); return {}
 func _unhandled_input(event: InputEvent) -> void:
 	if not active or not page_ready or not FRAME.content_visible(self): return
-	if not current_native_choice.is_empty():
+	# The choice rows and cursor are part of the typed page; they only take input once the question has finished drawing.
+	if not current_native_choice.is_empty() and text_complete:
 		var count := int(current_native_choice.get("rows", []).size()); var repeat_input: bool = event is InputEventKey and (event as InputEventKey).echo
 		if count <= 2 and repeat_input: return
 		if event.is_action_pressed("ui_up"): _move_native_choice(0, -1); get_viewport().set_input_as_handled(); return
@@ -153,7 +154,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if advance_blocker.is_valid() and advance_blocker.call(): return
 	advance_requested.emit()
 func _process(delta: float) -> void:
-	if is_instance_valid(choice_pointer) and not (active and FRAME.content_visible(self) and not current_native_choice.is_empty() and current_choice_index >= 0 and current_choice_index < int(current_native_choice.get("rows", []).size())): choice_pointer.hide()
+	if is_instance_valid(choice_pointer) and not (active and text_complete and FRAME.content_visible(self) and not current_native_choice.is_empty() and current_choice_index >= 0 and current_choice_index < int(current_native_choice.get("rows", []).size())): choice_pointer.hide()
 	if not active or not page_ready or not FRAME.content_visible(self) or page_index >= pages.size(): return
 	native_tick_accumulator += delta
 	while native_tick_accumulator >= 0.04:
@@ -183,7 +184,8 @@ func _draw() -> void:
 	for line_index in range(pages[page_index].size()):
 		var line := pages[page_index][line_index]; var shown := mini(remaining, line.length()); if shown > 0: _draw_native_text(Vector2(current_layout_origin.x, y), line.substr(0, shown), current_frame.size.x - 10)
 		remaining = maxi(remaining - line.length() - (1 if line_index < pages[page_index].size() - 1 else 0), 0); y += 16
-	if not current_native_choice.is_empty(): _draw_native_choices(current_native_choice)
+	if not current_native_choice.is_empty():
+		if text_complete: _draw_native_choices(current_native_choice)
 	elif text_complete and current_arrow and arrow_texture != null:
 		var frames: Array = presentation.get("continuation_arrow", {}).get("frames", []); var frame_index := (native_tick_index / 2) % 6
 		if not frames.is_empty():

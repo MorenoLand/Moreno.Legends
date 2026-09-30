@@ -27,7 +27,8 @@ func configure(entry: Dictionary, metadata: Dictionary, directory: String) -> vo
 	attack_damage = int(entry["source_attributes"][2])
 	contact_damage = int(entry["source_attributes"][1])
 	native_state = 0
-	collision_layer = 0
+	native_yaw = (-native_yaw) & 4095; region_yaw = native_yaw; patrol_yaw = native_yaw; rotation.y = float(native_yaw) * TAU / 4096.0
+	collision_layer = 0; collision_mask = 1
 	for index in range(4):
 		var body := Hurtbox.new(); body.owner_actor = self; body.weak = index == 3; body.collision_layer = 8; body.collision_mask = 0
 		var shape := CollisionShape3D.new(); var sphere := SphereShape3D.new(); sphere.radius = (180.0 if index == 0 else 80.0) / 256.0; shape.shape = sphere; body.add_child(shape); add_child(body); body_boxes.append(body)
@@ -57,7 +58,7 @@ func _physics_process(delta: float) -> void:
 		_update_body_boxes()
 		for trail in shield_trails: trail.native_tick(neck_offset * 16)
 		if not dying: _attack_events(); _body_contact()
-		_set_hit_light(Vector3(248, 248, 248) if hurt_timer > 0 else Vector3(128, 128, 128))
+		_set_hit_light(Vector3(248, 248, 248) if flash_ticks > 0 else Vector3(128, 128, 128)); flash_ticks = maxi(flash_ticks - 1, 0)
 func _state(state: int, sub: int = 0) -> void:
 	native_state = state; substate = sub; phase = 0; initialized = false
 func _control(slot: int) -> void:
@@ -243,6 +244,7 @@ func receive_native_hit(damage: int, flags: int, direction: Vector3, weak: bool)
 	if dying or removed or damage <= 0 or hurt_timer > 0 or not (flags & 0xc0000): return false
 	var effective := damage if weak and absi(_yaw_difference(roundi(atan2(-direction.x, -direction.z) * 4096.0 / TAU))) < 1024 else 1
 	health -= effective
+	flash_ticks = 1
 	sound_requested.emit(0x8e if effective > 1 else 0x8d, global_position)
 	if flags & 0x400000: hurt_timer = 20
 	if health < 0:

@@ -345,6 +345,7 @@ func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0, co
 	var entry_fade_code := int(candidate.entry_route.get("native_entry_fade", 0x02))
 	candidate.parked_location = state.get("parked_location", parked_override).duplicate(true)
 	candidate.native_context = state.get("native_context", context if not context.is_empty() else {"native_save_byte14": 0, "native_save_byte16": 0, "native_save_word40": 0, "native_save_byte44": 1, "native_save_byte45": 1, "event_flags": {}}).duplicate(true)
+	preload("res://scripts/world/core/native_region.gd").enter_stage(candidate.native_context, stage)
 	candidate.initial_player_state = state.get("player", {}).duplicate(true) if candidate.entry_route.is_empty() else {}
 	candidate.audio_preparing = true
 	candidate.process_mode = Node.PROCESS_MODE_PAUSABLE
@@ -383,6 +384,7 @@ func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0, co
 	gameplay.achievement_earned.connect(_unlock_achievement)
 	gameplay.game_over_requested.connect(_game_over)
 	var achievement_blockers: Array[Control] = [pages["pause"], options, save_menu, custom, status_menu, achievement_menu, gameplay.dialogue_box, gameplay.transition_overlay]; achievement_notice.configure(achievement_blockers)
+	gameplay.set_meta("native_landing_active", bool(state.get("entry_route", {}).get("flutter_landing", false)))
 	gameplay.show()
 	gameplay.get_node("HUD").show()
 	gameplay.player.mouse_sensitivity = float(settings.get_value("controls", "mouse_sensitivity", 0.003))
@@ -395,7 +397,8 @@ func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0, co
 	if is_instance_valid(opening): opening._finish(true)
 	await _resume(not OS.has_feature("web"))
 	if bool(state.get("entry_route", {}).get("flutter_landing", false)):
-		if not await preload("res://scripts/world/flutter/flutter_dock.gd").land(gameplay, docked_hull): push_error("Flutter landing sequence failed: " + gameplay.native_scenes.last_error)
+		if is_instance_valid(docked_hull) and not await preload("res://scripts/world/flutter/flutter_dock.gd").land(gameplay, docked_hull): push_error("Flutter landing sequence failed: " + gameplay.native_scenes.last_error)
+		gameplay.set_meta("native_landing_active", false)
 	await gameplay.transition_overlay.request(entry_fade_code)
 	gameplay.player.set_physics_process(true); session_loading = false
 	if pending_custom_menu: pending_custom_menu = false; _toggle_custom_menu()

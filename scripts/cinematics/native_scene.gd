@@ -120,7 +120,7 @@ func run() -> bool:
 	if bool(host.get("streaming_rooms")) and is_instance_valid(host.room_stream):
 		for key in host.room_stream.opened_portals.keys():
 			var leaf: Node3D = host.room_stream.portal_leaves.get(key)
-			if is_instance_valid(leaf): leaf.rotation.y = float(leaf.get_meta("closed_yaw"))
+			if is_instance_valid(leaf) and leaf.has_meta("closed_yaw"): leaf.rotation.y = float(leaf.get_meta("closed_yaw"))
 			await host.room_stream._close_portal(str(key))
 	var initial: Dictionary = callbacks["initialization"]; head_units = 0
 	if not bool(initial.get("player_keep_transform", false)): host.player.global_position = scene_root.to_global(_world(initial["player_position_raw"])); _set_yaw(host.player.player_model, int(initial["player_yaw_raw"]))
@@ -133,8 +133,11 @@ func run() -> bool:
 			for rule: Dictionary in suppress_props:
 				if str(node.get_meta("native_spawn_set", "")) == str(rule["spawn_set"]) and str(node.get_meta("native_identity", "")) == str(rule.get("identity", node.get_meta("native_identity", ""))): node.hide(); suppressed.append(node)
 	if host.player.upper_modifier != null: host.player.upper_modifier.track_target = false; host.player.upper_modifier.set_source_aim_angles(0, 0)
+	var commanded := {}
+	for command: Dictionary in data["commands"]:
+		if int(command["opcode"]) == 64: commanded[str(command.get("actor_record", {}).get("source_ram", "0x%08x" % int(command["words"][1]))).to_lower()] = true
 	for record: Dictionary in records.values():
-		if str(record["source_ram"]).to_lower() in registration_records: continue
+		if record["model"] == null or str(record["source_ram"]).to_lower() in registration_records and not commanded.has(str(record["source_ram"]).to_lower()): continue
 		var node: Node3D = await Props.spawn_entry(scene_root, stage, area, record["entry"], record["model"], host.native_context)
 		if node == null: _restore(); return false
 		var clock := node.get_node_or_null("NativeAnimationClock") as NativeAnimation
@@ -238,6 +241,7 @@ func _action(action: Dictionary) -> void:
 		"player_special_usable":
 			host.player.special_usable = int(action["value"]) != 0
 		"head_target": head_target = int(action["target"]); head_speed = int(action["speed"])
+		"story_advance": host.native_context["native_save_byte15"] = (int(host.native_context.get("native_save_byte15", host.native_context.get("native_save_byte14", 0))) + 1) & 255
 		"event_set":
 			var flags: Dictionary = host.native_context.get("event_flags", {}); flags[int(action["id"])] = true; host.native_context["event_flags"] = flags
 		"despawn":
@@ -392,7 +396,7 @@ func _camera_update() -> void:
 	if shot.has("visible_actor_slots"):
 		for slot: int in actors:
 			var node: Node3D = actors[slot]["node"]
-			if is_instance_valid(node) and node.visible and slot not in shot["visible_actor_slots"]: shot_suppressed.append(node); node.hide()
+			if is_instance_valid(node) and node.visible and not shot["visible_actor_slots"].has(float(slot)): shot_suppressed.append(node); node.hide()
 	if not bool(shot.get("player_visible", true)) and host.player.player_model.visible: shot_suppressed.append(host.player.player_model); host.player.player_model.hide()
 	var target := focus
 	var render_offset: Array = _profile().get("camera_offset_raw", [0, 0, 0])
@@ -425,7 +429,8 @@ func _remove(slot: int) -> void:
 	actors.erase(slot)
 func _activate_record(address: String) -> void:
 	var record: Dictionary = records.get(address, {})
-	if record.is_empty() or not actors.has(int(record["slot"])): message_failed = true; return
+	if record.is_empty(): message_failed = true; return
+	if not actors.has(int(record["slot"])): return
 	var slot := int(record["slot"]); actors[slot]["active"] = true; actors[slot]["node"].visible = true; var clock: NativeAnimation = actors[slot]["clock"]
 	if clock != null: clock.play_control(int(callbacks.get("actor_controllers", {}).get(str(slot), {}).get("startup_control", 0)))
 func _finish_scene() -> void:
@@ -447,10 +452,12 @@ func _finish_scene() -> void:
 	for address: String in registration_records:
 		var record: Dictionary = records.get(address, {})
 		if record.is_empty(): running = false; completed.emit(false); return
+		if record["model"] == null: continue
 		var vendor: Node3D = await Props.spawn_entry(scene_root, stage, area, record["entry"], record["model"], host.native_context)
 		if vendor == null: running = false; completed.emit(false); return
 		vendor.set_meta("native_scene_registration", true)
 		preload("res://scripts/world/rendering/native_material.gd").depth_cue(vendor, host.depth_cue_parameters)
+	if finish.has("player_position_raw"): host.player.global_position = scene_root.to_global(_world(finish["player_position_raw"]))
 	if finish.has("player_yaw_raw"): _set_yaw(host.player.player_model, int(finish["player_yaw_raw"]))
 	host.player.camera.make_current(); camera.current = false
 	if finish.has("fade_entry"): await host.transition_overlay.request(int(finish["fade_entry"]))

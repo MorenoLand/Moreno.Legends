@@ -5,6 +5,12 @@ static func settle_on_floor(actor: Node3D) -> void:
 	if not is_instance_valid(actor) or not actor.is_inside_tree(): return
 	var ground := ray(actor, actor.global_position + Vector3.UP * 1.125, actor.global_position - Vector3.UP * 2.0)
 	if not ground.is_empty() and (ground["normal"] as Vector3).y >= 0.65: actor.global_position.y = (ground["position"] as Vector3).y
+static func snap_to_floor(actor: Node3D, offset_raw: int) -> void:
+	if not is_instance_valid(actor) or not actor.is_inside_tree(): return
+	await actor.get_tree().physics_frame
+	if not is_instance_valid(actor) or not actor.is_inside_tree(): return
+	var ground := ray(actor, actor.global_position + Vector3.UP * 24.0, actor.global_position - Vector3.UP * 24.0)
+	if not ground.is_empty() and (ground["normal"] as Vector3).y >= 0.65: actor.global_position.y = (ground["position"] as Vector3).y - float(offset_raw) / 256.0
 static func attach_collision(actor: Node3D, bounds: Array) -> void:
 	if bounds.size() != 6: return
 	var minimum := Vector3(-float(bounds[1]), -float(bounds[3]), float(bounds[4])) / 256.0; var maximum := Vector3(-float(bounds[0]), -float(bounds[2]), float(bounds[5])) / 256.0
