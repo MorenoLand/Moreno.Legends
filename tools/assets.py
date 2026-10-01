@@ -1,6 +1,7 @@
 import argparse
 import hashlib
 import json
+import os
 import re
 import struct
 import sys
@@ -40,7 +41,7 @@ def export_models(source, stages, report):
 				texture_path = work / (name + "_vram.bin"); write_output(texture_path, struct.pack("<3I8H", 2, len(vram), 1, 0, 0, 0, 0, 0, 0, 1024, 512) + bytes(20) + vram)
 				destination = ROOT / "assets/levels" / stage / "models" / name if stage else ROOT / "assets/library" / path.parent.name.lower() / name
 				destination.mkdir(parents=True, exist_ok=True)
-				bulk_root = ROOT / "assets/levels" / stage / "models" if stage else ROOT / "assets/library"; (bulk_root / ".gdignore").touch(exist_ok=True)
+				ignore_bulk()
 				for model in archive["models"]:
 					if not model.get("mesh_offset"): continue
 					item = {"index": model["index"], "flags": model["flags"]}
@@ -67,16 +68,30 @@ def export_world(source, stages, report):
 			disc.extract_stage(path, ROOT / "build/maps")
 			world.export_geometry(source / "DAT", ROOT / "assets/levels", [stage]); manifest = json.loads((ROOT / "assets/levels" / stage / "manifest.json").read_text())
 			entry.update(status="exported", areas=len(manifest["areas"]), placements=sum(area["placements"] for area in manifest["areas"]))
-			if stage in world.STAGE_BINDINGS: world.export_routes(source / "DAT", ROOT / "assets/levels", [stage])
-			props = world.export_props(source / "DAT", ROOT / "assets/stage_props", [stage]); entry["binding_status"] = props["stages"][stage]["binding_status"]
 		except (ValueError, IndexError, KeyError, struct.error, OverflowError, OSError) as error: entry.update(status="unsupported", error=str(error))
 		report["stages"].append(entry)
+def ignore_bulk():
+	for directory in [ROOT / "assets" / name for name in ("library", "extracted", "converted", "audio")] + [ROOT / folder for folder in disc.RUNTIME_LOADED]:
+		if directory.is_dir() and not (directory / ".gdignore").exists(): write_output(directory / ".gdignore", "")
+def prune_sidecars():
+	removed = 0
+	for folder in disc.RUNTIME_LOADED:
+		for sidecar in (ROOT / folder).rglob("*.import"):
+			if disc.runtime_loaded(disc.relative_output(sidecar.with_suffix(""))): sidecar.unlink(); removed += 1
+	return removed
+def import_sidecars(prune=False):
+	ignore_bulk(); written = 0; scanned = 0; removed = prune_sidecars() if prune else 0
+	for current, folders, files in os.walk(ROOT / "assets"):
+		if ".gdignore" in files: folders.clear(); continue
+		if Path(current) == ROOT / "assets/achievements": folders.clear(); continue
+		for name in files:
+			if name.rsplit(".", 1)[-1].lower() in disc.IMPORT_PRESETS and not name.endswith(".import"): scanned += 1; written += bool(disc.write_import_settings(Path(current) / name))
+	return {"assets": scanned, "sidecars_written": written, "sidecars_removed": removed}
 def prepare(cue, source, stages, only, report_path=None):
-	(ROOT / "build").mkdir(exist_ok=True); (ROOT / "build/.gdignore").touch(exist_ok=True)
-	for directory in [ROOT / "assets" / name for name in ("library", "extracted", "converted")] + list((ROOT / "assets/levels").glob("*/models")):
-		if directory.is_dir(): (directory / ".gdignore").touch(exist_ok=True)
+	(ROOT / "build").mkdir(exist_ok=True); write_output(ROOT / "build/.gdignore", "")
+	ignore_bulk()
 	if set(only) & {"models", "textures", "audio", "media"}:
-		library = ROOT / "assets/library"; library.mkdir(parents=True, exist_ok=True); (library / ".gdignore").touch(exist_ok=True)
+		library = ROOT / "assets/library"; library.mkdir(parents=True, exist_ok=True); write_output(library / ".gdignore", "")
 	if cue is not None: disc.extract(cue, source, set(), reuse=True)
 	if not source.is_dir(): raise FileNotFoundError("Extracted disc directory does not exist: " + str(source))
 	report = {"files": catalog(source), "stages": [], "model_archives": [], "tasks": []}
@@ -86,9 +101,19 @@ def prepare(cue, source, stages, only, report_path=None):
 			if isinstance(result, (dict, list)): entry["details"] = result
 			report["tasks"].append(entry)
 		except (OSError, ValueError, RuntimeError, IndexError, KeyError, struct.error, OverflowError) as error: report["tasks"].append({"name": name, "status": "unsupported", "error": str(error)})
-	if "world" in only: export_world(source, stages, report)
+	if "world" in only:
+		task("location_names", world.export_location_names)
+		export_world(source, stages, report)
+		map_stages = [entry["stage"] for entry in report["stages"] if entry["status"] == "exported"]
+		if "ST0F" in map_stages: task("mine_doors", lambda: models.export_doors(source / "DAT", ROOT / "build/maps", ROOT / "assets/levels/ST0F"))
+		task("routes", lambda: world.export_routes(source / "DAT", ROOT / "assets/levels", map_stages))
+		for entry in report["stages"]:
+			if entry["status"] != "exported": continue
+			stage = entry["stage"]; task("props_" + stage, lambda stage=stage: {"binding_status": world.export_props(source / "DAT", ROOT / "assets/stage_props", [stage])["stages"][stage]["binding_status"]})
+			if report["tasks"][-1]["status"] == "exported": entry["binding_status"] = report["tasks"][-1]["details"]["binding_status"]
 	if "textures" in only: task("textures", lambda: world.export_texture_library(source, ROOT / "assets/library/textures"))
 	if "models" in only: export_models(source, stages, report); task("player", models.export_player); task("special_weapon_0f", models.export_extinguisher); task("player_effects", models.export_player_effects); task("special_modes", models.export_special_modes); task("player_library", lambda: models.export_player_library(ROOT / "assets/library/players"))
+	if set(only) & {"world", "models"} and (not stages or "ST11" in stages): task("icefield_effects", models.export_icefield_effects)
 	if "ui" in only:
 		for name, function in [("hud", ui.hud_cli), ("projectile", ui.export_projectile), ("menu", ui.export_menu), ("dialogue", ui.export_dialogue), ("mission_banner", ui.export_mission_banner), ("game_over", ui.export_game_over), ("title_font", ui.export_title_font)]: task(name, function)
 		task("fades", lambda: ui.export_fades(source, ROOT / "assets/fades"))
@@ -98,7 +123,7 @@ def prepare(cue, source, stages, only, report_path=None):
 	if "media" in only:
 		if cue is None: report["tasks"].append({"name": "disc_media", "status": "requires_disc", "error": "The original CUE is required for raw XA and STR sectors"})
 		else: task("opening_audio", lambda: audio.export_opening_audio(cue)); task("intro_audio", lambda: cinematics.export_intro_audio(cue)); task("stage_voices", lambda: [audio.export_stage_voices(cue, "COMMON")] + [audio.export_stage_voices(cue, path.name) for path in sorted((ROOT / "assets/levels").glob("ST??")) if (not stages or path.name in stages) and audio.stage_voice_tables(path.name)[1]]);task("xa_library", lambda: audio.export_xa_library(cue, ROOT / "assets/library/voices")); task("movies", lambda: disc.export_movies(cue))
-	if "world" in only and (not stages or "ST0F" in stages): task("mine_doors", lambda: models.export_doors(source / "DAT", ROOT / "build/maps", ROOT / "assets/levels/ST0F")); task("minimap", lambda: world.export_minimap(source / "DAT", ROOT / "build/maps", ROOT / "assets/minimap/ST0F"))
+	if "world" in only and (not stages or "ST0F" in stages): task("minimap", lambda: world.export_minimap(source / "DAT", ROOT / "build/maps", ROOT / "assets/minimap/ST0F"))
 	if "world" in only:
 		for npc_stage in ["ST0F", *models.NPC_STAGE_BINDINGS]:
 			if not stages or npc_stage in stages: task("npcs_" + npc_stage, lambda npc_stage=npc_stage: models.export_npcs(source / "DAT", ROOT / "assets/levels" / npc_stage, npc_stage))
@@ -119,7 +144,6 @@ def prepare(cue, source, stages, only, report_path=None):
 	if "world" in only and (not stages or "ST47" in stages): task("joseph_room_scene", cinematics.export_joseph_room_scene)
 	if "world" in only and (not stages or any(stage in stages for stage in world.SHOP_STAGES)): task("shops", world.export_shops)
 	if "world" in only: task("lighting", world.lighting_cli); task("depth_cue", lambda: world.export_depth_cue(source / "DAT", ROOT / "assets/levels")); task("weather", lambda: world.export_weather(source / "DAT", ROOT / "assets/weather"))
-	if "world" in only: task("location_names", world.export_location_names)
 	if "world" in only: task("area_roofs", lambda: world.export_area_roofs(source / "DAT", ROOT / "assets/levels"))
 	if "world" in only: task("stage_regions", lambda: world.export_stage_regions(ROOT / "assets/locations/stage_regions.json"))
 	if "world" in only: task("bitmap_minimaps", lambda: world.export_bitmap_minimaps(source / "DAT", ROOT / "assets/minimap", stages))
@@ -127,6 +151,7 @@ def prepare(cue, source, stages, only, report_path=None):
 	if "world" in only and all((ROOT / "assets/levels" / stage / "doors.json").is_file() for stage in ["ST09", "ST0A", "ST0C", "ST47"]): task("town_room_layout", lambda: world.export_room_layout(ROOT / "assets/levels", ROOT / "assets/locations/town_room_layout.json", ("ST09", "ST0A", "ST0C", "ST47")))
 	if "world" in only and (ROOT / "assets/levels/ST0F/doors.json").is_file(): task("mine_room_layout", lambda: world.export_room_layout(ROOT / "assets/levels", ROOT / "assets/locations/mine_room_layout.json", ("ST0F",)))
 	if "world" in only and (ROOT / "assets/levels/ST08/doors.json").is_file(): task("landing_room_layout", lambda: world.export_room_layout(ROOT / "assets/levels", ROOT / "assets/locations/landing_room_layout.json", ("ST08",)))
+	ignore_bulk()
 	report["summary"] = {"source_files": len(report["files"]), "source_bytes": sum(item["bytes"] for item in report["files"]), "stages_exported": sum(item["status"] == "exported" for item in report["stages"]), "models_exported": sum(model["status"] == "exported" for archive in report["model_archives"] for model in archive["models"]), "unsupported": sum(item["status"] == "unsupported" for item in report["stages"] + report["model_archives"] + report["tasks"]) + sum(model["status"] == "unsupported" for archive in report["model_archives"] for model in archive["models"])}
 	report_path = report_path or ROOT / "build/asset_coverage.json"; report_path.parent.mkdir(parents=True, exist_ok=True); write_output(report_path, json.dumps(report, indent=2), encoding="utf-8"); print(json.dumps(report["summary"], indent=2)); return report
 def main():
@@ -139,10 +164,18 @@ def main():
 	parser.add_argument("--only", action="append", choices=list(GROUPS), help="run only this export group (repeatable; default: all groups)")
 	parser.add_argument("--overwrite", action="store_true", help="replace every existing output file")
 	parser.add_argument("--overwrite-only", action="append", default=[], metavar="PATTERN", help="replace only existing files matching this glob relative to the repository root, e.g. 'assets/dialogue/*' or 'assets/levels/ST10/**' (repeatable)")
+	parser.add_argument("--import-sidecars", action="store_true", help="only write Redot .import presets and .gdignore markers for assets already in assets/ (no disc needed); existing sidecars are kept unless --overwrite or a matching --overwrite-only pattern such as 'assets/**/*.import' allows retrofitting them")
+	parser.add_argument("--prune-sidecars", action="store_true", help="with --import-sidecars: delete the stale .import files of GLB/PNG assets under the runtime-loaded folders (assets/levels, stage_props, opening, flutter, minimap); the game loads those files directly")
+	parser.add_argument("--convert-audio", action="store_true", help="only convert the WAV files already in assets/ to Ogg Vorbis (no disc needed): each .ogg is written next to its .wav (existing .ogg files are kept unless --overwrite or a matching --overwrite-only pattern succeeds), decoded and length-checked, the manifests are rewritten to the .ogg paths, and a .wav is deleted only after its .ogg verified")
 	parser.add_argument("--verbose", action="store_true", help="print every kept file")
 	args = parser.parse_args()
-	import audio, cinematics, models, ui, world
 	disc.configure_overwrite(args.overwrite, args.overwrite_only, args.verbose)
+	if args.import_sidecars: print(json.dumps(import_sidecars(args.prune_sidecars))); print(disc.kept_summary() or ""); return
+	if args.convert_audio:
+		import audio; result = audio.convert_audio(); print(json.dumps(result, indent=2)); print(disc.kept_summary() or "")
+		if result["failed"]: parser.exit(1, "Some WAV files were not converted; they were kept.\n")
+		return
+	import audio, cinematics, models, ui, world
 	stages = {stage.upper() for stage in args.stage or []}
 	if any(not re.fullmatch(r"ST[0-9A-F]{2}", stage) for stage in stages): parser.error("Stage IDs must be ST00 through STFF")
 	sys.argv = [sys.argv[0]]

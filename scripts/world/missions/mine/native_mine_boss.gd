@@ -35,7 +35,8 @@ func configure(entry: Dictionary, metadata: Dictionary, directory: String) -> vo
 	for index in range(6):
 		var body := Hurtbox.new(); body.owner_actor = self; body.collision_layer = 8; body.collision_mask = 0
 		var shape := CollisionShape3D.new(); var capsule := CapsuleShape3D.new(); capsule.radius = 72.0 / 256.0; shape.shape = capsule; body.add_child(shape); add_child(body); limb_boxes.append(body)
-	set_meta("native_source_record", str(entry.get("source_record_ram", "0x8010180c")))
+	set_meta("native_source_record", str(entry.get("source_record_ram", "0x8010180c"))); set_meta("native_existing_actor", "mine_boss")
+func native_scene_active() -> bool: return not removed
 func _physics_process(delta: float) -> void:
 	if target == null or removed or (not dying and not target.is_physics_processing()): return
 	tick_accumulator += delta

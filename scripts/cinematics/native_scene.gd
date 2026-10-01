@@ -6,6 +6,8 @@ var host: Node3D
 var scene_root: Node3D
 var data: Dictionary = {}
 var callbacks: Dictionary = {}
+var xa_entries: Dictionary = {}
+var xa_streams: Dictionary = {}
 var directory := ""
 var stage := ""
 var area := 0
@@ -40,13 +42,19 @@ var focus := Vector3.ZERO
 var relative_focus := Vector3.ZERO
 var orbit := Vector3.ZERO
 var eye := Vector3.ZERO
+var focus_velocity := Vector3.ZERO
+var orbit_velocity := Vector3.ZERO
+var eye_velocity := Vector3.ZERO
 var trig: Array = []
 var xa: AudioStreamPlayer
 var transition_route: Dictionary = {}
 var suppressed: Array[Node3D] = []
+var suppressed_streams: Array[Dictionary] = []
 var owns_root := false
 var answer := 0
 var skip_locked := false
+var skip_requested := false
+var scene_flags := 0
 var sound_latched := false
 var faces: Dictionary = {}
 var interpolations: Dictionary = {}
@@ -67,7 +75,9 @@ func configure(gameplay: Node3D, level: Node3D, path: String, requested_area: in
 	host = gameplay; scene_root = level; directory = path.get_base_dir()
 	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
 	if not parsed is Dictionary: return false
-	data = parsed.get("branches", {}).get(str(requested_area), {}) if parsed.has("branches") else parsed
+	if parsed.has("branch_event_flag"):
+		var flags: Dictionary = host.native_context.get("event_flags", {}); var id := int(parsed["branch_event_flag"]); data = parsed.get("branches", {}).get("set" if bool(flags.get(id, flags.get(str(id), false))) else "clear", {})
+	else: data = parsed.get("branches", {}).get(str(requested_area), {}) if parsed.has("branches") else parsed
 	if data.is_empty(): return false
 	stage = str(data["stage"]); area = int(data["area"])
 	var callback_path: String = directory.path_join(str(data["callback_contract_file"]))
@@ -117,6 +127,7 @@ func run() -> bool:
 	saved_motion_active = host.player.motion_tree.active if host.player.motion_tree != null else false
 	if host.player.motion_tree != null: host.player.motion_tree.active = false
 	host.player.velocity = Vector3.ZERO; host.player.set_physics_process(false)
+	if not await _prepare_voice_assets(): _restore(); return false
 	if bool(host.get("streaming_rooms")) and is_instance_valid(host.room_stream):
 		for key in host.room_stream.opened_portals.keys():
 			var leaf: Node3D = host.room_stream.portal_leaves.get(key)
@@ -127,6 +138,7 @@ func run() -> bool:
 	if initial.has("music_cue"): host.audio.play_sound(int(initial["music_cue"]))
 	for placement: int in initial.get("suppress_placements", []):
 		for node: Node3D in scene_root.find_children("placement_%03d_*" % placement, "Node3D", true, false): node.hide(); suppressed.append(node)
+	suppressed_streams = preload("res://scripts/world/rendering/native_material.gd").placement_streams(scene_root, initial.get("placement_streams", []))
 	var suppress_props: Array = initial.get("suppress_props", [])
 	if not suppress_props.is_empty() and is_instance_valid(host.level):
 		for node: Node3D in host.level.find_children("*", "Node3D", true, false):
@@ -137,12 +149,17 @@ func run() -> bool:
 	for command: Dictionary in data["commands"]:
 		if int(command["opcode"]) == 64: commanded[str(command.get("actor_record", {}).get("source_ram", "0x%08x" % int(command["words"][1]))).to_lower()] = true
 	for record: Dictionary in records.values():
-		if record["model"] == null or str(record["source_ram"]).to_lower() in registration_records and not commanded.has(str(record["source_ram"]).to_lower()): continue
-		var node: Node3D = await Props.spawn_entry(scene_root, stage, area, record["entry"], record["model"], host.native_context)
+		if record["model"] == null and not record["entry"].has("native_backdrop") or str(record["source_ram"]).to_lower() in registration_records and not commanded.has(str(record["source_ram"]).to_lower()): continue
+		var node: Node3D
+		if record.has("existing_actor"):
+			for candidate: Node3D in host.actors.find_children("*", "Node3D", true, false):
+				if str(candidate.get_meta("native_existing_actor", "")) == str(record["existing_actor"]): node = candidate; break
+		elif record["entry"].has("native_backdrop"): node = preload("res://scripts/cinematics/native_stage_backdrop.gd").new(); scene_root.add_child(node); node.configure(self, record["entry"])
+		else: node = await Props.spawn_entry(scene_root, stage, area, record["entry"], record["model"], host.native_context)
 		if node == null: _restore(); return false
-		var clock := node.get_node_or_null("NativeAnimationClock") as NativeAnimation
+		var clock := node.get_node_or_null("NativeAnimationClock") as NativeAnimation if not record.has("existing_actor") else null
 		if clock != null: clock.automatic = false
-		var direct: bool = str(record["source_ram"]) in initial.get("spawn_records", []); node.visible = direct; actors[int(record["slot"])] = {"node": node, "clock": clock, "record": record, "active": direct, "head_target": 0, "head_speed": 0, "head_enabled": false, "flag_started": false, "fields": {}, "face_tables": {}, "face_dims": record["model"].get("face_dims", [0, 0, 0, 0]), "face_surfaces": _face_surfaces(node, record["model"].get("source_surfaces", []))}
+		var metadata: Dictionary = record["model"] if record["model"] is Dictionary else {}; var direct: bool = record.has("existing_actor") or str(record["source_ram"]) in initial.get("spawn_records", []); node.visible = direct; actors[int(record["slot"])] = {"node": node, "clock": clock, "record": record, "active": direct, "borrowed": record.has("existing_actor"), "head_target": 0, "head_speed": 0, "head_enabled": false, "flag_started": false, "fields": {}, "face_tables": {}, "face_dims": metadata.get("face_dims", [0, 0, 0, 0]), "face_surfaces": _face_surfaces(node, metadata.get("source_surfaces", []))}
 	for operation: Dictionary in initial.get("init_ops", []):
 		if str(operation["op"]) == "play_xa":
 			await _play_xa(int(operation["descriptor"]))
@@ -157,15 +174,18 @@ func run() -> bool:
 		if not FileAccess.file_exists(audio_path): _restore(); return false
 		var audio: Variant = JSON.parse_string(FileAccess.get_file_as_string(audio_path))
 		if not audio is Dictionary or int(audio.get("id", -1)) != int(callbacks["xa"]["descriptor_index"]): _restore(); return false
+		if not await AssetStore.ensure_voice(audio): _restore(); return false
 		var stream: AudioStream = await host.audio._load_stream(str(audio["file"]))
 		if stream == null: _restore(); return false
 		xa = AudioStreamPlayer.new(); xa.stream = stream; xa.bus = "SFX" if AudioServer.get_bus_index("SFX") >= 0 else "Master"; add_child(xa); xa.play()
 		while is_inside_tree() and xa.get_playback_position() <= 0.0: await get_tree().process_frame
-	camera.make_current(); running = true; _commands(); segment_tick = 1; phase_tick = 1; total_tick = 1; _camera_update()
+	camera.make_current(); running = true; _commands(); _interpolate(); segment_tick = 1; phase_tick = 1; total_tick = 1; _camera_update()
 	var success: bool = await completed
 	_restore(); return success
 func _process(delta: float) -> void:
 	if not running or finishing: return
+	if skip_requested: _skip_scene()
+	if finishing: return
 	elapsed += delta * float(data.get("native_tick_hz", 25))
 	while elapsed >= 1.0 and running and not finishing:
 		elapsed -= 1.0; native_tick()
@@ -212,12 +232,17 @@ func _program(program: Array) -> void:
 			elif op == "area_change": _area_change(operation)
 			elif op == "fade": _fade(int(operation["type"]), bool(operation.get("wait", true)))
 			elif op == "jump" or (op == "jump_if" and answer == int(operation["answer"])): program_index = _label(program, str(operation["to"])); operation_started = false; continue
-			elif op not in ["message_wait", "minimum_tick", "delay", "turn_wait", "advance", "finish", "label", "jump_if", "wait_flag_clear", "wait_xa_idle"]: _action(operation)
+			elif op not in ["message_wait", "minimum_tick", "delay", "turn_wait", "advance", "finish", "label", "jump_if", "wait_flag_clear", "wait_xa_idle", "wait_actor_inactive"]: _action(operation)
 		if message_failed: return
 		if op == "area_change" and area_loading: return
 		if op == "fade" and fade_busy: return
 		if op == "wait_flag_clear" and _flag(_flag_id(operation["flag"])): return
 		if op == "wait_xa_idle" and is_instance_valid(xa) and xa.playing: return
+		if op == "wait_actor_inactive" and actors.has(int(operation["slot"])):
+			var actor: Variant = actors[int(operation["slot"])]["node"]
+			if is_instance_valid(actor):
+				if not actor.has_method("native_scene_active"): message_failed = true; return
+				if actor.native_scene_active(): return
 		if op in ["message", "message_wait"] and message_busy: return
 		if op == "delay" and segment_tick - operation_tick < int(operation["ticks"]): return
 		if op == "minimum_tick" and segment_tick < int(operation["tick"]): return
@@ -236,6 +261,8 @@ func _mission_banner() -> Control:
 func _action(action: Dictionary) -> void:
 	match str(action["op"]):
 		"player_control": player_clock.play_control(int(action["control"]), int(action.get("start_record", 0)))
+		"hp_refill": host.player.refill_health()
+		"director_state": director_state = int(action["state"])
 		"result_banner": _mission_banner().show_banner(int(action["args_raw"][0]), int(action["args_raw"][1]), int(action["args_raw"][2]))
 		"result_banner_hide": _mission_banner().hide_banner()
 		"player_special_usable":
@@ -244,6 +271,8 @@ func _action(action: Dictionary) -> void:
 		"story_advance": host.native_context["native_save_byte15"] = (int(host.native_context.get("native_save_byte15", host.native_context.get("native_save_byte14", 0))) + 1) & 255
 		"event_set":
 			var flags: Dictionary = host.native_context.get("event_flags", {}); flags[int(action["id"])] = true; host.native_context["event_flags"] = flags
+		"event_clear": _clear_flag(int(action["id"]))
+		"close_windows": host.dialogue_box.finish_native_message()
 		"despawn":
 			var record: Dictionary = records.get(str(action["record"]).to_lower(), {})
 			if not record.is_empty(): _remove(int(record["slot"]))
@@ -268,11 +297,15 @@ func _action(action: Dictionary) -> void:
 			if actors.has(int(action["slot"])): actors[int(action["slot"])]["fields"]["0x0C"] = int(action["field_0x0C"])
 		"camera_shake": shake = int(action["magnitude_raw"]); shake_decay = int(action["decay_raw"])
 		"skip_lock": skip_locked = bool(action["set"])
+		"scene_flag": scene_flags = scene_flags | int(action["mask"]) if bool(action["set"]) else scene_flags & ~int(action["mask"])
 		"select_by_flags":
 			var ids: Array = action["flags"]
 			for index in range(ids.size()):
 				if _flag(int(ids[index])): answer = index
 		"play_xa": _play_xa(int(action["descriptor_by_answer"][answer]) if action.has("descriptor_by_answer") else int(action["descriptor"]))
+		"music_prepare": pass
+		"music_play": _play_xa(int(action["id"]))
+		"jingle": host.audio.fade_sequences(int(action["args_raw"][0]), int(action["args_raw"][1]), int(action["args_raw"][2]))
 		"xa_fade_out": _fade_xa(int(action["speed"]))
 		"sky_gradient": camera.set_meta("native_sky_gradient", [int(action.get("horizon_raw", 0)), int(action.get("param_18_raw", 0))])
 		"scrolling_backdrop":
@@ -312,9 +345,15 @@ func _actor_tick() -> void:
 		var actor: Dictionary = actors[slot]
 		if not bool(actor["active"]) or not is_instance_valid(actor["node"]): continue
 		var node: Node3D = actor["node"]; var profile: Dictionary = callbacks.get("actor_controllers", {}).get(str(slot), {}); var clock: NativeAnimation = actor["clock"]
+		if profile.has("external_controller"): continue
 		node.position -= actor.get("render_offset", Vector3.ZERO)
+		if profile.has("hinge_raw"):
+			if not actor.has("rest_yaw"): actor["rest_yaw"] = node.rotation.y
+			node.position -= actor.get("hinge_shift", Vector3.ZERO)
 		var total_yaw: Dictionary = profile.get("total_yaw_increment", {})
 		if not total_yaw.is_empty() and total_tick >= int(total_yaw["from_tick"]) and total_tick <= int(total_yaw["through_tick"]): _set_yaw(node, (_yaw(node) + mini(total_tick >> int(total_yaw["shift"]), int(total_yaw["maximum"])) * int(total_yaw["sign"])) & 4095)
+		if profile.has("hinge_raw"):
+			var hinge := _world(profile["hinge_raw"]); actor["hinge_shift"] = Basis(Vector3.UP, actor["rest_yaw"]) * hinge - Basis(Vector3.UP, node.rotation.y) * hinge; node.position += actor["hinge_shift"]
 		for event: Dictionary in profile.get("events", []):
 			if int(event["step"]) != step: continue
 			if event.has("tick") and int(event["tick"]) != segment_tick: continue
@@ -346,6 +385,7 @@ func _actor_tick() -> void:
 				if str(reaction["op"]) == "event_clear": _clear_flag(int(reaction["id"]))
 				elif str(reaction["op"]) == "actor_face": _set_face(node, str(actor["face_tables"].get(str(reaction["channel"]), "")), str(reaction["channel"]), int(reaction["sequence"]))
 		if clock != null: clock.native_tick()
+		if node.has_method("native_tick"): node.native_tick(actor["fields"])
 		var render_raw: Array = profile.get("render_offset_by_step", {}).get(str(step), [0, 0, 0]); actor["render_offset"] = _world(render_raw); node.position += actor["render_offset"]
 func _head_tick() -> void:
 	var difference := ((_yaw(host.player.player_model) + head_units - head_target + 2048) & 4095) - 2048
@@ -370,8 +410,9 @@ func _commands() -> void:
 			17, 18: target_mode = 1 if opcode == 17 else 2; target_slot = (header >> 16) & 255; relative_focus = _fixed(words)
 			19: orbit = _fixed(words)
 			20: eye = _fixed(words)
-			21, 22:
-				if _fixed(words) != Vector3.ZERO: message_failed = true; return
+			21: focus_velocity = _fixed(words); interpolations.erase("focus")
+			22: orbit_velocity = _fixed(words); interpolations.erase("view")
+			23: eye_velocity = _fixed(words); interpolations.erase("view")
 			32, 33, 34: camera.set_meta("native_depth_cue_mode", opcode - 32)
 			64:
 				var record: Dictionary = records.get(str(command.get("actor_record", {}).get("source_ram", "")).to_lower(), {})
@@ -383,9 +424,12 @@ func _commands() -> void:
 				if not record.is_empty(): _remove(int(record["slot"]))
 			66:
 				host.player.global_position = scene_root.to_global(_world([_fixed(words).x, _fixed(words).y, _fixed(words).z])); _set_yaw(host.player.player_model, int(words[4]) & 4095)
-			24, 25:
-				var channel := "orbit" if opcode == 25 else ("relative_focus" if target_mode != 0 else "focus"); var origin: Vector3 = orbit if channel == "orbit" else relative_focus if channel == "relative_focus" else focus
+			24, 25, 26:
+				var channel := "focus" if opcode == 24 else "view"; var origin: Vector3 = (focus if target_mode == 0 else relative_focus) if opcode == 24 else orbit if opcode == 25 else eye
 				interpolations[channel] = {"from": origin, "to": _fixed(words), "ticks": maxi(header & 65535, 1), "ease": (header >> 16) & 7, "elapsed": 0}
+				if opcode == 24: focus_velocity = Vector3.ZERO
+				elif opcode == 25: orbit_velocity = Vector3.ZERO
+				else: eye_velocity = Vector3.ZERO
 			255: return
 			_: message_failed = true; return
 func _fixed(words: Array) -> Vector3: return Vector3(_s32(int(words[1])), _s32(int(words[2])), _s32(int(words[3]))) / 65536.0
@@ -395,13 +439,14 @@ func _camera_update() -> void:
 	var shot := _profile()
 	if shot.has("visible_actor_slots"):
 		for slot: int in actors:
-			var node: Node3D = actors[slot]["node"]
+			var node: Variant = actors[slot]["node"]
 			if is_instance_valid(node) and node.visible and not shot["visible_actor_slots"].has(float(slot)): shot_suppressed.append(node); node.hide()
 	if not bool(shot.get("player_visible", true)) and host.player.player_model.visible: shot_suppressed.append(host.player.player_model); host.player.player_model.hide()
 	var target := focus
 	var render_offset: Array = _profile().get("camera_offset_raw", [0, 0, 0])
 	if target_mode == 1 and actors.has(target_slot):
-		var actor_position: Vector3 = actors[target_slot]["node"].position - actors[target_slot].get("render_offset", Vector3.ZERO); target = Vector3(-actor_position.x, -actor_position.y, actor_position.z) * 256.0 + relative_focus
+		var tracked: Variant = actors[target_slot]["node"]; if is_instance_valid(tracked): actors[target_slot]["last_global"] = tracked.global_position
+		var actor_position: Vector3 = scene_root.to_local(actors[target_slot].get("last_global", Vector3.ZERO)) - actors[target_slot].get("render_offset", Vector3.ZERO); target = Vector3(-actor_position.x, -actor_position.y, actor_position.z) * 256.0 + relative_focus
 	elif target_mode == 2: var local: Vector3 = scene_root.to_local(host.player.global_position); target = Vector3(-local.x, -local.y, local.z) * 256.0 + relative_focus
 	target.y -= float(shake >> 8); shake = maxi(shake - shake_decay, 0)
 	if eye_mode != 0:
@@ -424,13 +469,15 @@ func _constrain_camera(target: Vector3) -> void:
 	if not hit.is_empty(): camera.global_position = focus_position + offset.normalized() * maxf(focus_position.distance_to(hit["position"]) - maxf(camera.near * 2.0, 0.1), 0.0)
 func _remove(slot: int) -> void:
 	if not actors.has(slot): return
-	var node: Node3D = actors[slot]["node"]
-	if is_instance_valid(node): node.queue_free()
+	var node: Variant = actors[slot]["node"]
+	if is_instance_valid(node) and not bool(actors[slot].get("borrowed", false)): node.queue_free()
 	actors.erase(slot)
 func _activate_record(address: String) -> void:
 	var record: Dictionary = records.get(address, {})
 	if record.is_empty(): message_failed = true; return
-	if not actors.has(int(record["slot"])): return
+	if not actors.has(int(record["slot"])):
+		if not record["entry"].has("native_backdrop"): return
+		var node := preload("res://scripts/cinematics/native_stage_backdrop.gd").new(); scene_root.add_child(node); node.configure(self, record["entry"]); actors[int(record["slot"])] = {"node": node, "clock": null, "record": record, "active": false, "head_target": 0, "head_speed": 0, "head_enabled": false, "flag_started": false, "fields": {}, "face_tables": {}, "face_dims": [0, 0, 0, 0], "face_surfaces": []}
 	var slot := int(record["slot"]); actors[slot]["active"] = true; actors[slot]["node"].visible = true; var clock: NativeAnimation = actors[slot]["clock"]
 	if clock != null: clock.play_control(int(callbacks.get("actor_controllers", {}).get(str(slot), {}).get("startup_control", 0)))
 func _finish_scene() -> void:
@@ -448,7 +495,12 @@ func _finish_scene() -> void:
 				else: _fade(int(operation["type"]), false)
 			_: _action(operation)
 	if finish.has("fade_exit") and not faded: await host.transition_overlay.request(int(finish["fade_exit"]))
-	for slot: int in actors.keys(): _remove(slot)
+	for slot: int in actors.keys():
+		var actor: Dictionary = actors[slot]; var node: Variant = actor["node"]
+		if str(actor["record"]["source_ram"]).to_lower() in finish.get("retain_actor_records", []) and is_instance_valid(node):
+			if node.get_parent() != host.level: node.reparent(host.level, true)
+			actors.erase(slot)
+		else: _remove(slot)
 	for address: String in registration_records:
 		var record: Dictionary = records.get(address, {})
 		if record.is_empty(): running = false; completed.emit(false); return
@@ -478,6 +530,9 @@ func _restore() -> void:
 	_release_root()
 	for node: Node3D in suppressed:
 		if is_instance_valid(node): node.show()
+	for entry: Dictionary in suppressed_streams:
+		if is_instance_valid(entry["node"]): (entry["node"] as MeshInstance3D).set_surface_override_material(int(entry["surface"]), entry["material"])
+	suppressed_streams.clear()
 func _restore_shot_visibility() -> void:
 	for node: Node3D in shot_suppressed:
 		if is_instance_valid(node): node.show()
@@ -510,14 +565,38 @@ func _flag(id: int) -> bool:
 	var flags: Dictionary = host.native_context.get("event_flags", {}); return bool(flags.get(id, flags.get(str(id), false)))
 func _clear_flag(id: int) -> void:
 	var flags: Dictionary = host.native_context.get("event_flags", {}); flags[id] = false; flags.erase(str(id)); host.native_context["event_flags"] = flags
+func _prepare_voice_assets() -> bool:
+	var descriptors: Dictionary = {}; var prepared: Dictionary = {}; var pending: Array = [callbacks]
+	if callbacks.has("xa"): descriptors[int(callbacks["xa"]["descriptor_index"])] = true
+	while not pending.is_empty():
+		var value: Variant = pending.pop_back()
+		if value is Array: pending.append_array(value)
+		elif value is Dictionary:
+			if str(value.get("op", "")) == "play_xa":
+				if value.has("descriptor"): descriptors[int(value["descriptor"])] = true
+				for id in value.get("descriptor_by_answer", []): descriptors[int(id)] = true
+			elif str(value.get("op", "")) in ["music_prepare", "music_play"]: descriptors[int(value["id"])] = true; prepared[int(value["id"])] = true
+			for child: Variant in value.values():
+				if child is Dictionary or child is Array: pending.append(child)
+	if descriptors.is_empty(): return true
+	for path: String in ["res://assets/audio/common_voices/manifest.json", directory.path_join("audio/manifest.json")]:
+		if not FileAccess.file_exists(path): continue
+		var manifest: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+		if not manifest is Dictionary: return false
+		for entry: Dictionary in manifest.get("entries", []): xa_entries[int(entry["id"])] = entry
+		if manifest.has("id") and manifest.has("file"): xa_entries[int(manifest["id"])] = manifest
+	for id in descriptors:
+		if not xa_entries.has(id) or not await AssetStore.ensure_voice(xa_entries[id]): return false
+		if prepared.has(id):
+			var stream: AudioStream = await host.audio._load_stream(str(xa_entries[id]["file"]))
+			if stream == null: return false
+			xa_streams[id] = stream
+	return true
 func _play_xa(id: int) -> void:
-	var manifest: Variant = JSON.parse_string(FileAccess.get_file_as_string(directory.path_join("audio/manifest.json")))
-	var entry: Dictionary = {}
-	if manifest is Dictionary:
-		for item: Dictionary in manifest.get("entries", []):
-			if int(item["id"]) == id: entry = item
+	var entry: Dictionary = xa_entries.get(id, {})
 	if entry.is_empty(): message_failed = true; return
-	var stream: AudioStream = await host.audio._load_stream(str(entry["file"]))
+	if not await AssetStore.ensure_voice(entry) or not is_inside_tree(): message_failed = true; return
+	var stream: AudioStream = xa_streams[id] if xa_streams.has(id) else await host.audio._load_stream(str(entry["file"]))
 	if stream == null: message_failed = true; return
 	if not is_instance_valid(xa): xa = AudioStreamPlayer.new(); xa.bus = "SFX" if AudioServer.get_bus_index("SFX") >= 0 else "Master"; add_child(xa)
 	xa.stream = stream; xa.volume_db = 0.0; xa.play(); xa_ready_tick = -1; xa_answer = answer if id != int(callbacks.get("xa", {}).get("descriptor_index", -1)) else -1
@@ -527,14 +606,31 @@ func _fade_xa(speed: int) -> void:
 func _xa_tick() -> void:
 	if is_instance_valid(xa) and xa.playing and xa_ready_tick < 0 and xa.get_playback_position() > 0.0: xa_ready_tick = total_tick
 func _interpolate() -> void:
+	if not interpolations.has("focus"):
+		if target_mode == 0: focus += focus_velocity
+		else: relative_focus += focus_velocity
+	if not interpolations.has("view"):
+		if eye_mode == 0: orbit += orbit_velocity
+		else: eye += eye_velocity
 	for channel: String in interpolations.keys():
-		var state: Dictionary = interpolations[channel]; state["elapsed"] = int(state["elapsed"]) + 1; var t := minf(float(state["elapsed"]) / float(state["ticks"]), 1.0)
-		var eased := (1.0 - cos(PI * t)) * 0.5 if int(state["ease"]) == 1 else 1.0 - (1.0 - t) * (1.0 - t) if int(state["ease"]) == 2 else t * t if int(state["ease"]) == 3 else t
-		var value: Vector3 = (state["from"] as Vector3).lerp(state["to"], eased)
-		if channel == "orbit": orbit = value
-		elif channel == "focus": focus = value
-		else: relative_focus = value
-		if int(state["elapsed"]) >= int(state["ticks"]): interpolations.erase(channel)
+		var state: Dictionary = interpolations[channel]; var value: Vector3 = state["from"]; var tick := int(state["elapsed"]); var ticks := int(state["ticks"])
+		if tick == ticks - 1: value = state["to"]
+		elif tick > 0:
+			for axis in range(3):
+				var start := roundi(float(state["from"][axis]) * 65536.0); var end := roundi(float(state["to"][axis]) * 65536.0); var raw := 0
+				match int(state["ease"]):
+					1: raw = end if start == end else int(float((start >> 1) - (end >> 1)) / 4096.0) * int(trig[((tick << 11) / ticks) & 4095][1]) + (start >> 1) + (end >> 1)
+					2: var ratio := ((tick - ticks) << 8) / ticks; raw = end if start == end else ((start - end) >> 8) * ((ratio * ratio) >> 8) + end
+					3: var ratio := (tick << 8) / ticks; raw = start if start == end else ((end - start) >> 8) * ((ratio * ratio) >> 8) + start
+					_: raw = int(float((ticks - tick) * (start >> 16) + tick * (end >> 16)) / float(ticks)) * 65536 + int(float((ticks - tick) * (start & 65535) + tick * (end & 65535)) / float(ticks))
+				value[axis] = float(raw) / 65536.0
+		if channel == "focus":
+			if target_mode == 0: focus = value
+			else: relative_focus = value
+		elif eye_mode == 0: orbit = value
+		else: eye = value
+		state["elapsed"] = tick + 1
+		if tick == ticks - 1: interpolations.erase(channel)
 func _set_face(node: Node3D, table: String, channel: String, sequence: int) -> void:
 	var source: Dictionary = data.get("face_tables", {}).get(table, {}); var sequences: Array = source.get("sequences", [])
 	if sequence < 0 or sequence >= sequences.size(): return
@@ -573,8 +669,10 @@ func _floor_follow(node: Node3D, reference: float, bounds: Array) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not running or finishing or not event.is_action_pressed("ui_cancel"): return
 	get_viewport().set_input_as_handled()
+	if not skip_locked: skip_requested = true; _skip_scene()
+func _skip_scene() -> void:
 	var skip: Dictionary = callbacks.get("finish", {}).get("skip_path", {})
-	if skip.is_empty() or skip_locked or area_loading or fade_busy or bool(host.dialogue_box.get("active")): return
+	if skip.is_empty() or scene_flags & 4 or area_loading or fade_busy or bool(host.dialogue_box.get("active")): return
 	faded = true; finishing = true; await host.transition_overlay.request(int(skip["fade"])); finishing = false; _finish_scene()
 func _face_surfaces(node: Node3D, definitions: Array) -> Array:
 	var result: Array = []; var meshes: Array[Node] = node.find_children("*", "MeshInstance3D", true, false)

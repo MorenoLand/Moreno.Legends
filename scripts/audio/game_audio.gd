@@ -1,4 +1,6 @@
 extends Node
+signal source_tick
+var source_leaving := false
 var manifest: Dictionary = {}
 var streams: Dictionary = {}
 var wet_streams: Dictionary = {}
@@ -19,6 +21,10 @@ var zone_request := 0
 var music_request := 0
 var music_streams: Dictionary = {}
 var music_ready: Dictionary = {}
+var sequence_slot := 0
+var sequence_volume := 0x3FFF
+var sequence_fade: Dictionary = {}
+var sequence_elapsed := 0.0
 var requested_music_cue := -1
 var requested_music_signature := ""
 var native_context: Dictionary = {}
@@ -74,14 +80,10 @@ func play_music(role: String, path: String = "res://assets/audio/ST0F/manifest.j
 	var key := str(manifest.get("roles", {}).get(role, ""))
 	if not manifest.get("music", {}).has(key): return
 	var entry: Dictionary = manifest["music"][key]
-	var stream := load(_entry_path(entry, path.get_base_dir())) as AudioStreamWAV
+	var stream := looped_stream(source_stream(_entry_path(entry, path.get_base_dir())), entry)
 	if stream == null: return
-	stream = stream.duplicate() as AudioStreamWAV
-	if entry.get("looped", false):
-		stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
-		stream.loop_begin = 0
-		stream.loop_end = int(entry["frames"])
 	music.stream = stream
+	_reset_sequence(entry)
 	music_key = key
 	music_signature = str(entry.get("bank_sequence_signature", entry.get("file", "")))
 	requested_music_cue = key.hex_to_int()
@@ -92,7 +94,7 @@ func _entry_path(entry: Dictionary, directory: String = "") -> String:
 	var path := str(entry.get("file", ""))
 	return path if path.begins_with("res://") or path.begins_with("user://") else (manifest_directory if directory.is_empty() else directory).path_join(path)
 func capture_music() -> Dictionary:
-	return {"stream": music.stream, "key": music_key, "signature": music_signature, "position": music.get_playback_position(), "playing": music.playing, "paused": music.stream_paused} if music != null and music.stream != null else {}
+	return {"stream": music.stream, "key": music_key, "signature": music_signature, "position": music.get_playback_position(), "playing": music.playing, "paused": music.stream_paused, "slot": sequence_slot, "volume": sequence_volume, "fade": sequence_fade.duplicate(), "elapsed": sequence_elapsed} if music != null and music.stream != null else {}
 func adopt_music(state: Dictionary) -> void:
 	if music == null or not state.get("stream") is AudioStream: return
 	var key := str(state.get("key", ""))
@@ -103,9 +105,49 @@ func adopt_music(state: Dictionary) -> void:
 	music.stream = state["stream"]
 	music_key = key
 	music_signature = str(state.get("signature", ""))
+	sequence_slot = int(state.get("slot", 0)); sequence_volume = int(state.get("volume", 0x3FFF)); sequence_fade = state.get("fade", {}).duplicate(); sequence_elapsed = float(state.get("elapsed", 0.0)); music.volume_db = linear_to_db(float(sequence_volume) / 16383.0) if sequence_volume > 0 else -80.0
 	if bool(state.get("playing", false)): music.play(float(state.get("position", 0.0)))
 	music.stream_paused = preparing or bool(state.get("paused", false))
+func _ready() -> void: get_tree().process_frame.connect(source_tick.emit)
+func _process(delta: float) -> void:
+	if sequence_fade.is_empty(): return
+	sequence_elapsed += delta * 25.0
+	while sequence_elapsed >= 1.0 and not sequence_fade.is_empty():
+		sequence_elapsed -= 1.0
+		if not bool(sequence_fade["started"]):
+			sequence_fade["delay"] = int(sequence_fade["delay"]) - 1
+			if int(sequence_fade["delay"]) == -1: sequence_fade["started"] = true
+			continue
+		var speed := int(sequence_fade["speed"]); sequence_volume -= speed
+		if sequence_volume <= speed:
+			sequence_volume = 0; sequence_fade.clear()
+			if music != null: music.stop()
+		if music != null: music.volume_db = linear_to_db(float(sequence_volume) / 16383.0) if sequence_volume > 0 else -80.0
+func fade_sequences(mask: int, speed: int, delay: int) -> void:
+	if mask & (1 << sequence_slot) == 0: return
+	sequence_fade = {"speed": (speed & 32767) - (speed & 32768), "delay": (delay & 32767) - (delay & 32768), "started": false}; sequence_elapsed = 0.0
+func _reset_sequence(entry: Dictionary) -> void:
+	var descriptor := str(entry.get("descriptor", "")).hex_decode(); sequence_slot = descriptor[3] >> 4 if descriptor.size() >= 4 else 0; sequence_volume = 0x3FFF; sequence_fade.clear(); sequence_elapsed = 0.0; music.volume_db = 0.0
+func _exit_tree() -> void: source_leaving = true; source_tick.emit()
+static func looped_stream(stream: AudioStream, entry: Dictionary) -> AudioStream:
+	if stream == null: return null
+	var looped := bool(entry.get("looped", false)); var begin := int(entry.get("loop_begin_frame", 0))
+	if stream is AudioStreamOggVorbis:
+		var ogg := stream.duplicate() as AudioStreamOggVorbis; ogg.loop = looped; ogg.loop_offset = float(begin) / float(entry.get("sample_rate", 44100)); return ogg
+	var wav := stream.duplicate() as AudioStreamWAV
+	if wav != null and looped: wav.loop_mode = AudioStreamWAV.LOOP_FORWARD; wav.loop_begin = begin; wav.loop_end = int(entry.get("loop_end_frame", entry.get("frames", 0)))
+	return wav
+static func source_stream(path: String) -> AudioStream:
+	if not FileAccess.file_exists(path) and path.get_extension().to_lower() in ["wav", "ogg"]: path = path.get_basename() + (".ogg" if path.get_extension().to_lower() == "wav" else ".wav")
+	if path.get_extension().to_lower() == "wav": return AudioStreamWAV.load_from_file(path, {"force/8_bit": false, "force/mono": false, "force/max_rate": false, "edit/trim": false, "edit/normalize": false, "compress/mode": 0})
+	if path.get_extension().to_lower() == "ogg": return AudioStreamOggVorbis.load_from_file(path)
+	return load(path) as AudioStream
+static func _source_job(path: String, result: Dictionary) -> void: result["stream"] = source_stream(path)
 func _load_stream(path: String) -> AudioStream:
+	if path.get_extension().to_lower() in ["wav", "ogg"]:
+		var result := {}; var task := WorkerThreadPool.add_task(Callable(get_script(), "_source_job").bind(path, result))
+		while not WorkerThreadPool.is_task_completed(task) and not source_leaving: await source_tick
+		WorkerThreadPool.wait_for_task_completion(task); return null if source_leaving else result.get("stream") as AudioStream
 	var status := ResourceLoader.load_threaded_get_status(path)
 	if status in [ResourceLoader.THREAD_LOAD_INVALID_RESOURCE, ResourceLoader.THREAD_LOAD_FAILED]:
 		var error := ResourceLoader.load_threaded_request(path, "AudioStream", true, ResourceLoader.CACHE_MODE_REUSE)
@@ -126,7 +168,7 @@ func _request_music(cue: int) -> void:
 	var entry: Dictionary = audio_catalog.get("music_variants", {}).get(stage, {}).get(key, audio_catalog.get("music", {}).get(key, manifest.get("music", {}).get(key, {})))
 	if entry.is_empty(): return
 	requested_music_signature = str(entry.get("bank_sequence_signature", entry.get("file", "")))
-	if music != null and music.stream != null and music_key == key and music_signature == requested_music_signature: return
+	if music != null and music.playing and music.stream != null and music_key == key and music_signature == requested_music_signature: return
 	var owner := str(entry.get("owner_stage", stage))
 	if not await AssetStore.ensure_group("audio-" + owner) or request != music_request: return
 	var path := _entry_path(entry)
@@ -137,12 +179,12 @@ func _request_music(cue: int) -> void:
 	if request != music_request or music == null: return
 	var ready_key := path + "|" + str(bool(entry.get("looped", false))) + "|" + str(entry.get("frames", 0))
 	if not music_ready.has(ready_key):
-		var configured := (music_streams[path] as AudioStream).duplicate() as AudioStreamWAV
+		var configured := looped_stream(music_streams[path] as AudioStream, entry)
 		if configured == null: return
-		if bool(entry.get("looped", false)): configured.loop_mode = AudioStreamWAV.LOOP_FORWARD; configured.loop_begin = 0; configured.loop_end = int(entry["frames"])
 		music_ready[ready_key] = configured
-	var stream: AudioStreamWAV = music_ready[ready_key]
+	var stream: AudioStream = music_ready[ready_key]
 	music.stream = stream
+	_reset_sequence(entry)
 	music_key = key
 	music_signature = requested_music_signature
 	music.play()
@@ -226,10 +268,10 @@ func _sound_entry(key: String) -> Dictionary:
 func _sound_stream(key: String, entry: Dictionary) -> AudioStream:
 	if not entry.has("profile"):
 		var path := _entry_path(entry)
-		if not streams.has(path): streams[path] = load(path) as AudioStream
+		if not streams.has(path): streams[path] = source_stream(path)
 		return streams[path] as AudioStream
 	var path := _entry_path(entry)
-	if not wet_streams.has(path): wet_streams[path] = load(path) as AudioStream
+	if not wet_streams.has(path): wet_streams[path] = source_stream(path)
 	return wet_streams[path] as AudioStream
 func play_ui(role: String) -> void:
 	var key := str(manifest.get("roles", {}).get(role, ""))

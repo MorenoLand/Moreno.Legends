@@ -69,8 +69,9 @@ func configure(path: String = "res://assets/opening/manifest.json") -> bool:
 	resized.connect(_resize); _resize(); _prepare.call_deferred(); return true
 func _prepare() -> void:
 	for key: String in audio_entries:
+		if not await AssetStore.ensure_voice(audio_entries[key]): prepared.emit(false); return
 		var path: String = str(audio_entries[key]["file"]); path = path if path.begins_with("res://") else directory.path_join("audio").path_join(path)
-		var stream := load(path) as AudioStream
+		var stream := preload("res://scripts/audio/game_audio.gd").source_stream(path)
 		if stream == null: prepared.emit(false); return
 		audio_streams[key] = stream
 	for source: Dictionary in manifest.get("actor_banks", []):
@@ -88,7 +89,7 @@ func _prepare() -> void:
 	running = true; _segment_enter(); _commands(); _camera_update(); prepared.emit(true)
 func _resize() -> void:
 	if not is_instance_valid(viewport): return
-	if is_instance_valid(effects) and is_instance_valid(effects.background): effects.background.scale = size / Vector2(320, 240); effects.flashes.scale = effects.background.scale
+	if is_instance_valid(effects) and is_instance_valid(effects.background): effects.background.scale = size / Vector2(320, 240); effects.flashes.scale = effects.background.scale; effects.overlay_add.scale = effects.background.scale; effects.overlay_opaque.scale = effects.background.scale
 func _unhandled_input(event: InputEvent) -> void:
 	if running and (event.is_action_pressed("ui_accept") or event.is_action_pressed("ui_cancel")):
 		get_viewport().set_input_as_handled(); _finish(true)
@@ -129,6 +130,7 @@ func _segment_enter() -> void:
 	if source.has("area"): _set_area(int(source["area"]))
 func _callback() -> void:
 	var key: String = "%d:%d" % [phase, step]
+	effects.set_overlay(key, segment_tick)
 	if key == "0:0" and veil.is_idle() and veil.is_covered() and _xa_ready(): _advance()
 	elif key == "0:2" and segment_tick == 350: _set_area(1); _advance()
 	elif key == "1:13":
@@ -148,6 +150,8 @@ func _callback() -> void:
 		if transition == 0: xa_fade = -8; transition = 1
 		elif transition == 1 and xa_volume == 0: _set_bank("ST0203"); _play_xa(key); transition = 2
 		elif transition == 2 and _xa_ready(): _advance()
+	elif key == "2:14" and segment_tick == 129:
+		for record: Dictionary in manifest.get("callbacks", {}).get(key, {}).get("ready_gate", {}).get("props_after_wipe", []): _spawn(record)
 	elif key == "2:14" and segment_tick == 300: _request_fade(18)
 	elif key == "2:14" and segment_tick > 300 and veil.is_idle() and veil.is_covered(): _advance()
 	for action: Dictionary in manifest.get("callbacks", {}).get(key, {}).get("actions", []):

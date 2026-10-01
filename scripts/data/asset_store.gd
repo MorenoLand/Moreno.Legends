@@ -22,6 +22,7 @@ var screen: Control
 var layer: CanvasLayer
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	ResourceLoader.add_resource_format_loader(preload("res://scripts/data/runtime_loader.gd").new(), true)
 	request = HTTPRequest.new(); request.timeout = 0.0; request.download_chunk_size = 4194304; add_child(request)
 	if OS.has_feature("web"): base_url = str(JavaScriptBridge.eval("new URL('.', window.location.href).href"))
 func _process(delta: float) -> void:
@@ -74,8 +75,18 @@ func ensure_menu() -> bool:
 func ensure_opening() -> bool:
 	_block(DEFAULT_TITLE)
 	var result := await ensure_group("shared") and await ensure_group("opening")
+	if result:
+		var audio: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://assets/opening/audio/manifest.json"))
+		if audio is Dictionary:
+			for entry: Dictionary in audio.get("entries", []):
+				if not await ensure_voice(entry): result = false; break
 	_unblock()
 	return result
+func ensure_voice_manifest(stage: String) -> bool: return await ensure_group("audio-common_voices" if stage == "COMMON" else "stage-" + stage)
+func ensure_voice(entry: Dictionary) -> bool:
+	var group := str(entry.get("asset_group", ""))
+	if group.is_empty(): return true
+	_block(DEFAULT_TITLE); var result := await ensure_group(group); _unblock(); return result
 func ensure_group(group: String, optional := false) -> bool:
 	if not OS.has_feature("web") and not FileAccess.file_exists("res://packs/manifest.json"): return true
 	while busy: await get_tree().process_frame

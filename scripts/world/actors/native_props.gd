@@ -253,6 +253,7 @@ static func _models_by_index(models: Array) -> Dictionary:
 	return result
 static func _attach_native_source(node: Node3D, stage: String, area: int, entry: Dictionary) -> void:
 	node.set_meta("native_stage", stage); node.set_meta("native_area", area); node.set_meta("native_actor_source", entry.duplicate(true)); preload("res://scripts/world/actors/native_interaction.gd").attach(node, entry)
+	if entry.get("native_lock_on", null) is Dictionary: node.set_meta("native_lock_on", entry["native_lock_on"]); node.add_to_group("lock_targets")
 	if str(entry.get("role", "")) == "bridge_steering_wheel": node.add_to_group("flutter_steering_wheels")
 	if int(entry.get("native_resource_flags", -1)) == 0x3020: node.add_to_group("parked_flutter_hulls")
 	var receiver := node.get_node_or_null("NativeKickableBody")

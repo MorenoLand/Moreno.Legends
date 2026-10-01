@@ -36,6 +36,7 @@ var map_interaction_cache: Dictionary = {}
 var scene_trigger_cache: Dictionary = {}
 var entry_scene_latch: Dictionary = {}
 var scene_ui_state: Dictionary = {}
+var scene_player_visible := true
 var fire_mission: Node
 var mine_quest: Node
 var nearest_npc: Variant
@@ -84,6 +85,8 @@ var audio_preparing := false
 var voice: AudioStreamPlayer
 var voice_manifests: Dictionary = {}
 var voice_hold := false
+var voice_loading := false
+var voice_request := 0
 var data_tip_index := 0
 var data_talk_camera: Node3D
 const DATA_TIPS := ["Pass license exams to raise the challenge and qualify for better rewards.", "Town stores carry useful items and parts Roll may be able to develop.", "Inspect objects nearby; they can hide items or clues.", "In water, buoyancy lets you jump higher and lift heavier objects.", "Your relationships with the people you meet can affect what happens."]
@@ -128,7 +131,8 @@ func _ready() -> void:
 	dialogue_box.menu_sound_requested.connect(audio.play_ui)
 	dialogue_box.message_started.connect(_dialogue_started)
 	dialogue_box.advance_blocker = _voice_holds_page
-	player.input_blocker = func() -> bool: return bool(dialogue_box.get("active"))
+	dialogue_box.preparation_blocker = func() -> bool: return voice_loading
+	player.input_blocker = func() -> bool: return bool(dialogue_box.get("active")) and int(event_script.active_window_state.get("window", 0)) != 4
 	player.camera_yaw_constraint = func(point: Vector3, yaw: float) -> float: return room_stream.doorway_camera_yaw(point, yaw, player.velocity) if streaming_rooms and is_instance_valid(room_stream) else yaw
 	event_script = Node.new(); event_script.name = "EventScript"; event_script.set_script(preload("res://scripts/world/core/event_script.gd")); add_child(event_script); event_script.configure(dialogue_box, "res://assets/dialogue/manifest.json", native_context); event_script.prepare_stage(stage)
 	event_script.native_context_changed.connect(_dialogue_context_changed)
@@ -180,6 +184,7 @@ func _ready() -> void:
 	roof_status = Label.new(); roof_status.name = "RoofStatus"; roof_status.visible = false; roof_status.text = "roof: false"; roof_status.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE); roof_status.offset_top = 16; roof_status.offset_bottom = 44; roof_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; roof_status.mouse_filter = Control.MOUSE_FILTER_IGNORE; roof_status.add_theme_font_size_override("font_size", 20); roof_status.add_theme_color_override("font_shadow_color", Color.BLACK); roof_status.add_theme_constant_override("shadow_offset_x", 1); roof_status.add_theme_constant_override("shadow_offset_y", 1); $HUD.add_child(roof_status)
 	if streaming_rooms and room_stream.can_show_parked_exterior() and not parked_location.is_empty():
 		if not await room_stream.set_parked_exterior(str(parked_location["stage"]), int(parked_location["area"])): push_warning("Cannot load parked Flutter exterior")
+		elif not areas.is_empty(): _apply_fog(int(areas[area_picker.selected]["index"]))
 	var door_path := manifest_path.get_base_dir().path_join("doors.json")
 	var door_data: Variant = JSON.parse_string(FileAccess.get_file_as_string(door_path)) if FileAccess.file_exists(door_path) else null
 	if door_data is Dictionary: routes = door_data.get("area_transitions", [])
@@ -376,7 +381,7 @@ func _run_native_scene_requests(parent: Node3D, stage: String, area: int) -> voi
 	if not is_inside_tree(): return
 	if not is_instance_valid(parent): parent = room_stream.room_root(stage, area) if streaming_rooms else level
 	if not success:
-		var reason := str(native_scenes.last_error); push_error(reason); native_scene_failed.emit(reason); loading = false; area_picker.disabled = false; player.set_physics_process(true); return
+		var reason := str(native_scenes.last_error); push_error(reason); native_scene_failed.emit(reason); set_scene_presentation(false); loading = false; area_picker.disabled = false; player.set_physics_process(true); return
 	if native_scenes.transition_requested: return
 	_update_native_player_pose(); loading = false; area_picker.disabled = false; player.set_physics_process(true)
 func save_state(allow_loading: bool = false) -> Dictionary:
@@ -420,15 +425,19 @@ func _special_gauge(charge: int, capacity: int, segment: int, power: int, power_
 	if not active and game_hud.special_capacity == 0: return
 	game_hud.special_capacity = capacity if active else 0; game_hud.special_charge = charge; game_hud.special_segment = segment; game_hud.special_power = power; game_hud.special_power_max = power_max; game_hud.queue_redraw()
 func _apply_fog(area: int) -> void:
-	var stage := manifest_path.get_base_dir().get_file()
-	if is_instance_valid(sky): sky.set_fog(scene_ui_state.is_empty() and sky.flying and (not streaming_rooms or room_stream.is_exterior_room(stage, area)), preload("res://scripts/world/rendering/native_material.gd").area_parameters("res://assets/levels/%s/lighting.json" % stage, area) if stage in ["ST10", "ST11", "ST1D", "ST49"] else {})
+	var stage := manifest_path.get_base_dir().get_file(); var fog_stage := stage; var fog_area := area; var exterior: bool = not streaming_rooms or room_stream.is_exterior_room(stage, area)
+	# Interiors with the parked Flutter exterior showing through the windows haze that exterior with its own stage parameters.
+	if not exterior and streaming_rooms and is_instance_valid(room_stream.parked_exterior) and not parked_location.is_empty(): exterior = true; fog_stage = str(parked_location["stage"]); fog_area = int(parked_location["area"])
+	if is_instance_valid(sky): sky.set_fog(scene_ui_state.is_empty() and sky.flying and exterior, preload("res://scripts/world/rendering/native_material.gd").area_parameters("res://assets/levels/%s/lighting.json" % fog_stage, fog_area), fog_stage in ["ST10", "ST11", "ST1D", "ST49"])
 func set_scene_presentation(active: bool) -> void:
 	if active and scene_ui_state.is_empty():
+		scene_player_visible = player.player_model.visible
 		if is_instance_valid(player.lock_on): player.lock_on.clear()
 		for node: Control in [game_hud, area_picker, stage_picker, zone_notice]:
 			if is_instance_valid(node): scene_ui_state[node] = node.visible; node.visible = false
 		player.player_model.visible = false
 	elif not active:
+		if not scene_ui_state.is_empty(): player.player_model.visible = scene_player_visible
 		for node: Control in scene_ui_state:
 			if is_instance_valid(node): node.visible = scene_ui_state[node]
 		scene_ui_state.clear()
@@ -514,14 +523,14 @@ func _load_actors() -> void:
 			npc.name = "NPC_%06X" % int(entry["file_offset"])
 			actors.add_child(npc)
 			if not npc.configure(entry, actor_models.get(int(entry["model_index"]), {}), manifest_path.get_base_dir()): npc.queue_free(); continue
-			preload("res://scripts/world/rendering/native_material.gd").depth_cue(npc.model, depth_cue_parameters if (int(entry["flags"]) & 0x20) == 0 else {})
+			preload("res://scripts/world/rendering/native_material.gd").depth_cue(npc.model, depth_cue_parameters, int(entry["flags"]))
 			continue
 		if actor_route.is_empty() or int(entry["script_area_index"]) != int(actor_route["script_area_index"]) or event_flags.get(int(entry["instance_id"]), false): continue
 		var actor := preload("res://scripts/world/actors/stage_actor.gd").new()
 		actor.name = "Actor_%03d" % int(entry["instance_id"])
 		actors.add_child(actor)
 		actor.configure(entry, actor_models.get(int(entry["model_index"]), {}), manifest_path.get_base_dir())
-		preload("res://scripts/world/rendering/native_material.gd").depth_cue(actor.model, depth_cue_parameters if (int(entry["flags"]) & 0x20) == 0 else {})
+		preload("res://scripts/world/rendering/native_material.gd").depth_cue(actor.model, depth_cue_parameters, int(entry["flags"]))
 		actor.target = player
 		actor.contact_hit.connect(_actor_contact)
 		actor.sound_requested.connect(audio.play_at)
@@ -624,15 +633,26 @@ func _voice_holds_page() -> bool:
 	voice_hold = voice_hold and is_instance_valid(voice) and voice.playing
 	return voice_hold
 func play_voice(stage: String, id: int) -> void:
+	voice_request += 1; var request := voice_request; voice_loading = true
 	if (id & 0x7FFF) >= 0x7F00: stage = "COMMON"
+	if not await AssetStore.ensure_voice_manifest(stage):
+		if request == voice_request: voice_loading = false
+		return
+	if not is_inside_tree() or request != voice_request: return
 	if not voice_manifests.has(stage):
 		var path := "res://assets/audio/common_voices/manifest.json" if stage == "COMMON" else "res://assets/levels/%s/audio/manifest.json" % stage; var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path)) if FileAccess.file_exists(path) else null; var entries: Dictionary = {}
 		if parsed is Dictionary:
-			for item: Dictionary in parsed.get("entries", []): entries[int(item["id"])] = str(item["file"])
+			for item: Dictionary in parsed.get("entries", []): entries[int(item["id"])] = item
 		voice_manifests[stage] = entries
-	var file := str(voice_manifests[stage].get(id, ""))
-	if file.is_empty(): push_warning("Missing native voice %s:%04X" % [stage, id]); return
+	var entry: Dictionary = voice_manifests[stage].get(id, {}); var file := str(entry.get("file", ""))
+	if file.is_empty(): voice_loading = false; push_warning("Missing native voice %s:%04X" % [stage, id]); return
+	if not await AssetStore.ensure_voice(entry):
+		if request == voice_request: voice_loading = false
+		return
+	if not is_inside_tree() or request != voice_request: return
 	var stream: AudioStream = await audio._load_stream(file)
+	if request != voice_request: return
+	voice_loading = false
 	if stream == null or not is_inside_tree(): return
 	if not is_instance_valid(voice): voice = AudioStreamPlayer.new(); voice.bus = "SFX" if AudioServer.get_bus_index("SFX") >= 0 else "Master"; add_child(voice)
 	voice.stream = stream; voice.play()
@@ -644,14 +664,17 @@ func _update_nearest_map_interaction() -> void:
 		var path := "res://assets/levels/%s/doors.json" % stage; var value: Variant = JSON.parse_string(FileAccess.get_file_as_string(path)) if FileAccess.file_exists(path) else null; map_interaction_cache[stage] = value.get("map_interactions", []) if value is Dictionary else []
 	for interaction: Dictionary in map_interaction_cache[stage]:
 		if int(interaction["source_area"]) != area: continue
+		if not preload("res://scripts/world/actors/native_props.gd")._conditions_met(interaction.get("availability", {}).get("all", []), native_context, area): continue
 		if stage == "ST04" and int(interaction["runtime_index"]) == 18:
 			for wheel: Node3D in get_tree().get_nodes_in_group("flutter_steering_wheels"):
 				if not is_ancestor_of(wheel) or not wheel.is_visible_in_tree() or int(wheel.get_meta("native_area", -1)) != area: continue
 				if player.global_position.distance_squared_to(wheel.global_position) > player.body_height * player.body_height * 4.0 or not preload("res://scripts/world/actors/native_interaction.gd").player_faces_target(player, wheel): continue
 				nearest_map_interaction = interaction.duplicate(); nearest_map_interaction["target_point"] = wheel.global_position; return
-		if preload("res://scripts/world/core/native_transition.gd").manual_contact(interaction, _room_local_position(), player.player_model.rotation.y): nearest_map_interaction = interaction; return
+		if preload("res://scripts/world/core/native_transition.gd").manual_contact(interaction, _room_local_position(), player.player_model.rotation.y):
+			nearest_map_interaction = interaction.duplicate(); var contact: Dictionary = interaction["native_contacts"][0]; var raw: Array = contact["contact_raw"]; nearest_map_interaction["target_point"] = player.global_position - _room_local_position() + Vector3(-float(raw[0]), -float(raw[1]), float(raw[2])) / 256.0 + Vector3.UP * player.body_height; return
 func _use_map_interaction(interaction: Dictionary) -> void:
 	if loading: return
+	if not preload("res://scripts/world/actors/native_props.gd")._conditions_met(interaction.get("availability", {}).get("all", []), native_context, int(areas[area_picker.selected]["index"])): return
 	var stage := manifest_path.get_base_dir().get_file(); loading = true; area_picker.disabled = true; player.velocity = Vector3.ZERO; player.set_physics_process(false)
 	if stage == "ST04" and int(interaction["runtime_index"]) == 18 and (bool(get_parent().get("flutter_fly_anytime")) or preload("res://scripts/world/flutter/flutter_travel.gd").available(self)):
 		player._play_animation("idle"); game_hud.set_interaction(Vector2.ZERO, "")
@@ -819,7 +842,7 @@ func _physics_process(_delta: float) -> void:
 		if not loading: room_stream.prefetch_near(player.global_position)
 		previous_player_position = player.global_position
 		has_previous_player_position = true
-	game_hud.set_aiming(player.aiming)
+	game_hud.set_aiming((player.aiming or player.first_person) and player.camera.current and not native_scenes.active and not bool(dialogue_box.get("active")) and not loading)
 	game_hud.boss_blocked = native_scenes.active or bool(dialogue_box.get("active")) or loading
 	var lock_target: Node3D = null
 	if is_instance_valid(player.lock_on) and is_instance_valid(player.lock_on.get("target")): lock_target = player.lock_on.target
@@ -995,6 +1018,7 @@ func _update_nearest_door() -> void:
 	var distance := INF
 	for route: Dictionary in routes:
 		if int(route["source_area"]) != index: continue
+		if not route.get("source_panel", null) is Dictionary and route.get("native_door", {}).get("source_panel", null) is Dictionary: route["source_panel"] = route["native_door"]["source_panel"]
 		if preload("res://scripts/world/core/native_transition.gd").is_automatic(route) or preload("res://scripts/world/core/native_transition.gd").is_warp(route) or not preload("res://scripts/world/missions/mine/native_mine_lift.gd").lift_for_route(manifest_path.get_base_dir().get_file(), route).is_empty(): continue
 		var destination_stage := str(route.get("destination_stage", manifest_path.get_base_dir().get_file())); var destination_area := int(route["destination_area"]); var destination_known := false
 		if streaming_rooms and room_stream.has_room(destination_stage, destination_area): destination_known = true
@@ -1012,12 +1036,14 @@ func _update_nearest_door() -> void:
 			var portal: Dictionary = room_stream.portal_for_route(manifest_path.get_base_dir().get_file(), index, route)
 			if portal.is_empty():
 				if room_stream.has_room(destination_stage, destination_area) and not room_stream.is_ladder_route(manifest_path.get_base_dir().get_file(), index, route): continue
+				var source_contact: bool = not route.get("native_contacts", []).is_empty()
+				if source_contact and not preload("res://scripts/world/core/native_transition.gd").manual_contact(route, _room_local_position(), player.player_model.rotation.y): continue
 				var raw: Array = route["source_transform_raw"]; var source_y := 0.0 if int(raw[1]) == -1 else -float(raw[1]) / 256.0; var source: Vector3 = Vector3(-float(raw[0]) / 256.0, source_y, float(raw[2]) / 256.0) + room_stream.offset_for(manifest_path.get_base_dir().get_file(), index); var contact: Vector3 = player.global_position + Vector3.UP * player.body_height * 0.65; var target: Vector3 = source + Vector3.UP * player.body_height * 0.65
 				if route.get("source_panel", null) is Dictionary:
 					var center: Array = route["source_panel"]["center"]; target = Vector3(float(center[0]), float(center[1]), float(center[2])) + room_stream.offset_for(manifest_path.get_base_dir().get_file(), index)
-				if contact.distance_to(target) > 0.5: continue
+				if not source_contact and contact.distance_to(target) > 0.5: continue
 				var expected_yaw := -float(raw[3]) * TAU / 4096.0
-				if absf(wrapf(player.player_model.rotation.y - expected_yaw, -PI, PI)) > TAU * 512.0 / 4096.0 or not _clear_route_source_los(route, manifest_path.get_base_dir().get_file(), index, contact, target): continue
+				if absf(wrapf(player.player_model.rotation.y - expected_yaw, -PI, PI)) > TAU * 512.0 / 4096.0 or (not source_contact and not _clear_route_source_los(route, manifest_path.get_base_dir().get_file(), index, contact, target)): continue
 				var ladder_distance: float = contact.distance_squared_to(target)
 				if ladder_distance < distance: distance = ladder_distance; nearest_door = route
 				continue
@@ -1132,8 +1158,8 @@ func _use_warp(route: Dictionary) -> void:
 		if int(areas[index]["index"]) == int(route["destination_area"]): selected = index
 	if selected < 0: return
 	var source: Array = route["source_transform_raw"]; var target: Array = route["destination_transform_raw"]; var local := _room_local_position()
-	var arrival := Vector3(-local.x * 256.0 + float(int(target[0]) - int(source[0])), -maxf(local.y, -float(target[1]) / 256.0) * 256.0, local.z * 256.0 + float(int(target[2]) - int(source[2]))) / 256.0
-	var entry := route.duplicate(true); entry["destination_transform"] = {"position": [arrival.x, arrival.y, arrival.z], "yaw_raw": roundi(-player.player_model.rotation.y * 4096.0 / TAU) & 4095, "floor_height": true}
+	var arrival := Vector3(-local.x * 256.0 + float(int(target[0]) - int(source[0])), -local.y * 256.0, local.z * 256.0 + float(int(target[2]) - int(source[2]))) / 256.0
+	var entry := route.duplicate(true); entry["destination_transform"] = {"position": [arrival.x, arrival.y, arrival.z], "yaw_raw": roundi(-player.player_model.rotation.y * 4096.0 / TAU) & 4095, "floor_height": false}
 	var source_area := area_picker.selected; var source_position := player.global_position; var source_yaw: float = player.player_model.rotation.y; var camera_rotation: Vector3 = player.camera_pivot.rotation; var source_spawn := spawn_position
 	loading = true; nearest_door = {}; area_picker.disabled = true; player.set_physics_process(false)
 	entry_route = entry; var arrived := await _select_area(selected, true); entry_route = {}
@@ -1158,6 +1184,8 @@ func _use_door(route: Dictionary, automatic: bool = false) -> void:
 	var ladder: bool = preload("res://scripts/world/core/native_transition.gd").is_ladder(route)
 	if streaming_rooms and not automatic:
 		var current_stage := manifest_path.get_base_dir().get_file(); var current_area := int(areas[area_picker.selected]["index"]); var portal: Dictionary = room_stream.portal_for_route(current_stage, current_area, route)
+		var seamless: Dictionary = room_stream.seamless_ladder(current_stage, current_area, route) if ladder else {}
+		if not seamless.is_empty() and await _climb_ladder(route, seamless): return
 		if not portal.is_empty():
 			if room_stream.opened_portals.has(room_stream._portal_key(portal)): return
 			loading = true; nearest_door = {}; area_picker.disabled = true
@@ -1292,6 +1320,41 @@ func _use_door(route: Dictionary, automatic: bool = false) -> void:
 	area_picker.disabled = false
 	loading = false
 	player.set_physics_process(true)
+func _climb_ladder(route: Dictionary, link: Dictionary) -> bool:
+	var source_stage := manifest_path.get_base_dir().get_file(); var source_area := int(areas[area_picker.selected]["index"]); var destination_stage := str(route.get("destination_stage", source_stage)); var destination_area := int(route["destination_area"])
+	loading = true; nearest_door = {}; area_picker.disabled = true
+	if not await room_stream._ensure_room_loaded(destination_stage, destination_area) or not await _ensure_room_stage_data(destination_stage): loading = false; area_picker.disabled = false; return false
+	var up: bool = (int(route["door_mode"]) & 15) in [0, 2]; var raw: Array = route["source_transform_raw"]; var destination_offset: Vector3 = room_stream.offset_for(destination_stage, destination_area); var transform: Dictionary = route["destination_transform"]
+	var plane: float = room_stream.offset_for(str(link["lower"]["stage"]), int(link["lower"]["area"])).y + float(link["hatch_height"])
+	var interaction: Dictionary = player.begin_interaction("ladder_up" if up else "ladder_down", false, destination_offset.y - float(transform["position"][1]) + 0.05)
+	if interaction.is_empty(): loading = false; area_picker.disabled = false; return false
+	player.set_physics_process(false)
+	player.player_model.rotation.y = -float(raw[3]) * TAU / 4096.0
+	player.global_position = Vector3(-float(raw[0]), -float(raw[1]) + 6.0, float(raw[2])) / 256.0 + room_stream.offset_for(source_stage, source_area)
+	player.camera_pivot.rotation = Vector3(deg_to_rad(-12.0), player.player_model.rotation.y, 0.0); player.refresh_room_camera()
+	var switched := false
+	while not player.interaction_role.is_empty():
+		player.camera_arm_scale = clampf(absf(player.camera_pivot.global_position.y - plane), 0.1, 1.0)
+		if not switched and (player.camera_pivot.global_position.y - plane) * (1.0 if up else -1.0) >= 0.0:
+			switched = await room_stream.select_room(destination_stage, destination_area)
+			if not switched: push_error("Seamless ladder cannot enter the destination room")
+			player.refresh_room_camera(true)
+			await get_tree().physics_frame
+			await get_tree().physics_frame
+			var landing := _door_arrival(transform, destination_offset)
+			if landing.is_finite(): player.interaction_target_y = landing.y
+		await get_tree().process_frame
+	var arrival := _door_arrival(transform, destination_offset); var step := arrival - player.global_position; step.y = 0.0
+	if arrival.is_finite() and step.length() > 0.02:
+		var ticks := maxi(1, roundi(step.length() * 16.0))
+		if player.begin_scripted_walk({"control": 2, "ticks": ticks, "tick_rate": 25, "local_step_raw": [0, 0, -step.length() * 4096.0 / ticks]}, atan2(-step.x, -step.z)):
+			var mask: int = player.collision_mask; player.collision_mask = 0; player.set_physics_process(true); await player.scripted_walk_finished; player.set_physics_process(false); player.collision_mask = mask
+	player.camera_arm_scale = 1.0
+	apply_native_arrival(route)
+	previous_player_position = player.global_position; has_previous_player_position = true
+	player.refresh_room_camera(true)
+	area_picker.disabled = false; loading = false; player.set_physics_process(true)
+	return true
 func _change_stage(stage: String) -> bool:
 	if not await AssetStore.ensure_stage(stage): return false
 	var path := "res://assets/levels/%s/manifest.json" % stage
@@ -1319,11 +1382,14 @@ func apply_native_arrival(route: Dictionary) -> bool:
 	if areas.is_empty() or area_picker.selected < 0 or area_picker.selected >= areas.size(): return false
 	var stage := manifest_path.get_base_dir().get_file(); var area := int(areas[area_picker.selected]["index"])
 	if str(route.get("destination_stage", stage)) != stage or int(route.get("destination_area", -1)) != area or not route.get("destination_transform", null) is Dictionary: return false
-	var offset: Vector3 = room_stream.offset_for(stage, area) if streaming_rooms else Vector3.ZERO; var point: Vector3 = preload("res://scripts/world/missions/mine/native_mine_lift.gd").arrival_point(self, room_stream.room_root(stage, area) if streaming_rooms else level, route, area)
+	var offset: Vector3 = room_stream.offset_for(stage, area) if streaming_rooms else Vector3.ZERO; var warp: bool = preload("res://scripts/world/core/native_transition.gd").is_warp(route); var coordinates: Array = route["destination_transform"]["position"]; var point: Vector3 = Vector3(-float(coordinates[0]), -float(coordinates[1]), float(coordinates[2])) + offset if warp else preload("res://scripts/world/missions/mine/native_mine_lift.gd").arrival_point(self, room_stream.room_root(stage, area) if streaming_rooms else level, route, area)
 	if not point.is_finite(): point = _door_arrival(route["destination_transform"], offset)
 	if not point.is_finite(): return false
 	var yaw := -float(int(route["destination_transform"]["yaw_raw"])) * TAU / 4096.0
-	player.reset_at(point); player.player_model.rotation.y = yaw; player.camera_pivot.rotation.y = yaw; spawn_position = point; previous_player_position = point; has_previous_player_position = true
+	if warp:
+		var shift := point - player.global_position; player.global_position = point; player.camera_world_position += shift; player.camera_world_origin += shift; player.camera.global_position += shift
+	else: player.reset_at(point); player.player_model.rotation.y = yaw; player.camera_pivot.rotation.y = yaw
+	spawn_position = point; previous_player_position = point; has_previous_player_position = true
 	return true
 func cancel_stage_transition() -> void:
 	player.cancel_scripted_walk()

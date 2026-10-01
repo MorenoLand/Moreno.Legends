@@ -119,6 +119,7 @@ func _build_options() -> void:
 		var key := str(entry[0])
 		rows.append({"kind": "range", "label": entry[1], "min": entry[2], "max": entry[3], "step": 1, "help": entry[4], "silent": true, "get": func(): return int(host.options.values[key]), "set": func(value): host.options._set_value(key, value)})
 	rows.append({"kind": "range", "label": "Camera FOV", "min": 45, "max": 100, "step": 1, "help": "Adjust the field of view.", "get": func(): return int(host.settings.get_value("camera", "fov", 65)), "set": func(value): _fov_changed(float(value))})
+	rows.append({"kind": "choice", "label": "First person", "choices": ["Off", "On"], "help": "Play from a first person view.", "get": func(): return int(bool(host.settings.get_value("camera", "first_person", false))), "set": func(value): _first_person_changed(value == 1)})
 	rows.append({"kind": "choice", "label": "Fullscreen", "choices": ["Off", "On"], "help": "Switch between windowed and fullscreen.", "get": func(): return int(DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN), "set": func(value): DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if value == 1 else DisplayServer.WINDOW_MODE_WINDOWED)})
 	rows.append({"kind": "heading", "label": "Controls"})
 	rows.append({"kind": "range", "label": "Mouse sensitivity", "min": 0.0005, "max": 0.01, "step": 0.0005, "float": true, "scale": 10000.0, "format": "%d", "help": "Adjust the mouse look speed.", "get": func(): return float(host.settings.get_value("controls", "mouse_sensitivity", 0.003)), "set": func(value): host._sensitivity_changed(float(value))})
@@ -267,10 +268,15 @@ func _fov_changed(value: float) -> void:
 	host.settings.set_value("camera", "fov", value)
 	host.settings.save("user://settings.cfg")
 	if is_instance_valid(host.gameplay): host.gameplay.player.camera.fov = value
+func _first_person_changed(value: bool) -> void:
+	host.settings.set_value("camera", "first_person", value)
+	host.settings.save("user://settings.cfg")
+	if is_instance_valid(host.gameplay): host.gameplay.player.set_first_person(value)
 func apply_player() -> void:
 	if not is_instance_valid(host.gameplay): return
 	for key in cheats: host.gameplay.player.set(key, cheats[key])
 	host.gameplay.player.camera.fov = float(host.settings.get_value("camera", "fov", 65))
+	host.gameplay.player.set_first_person(bool(host.settings.get_value("camera", "first_person", false)))
 func _process(delta: float) -> void:
 	elapsed += delta
 	if visible and not is_instance_valid(host.gameplay): queue_redraw()

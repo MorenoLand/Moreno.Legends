@@ -6,12 +6,24 @@ uniform vec3 light_rgb = vec3(128.0);
 uniform float color_scale = 255.0;
 uniform bool double_sided = true;
 uniform bool part_visible = true;
+uniform vec2 hidden_face_range = vec2(-1.0);
+varying float native_source_face_order;
 uniform bool coplanar_overlay_flags = false;
 uniform int uv_word = 0;
 uniform bool native_depth_cue_enabled = false;
+uniform bool native_actor_visible = true;
 uniform int native_depth_cue_shift = 0;
 uniform vec3 native_far_color = vec3(0.0);
-uniform bool exterior_atmosphere = false;
+uniform bool native_palette_enabled = false;
+uniform sampler2D native_palette_atlas : source_color, filter_nearest, repeat_disable;
+uniform int native_palette_layers = 1;
+uniform int native_palette_offsets[32];
+uniform int native_palette_bucket_shift = 9;
+varying flat float native_palette_layer;
+uniform sampler2D native_map_cells : filter_nearest, repeat_disable;
+uniform mat4 native_map_world_to_local;
+uniform bool native_map_terrain = false;
+uniform bool native_map_placement_visible = true;
 uniform int interior_clip_count = 0;
 uniform vec3 interior_clip_min[16];
 uniform vec3 interior_clip_max[16];
@@ -33,8 +45,15 @@ uniform bool portal_floor_clip_bounded[16];
 uniform vec2 portal_floor_clip_depths[16];
 varying vec3 portal_world_position;
 void vertex() {
+	native_source_face_order = UV2.x;
 	portal_world_position = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	native_vertex_rgb = clamp(COLOR.rgb * color_scale + light_rgb - 128.0, vec3(0.0), vec3(255.0));
+	native_palette_layer = 0.0;
+	if (native_palette_enabled && CUSTOM3.w > 0.5) {
+		float depth = max(max(-(MODELVIEW_MATRIX * vec4(CUSTOM0.xyz, 1.0)).z, -(MODELVIEW_MATRIX * vec4(CUSTOM1.xyz, 1.0)).z), max(-(MODELVIEW_MATRIX * vec4(CUSTOM2.xyz, 1.0)).z, -(MODELVIEW_MATRIX * vec4(CUSTOM3.xyz, 1.0)).z));
+		int sz = clamp(int(floor(max(depth, 0.0) * 256.0 * float(1 << native_depth_cue_shift))), 0, 65535);
+		native_palette_layer = float(native_palette_offsets[clamp(sz >> native_palette_bucket_shift, 0, 31)]);
+	}
 	if (native_depth_cue_enabled) {
 		int sz = clamp(int(floor(max(-(VIEW_MATRIX * vec4(portal_world_position, 1.0)).z, 0.0) * 256.0 * float(1 << native_depth_cue_shift))), 0, 65535);
 		int ir0 = sz >> native_depth_cue_shift;
@@ -57,6 +76,14 @@ void vertex() {
 	}
 }
 void fragment() {
+	if (!native_actor_visible) { discard; }
+	if (!native_map_placement_visible) { discard; }
+	if (native_map_terrain) {
+		vec3 local = (native_map_world_to_local * vec4(portal_world_position, 1.0)).xyz;
+		ivec2 cell = ivec2(floor((vec2(-local.x, local.z) * 256.0 + 32768.0) / 512.0));
+		if (any(lessThan(cell, ivec2(0))) || any(greaterThanEqual(cell, ivec2(128))) || texture(native_map_cells, (vec2(cell) + vec2(0.5)) / 128.0).r < 0.5) { discard; }
+	}
+	if (hidden_face_range.x >= 0.0 && native_source_face_order >= hidden_face_range.x - 0.25 && native_source_face_order < hidden_face_range.y - 0.25) { discard; }
 	for (int i = 0; i < interior_clip_count; i++) {
 		if (all(greaterThanEqual(portal_world_position, interior_clip_min[i])) && all(lessThanEqual(portal_world_position, interior_clip_max[i]))) { discard; }
 	}
@@ -98,12 +125,8 @@ void fragment() {
 	}
 	if (!part_visible || (!double_sided && !FRONT_FACING)) { discard; }
 	vec2 sample_uv = roof_texture_region.z > 0.0 ? roof_texture_region.xy + fract(portal_world_position.xz) * roof_texture_region.zw : UV;
-	vec4 pixel = texture(albedo_texture, sample_uv);
+	vec4 pixel = native_palette_enabled ? texture(native_palette_atlas, vec2(sample_uv.x, (clamp(sample_uv.y, 0.0, 1.0) + native_palette_layer) / float(native_palette_layers))) : texture(albedo_texture, sample_uv);
 	ALBEDO = pixel.rgb * native_vertex_rgb / 128.0;
-	if (exterior_atmosphere) {
-		float depth = max(-(VIEW_MATRIX * vec4(portal_world_position, 1.0)).z, 0.0);
-		ALBEDO = mix(ALBEDO, vec3(160.0, 173.0, 193.0) / 255.0, clamp((depth - 12.0) / 16.0, 0.0, 1.0));
-	}
 	ALPHA = pixel.a;
 	ALPHA_SCISSOR_THRESHOLD = 0.5;
 }

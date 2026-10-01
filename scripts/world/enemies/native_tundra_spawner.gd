@@ -130,7 +130,7 @@ func _create(template: String, point: Vector3i, yaw: int) -> void:
 	var ground: float = float(hit["position"].y) - float(host.actors.global_position.y); entry["source_bytes_hex"] = template + "0000000000000000"; entry["transform"] = {"position": [local.x, 0.0, local.z], "yaw_raw": (-yaw) & 4095}
 	var enemy: CharacterBody3D = preload("res://scripts/world/enemies/native_tundra_popup.gd").new(); host.actors.add_child(enemy); enemy.configure_popup(self, entry, metadata, directory, data["rules"], ground)
 	enemy.target = host.player; enemy.contact_hit.connect(host._actor_contact); enemy.sound_requested.connect(host.audio.play_at); enemy.drop_requested.connect(host._spawn_actor_drops); enemy.died.connect(_defeated)
-	preload("res://scripts/world/rendering/native_material.gd").depth_cue(enemy.model, host.depth_cue_parameters)
+	preload("res://scripts/world/rendering/native_material.gd").depth_cue(enemy.model, host.depth_cue_parameters, template.hex_decode()[0])
 	tracked.append({"actor": enemy, "counter": int(zone["despawn_ticks"])}); live += 1
 func _defeated(_actor: CharacterBody3D) -> void: killed = true
 func _review() -> void:

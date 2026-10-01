@@ -2,8 +2,10 @@ extends Node
 class DrawSurface extends Node2D:
 	var renderer: Node
 	var flash := false
+	var overlay := false
 	func _draw() -> void:
-		if flash: renderer._draw_lightning(self)
+		if overlay: renderer._draw_overlay(self, flash)
+		elif flash: renderer._draw_lightning(self)
 		else: renderer._draw_atmosphere(self)
 var camera: Camera3D
 var data: Dictionary = {}
@@ -11,6 +13,10 @@ var bank := "ST02"
 var actors: Array[Dictionary] = []
 var background: DrawSurface
 var flashes: DrawSurface
+var overlay_add: DrawSurface
+var overlay_opaque: DrawSurface
+var overlay_key := ""
+var overlay_tick := 0
 var texture_cache: Dictionary = {}
 func configure(view_camera: Camera3D, manifest: Dictionary) -> bool:
 	camera = view_camera
@@ -27,7 +33,11 @@ func configure(view_camera: Camera3D, manifest: Dictionary) -> bool:
 	var flash_layer := CanvasLayer.new(); flash_layer.layer = 1; add_child(flash_layer)
 	flashes = DrawSurface.new(); flashes.renderer = self; flashes.flash = true; flash_layer.add_child(flashes)
 	var additive := CanvasItemMaterial.new(); additive.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD; flashes.material = additive
+	overlay_add = DrawSurface.new(); overlay_add.renderer = self; overlay_add.overlay = true; overlay_add.flash = true; overlay_add.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST; overlay_add.material = additive; flash_layer.add_child(overlay_add)
+	overlay_opaque = DrawSurface.new(); overlay_opaque.renderer = self; overlay_opaque.overlay = true; overlay_opaque.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST; flash_layer.add_child(overlay_opaque)
 	return true
+func set_overlay(key: String, tick: int) -> void:
+	overlay_key = key; overlay_tick = tick; overlay_add.queue_redraw(); overlay_opaque.queue_redraw()
 func set_bank(value: String) -> void:
 	if not data.get("texture_banks", {}).has(value): return
 	bank = value
@@ -149,6 +159,17 @@ func _draw_lightning(surface: Node2D) -> void:
 		for segment: int in range(16):
 			var first: int = segment * 4; var second: int = ((segment + 1) * 4) & 63; var start := Vector3(center.x + ((radius * int(trig[first][1])) >> 12), center.y + ((radius * int(trig[first][0])) >> 12), center.z); var end := Vector3(center.x + ((radius * int(trig[second][1])) >> 12), center.y + ((radius * int(trig[second][0])) >> 12), center.z)
 			surface.draw_polygon(PackedVector2Array([_project(start), _project(center), _project(end)]), PackedColorArray([Color(0, 0, 0), color, Color(0, 0, 0)]))
+func _draw_overlay(surface: Node2D, additive: bool) -> void:
+	if data.get("overlays", {}).is_empty() or not data.get("texture_banks", {}).get(bank, {}).has("overlay_texture"): return
+	var age := overlay_tick if overlay_tick < 125 else overlay_tick - 125
+	if additive and (overlay_key != "2:9" or not age in range(4)): return
+	if not additive and (overlay_key != "2:10" or overlay_tick < 13 or overlay_tick >= 43): return
+	var vertices: Array = data["overlays"]["vertices"][overlay_key]; var texture := _texture(str(data["texture_banks"][bank]["overlay_texture"])); var u := 0 if additive or ((overlay_tick - 13) & 2) != 0 else 64; var v := 128 if additive else 192; var width := 47 if additive else 63; var uv: Array[Vector2] = [Vector2(u, v), Vector2(u + width, v), Vector2(u, v + 63), Vector2(u + width, v + 63)]
+	var brightness := float(240 >> age) / 128.0 if additive else 1.0
+	for triangle: Array in [[0, 1, 2], [2, 1, 3]]:
+		var points := PackedVector2Array(); var coordinates := PackedVector2Array()
+		for corner: int in triangle: points.append(Vector2(float(vertices[corner][0]), float(vertices[corner][1]))); coordinates.append(uv[corner] / Vector2(texture.get_size()))
+		surface.draw_primitive(points, PackedColorArray([Color(brightness, brightness, brightness)]), coordinates, texture)
 func _exit_tree() -> void:
 	for actor: Dictionary in actors:
 		for instance: MeshInstance3D in actor["meshes"]:

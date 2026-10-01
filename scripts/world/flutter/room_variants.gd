@@ -13,6 +13,8 @@ static func apply_runtime(room: Node3D, node_name: String) -> void:
 	var base := room.find_child(node_name, true, false) as MeshInstance3D
 	if base == null or not base.has_meta("runtime_variant_mesh"): return
 	base.mesh = base.get_meta("runtime_variant_mesh") as Mesh; base.remove_meta("runtime_variant_mesh")
+	for surface in base.mesh.get_surface_count(): base.set_surface_override_material(surface, null)
+	preload("res://scripts/world/rendering/native_material.gd").apply(base)
 	for body: Node in base.get_children():
 		if body is not StaticBody3D: continue
 		for item: Node in body.get_children():

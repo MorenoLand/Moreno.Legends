@@ -1,5 +1,6 @@
 extends Node
 const APP_ID := "1557074698515251251"
+const APP_NAME := "Mega Man Legends 2"
 const INTERVAL := 15.0
 const BRIDGE := """$ErrorActionPreference = 'Stop'
 $p = $null
@@ -107,7 +108,7 @@ func _build() -> Dictionary:
 	return {"details": details.left(100) if details.length() > 1 else "Exploring", "state": state}
 func _send(wanted: Dictionary) -> void:
 	nonce += 1
-	var activity := {"details": wanted["details"], "state": wanted["state"], "timestamps": {"start": started}}
+	var activity := {"name": APP_NAME, "type": 0, "details": wanted["details"], "state": wanted["state"], "timestamps": {"start": started}}
 	var frame := JSON.stringify({"cmd": "SET_ACTIVITY", "args": {"pid": OS.get_process_id(), "activity": activity}, "nonce": "%d-%d" % [Time.get_ticks_msec(), nonce]})
 	var pipe: FileAccess = process["stdio"]
 	pipe.store_line(Marshalls.raw_to_base64(frame.to_utf8_buffer()))

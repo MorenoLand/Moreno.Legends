@@ -32,6 +32,7 @@ func configure(entry: Dictionary, metadata: Dictionary, directory: String) -> bo
 	animation_clock = preload("res://scripts/world/actors/native_animation.gd").new(); animation_clock.name = "NativeAnimationClock"; add_child(animation_clock); animation_clock.configure(animation_player, metadata.get("animations", []))
 	play_control(int(entry["startup_control"]["code"]) if entry.has("startup_control") else int(entry.get("native_animation_startup", {}).get("control", 0)))
 	add_to_group("world_npcs")
+	if entry.get("native_lock_on", null) is Dictionary: set_meta("native_lock_on", entry["native_lock_on"]); add_to_group("lock_targets")
 	return true
 func play_control(code: int) -> void:
 	if current_control == code or animation_player == null or not clips.has(str(code)): return

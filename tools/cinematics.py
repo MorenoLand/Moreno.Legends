@@ -255,10 +255,11 @@ def export_opening_effects():
 		cloud_palettes = {}
 		for offset in (0, 1, 2, 3, 4, 8, 9, 10, 11, 12):
 			filename = "cloud_%02d.png" % offset; write_output(directory / filename, texture_page(vram, 0x7DC0 + offset, 28)); cloud_palettes[str(offset)] = "res://assets/opening/effects/" + bank + "/" + filename
-		banks[bank] = {"textures": descriptors, "cloud_palettes": cloud_palettes}
+		filename = "overlay.png"; write_output(directory / filename, texture_page(vram, 0x3DC0, 37)); banks[bank] = {"textures": descriptors, "cloud_palettes": cloud_palettes, "overlay_texture": "res://assets/opening/effects/" + bank + "/" + filename}
 	def table(address, count, fmt): return list(struct.unpack_from("<" + fmt * count, source, 0x30 + address - 0x800E7000))
 	manifest["texture_banks"] = banks; manifest["trig4096"] = [list(struct.unpack_from("<2h", executable, 0x800 + 0x80073E4C - 0x80010000 + phase * 4)) for phase in range(4096)]; manifest["clouds"] = {"variant0": {"height": table(0x800F1638, 9, "h"), "radius": table(0x800F164C, 9, "h"), "half_size": table(0x800F1660, 9, "h"), "clut_offset": table(0x800F167C, 9, "b"), "uv_x": table(0x800F1674, 8, "B")}, "variant2": {"height": table(0x800F16C0, 4, "h"), "radius": table(0x800F16CC, 4, "h"), "half_size": table(0x800F16D8, 4, "h"), "clut_offset": table(0x800F16EC, 4, "b"), "uv_x": table(0x800F16E4, 8, "B")}}; manifest["screen_atmosphere"] = {"variant3_rows": table(0x800F16F4, 5, "B"), "variant4_rows": table(0x800F16FC, 6, "B"), "variant5_rows": table(0x800F1700, 10, "B")}; manifest["variant6_vertices"] = [table(0x800F170C + index * 8, 3, "h") for index in range(4)]; manifest["supported_variants"] = {"class18": [0, 2, 3, 4, 5, 6], "class14": [1, 2]}; manifest["renderer_adapters"] = ["Screen atmosphere backgrounds use CanvasLayer -1; native ordering-table interleaving with scene geometry is not reproduced.", "World cloud billboards use depth-tested Godot meshes; native GTE saturation and PSX affine texture sampling are not reproduced."]
 	manifest["clouds"]["variant1"] = {"height": table(0x800F1688, 4, "h"), "radius": table(0x800F1698, 4, "h"), "half_size": table(0x800F16A8, 4, "h"), "radius_jitter": table(0x800F16A8, 8, "h"), "clut_offset": table(0x800F16B8, 4, "b"), "uv_x": [0, 64, 128, 0, 64, 128, 0, 64]}; manifest["supported_variants"]["class18"].append(1); manifest["source"]["companion_constructor"] = "0x800EABF4..0x800EAC54"
+	manifest["overlays"] = {"clut": 0x3DC0, "tpage": 37, "vertices": {key: [[values[0], values[1]], [values[2], values[2] >> 15], [values[3], values[4]], [0, 0]] for key, address in (("2:9", 0x800F298C), ("2:10", 0x800F2996)) for values in [table(address, 5, "h")]}, "source": {"pulse": "ST02T0x800F00E0", "alternate": "ST02T0x800F01A4", "coordinates": "ST02T0x800F298C/0x800F2996; direct signed GPU POLY_FT4 coordinates"}}
 	destination = output / "manifest.json"; write_output(destination, json.dumps(manifest, indent=2) + "\n", encoding="utf-8"); return manifest
 from models import actor_archive
 from models import export_actor_model
@@ -270,6 +271,7 @@ from world import export_floor_shapes
 from world import texture_page
 DS_STAGE = "ST49"; DS_BASE = 0x800E7000; DS_CTX = 0x8007CEC0; DS_PLAYER = 0x8008C0A0; DS_AREA_BYTE = 0x8009C7F9; DS_STATE_BYTE = 0x8009C7FC; DS_FLAGS = 0x80098538; DS_OWNER = 0x8009BE08
 DS_SCENE_ID = 0x18; DS_HANDLER = 0x800E72B0; DS_STATES = 0x800ECBDC; DS_CAMERA = 0x800EC850; DS_TIMELINE = 0x800ECB20; DS_PER_FRAME = 0x800E7270; DS_STAGE_INIT = 0x800E701C; DS_GTE_START = 0x800E8DE8
+DS_RETURN_CAMERA = 0x800ECA44; DS_RETURN_TIMELINE = 0x800ECB60
 DS_ENTRY_FLAG = 0x5C0; DS_CLEAR_VARIANT_FLAG = 0x5C1; DS_EYES = 0x800ECBAC; DS_MOUTH = 0x800ECBD0; DS_ARCHIVE = "ST49_0B800"
 DS_D = {}
 def DS_H(v): return "0x%08x" % (v & 0xFFFFFFFF)
@@ -285,12 +287,12 @@ def dropship_load(root):
 	if [u32(0x800E727C), u32(0x800E728C), u32(0x800E729C)] != [0x24040000 | 0x5C1, 0x24040000 | 0x5C0, 0x24040018]: raise ValueError("ST49 per-frame trigger flags differ")
 	if [u32(0x800E7344), u32(0x800E7350)] != [0x24840000 | 0xC850, 0x24A50000 | 0xCB20] or u32(0x800E7354) != 0x24040000 | 0x7A0: raise ValueError("scene 0x18 camera/timeline binding differs")
 
-def dropship_emulate():
+def dropship_emulate(return_to_flutter=False):
 	import unicorn
 	e = stage_emulator(DS_STAGE_INIT, DS_GTE_START, DS_D["code_end"], ())(); e.requests = []
 	def flag(identifier, on=True):
 		address = DS_FLAGS + (identifier >> 3); e.w8(address, e.u8(address) | (1 << (identifier & 7)) if on else e.u8(address) & ~(1 << (identifier & 7)))
-	flag(DS_ENTRY_FLAG); e.w8(DS_AREA_BYTE, 2); e.w8(DS_STATE_BYTE, 1); e.cpu.mem_write(DS_OWNER & 0x1FFFFFFF, bytes(0x88)); e.call(DS_PER_FRAME)
+	flag(DS_CLEAR_VARIANT_FLAG if return_to_flutter else DS_ENTRY_FLAG); e.w8(DS_AREA_BYTE, 2); e.w8(DS_STATE_BYTE, 1); e.cpu.mem_write(DS_OWNER & 0x1FFFFFFF, bytes(0x88)); e.call(DS_PER_FRAME)
 	started = [x for x in e.events if x["kind"] == "scene_start"]
 	if [x["args"][0] for x in started] != [DS_SCENE_ID]: raise RuntimeError("ST49 per-frame handler did not start scene 0x18")
 	e.events.clear()
@@ -309,13 +311,30 @@ def dropship_actor_models(root):
 	manifest = json.loads((root / "assets/levels" / DS_STAGE / "models" / DS_ARCHIVE / "manifest.json").read_text(encoding="utf-8")); out = {}
 	for index, model in enumerate(manifest["models"]): out.setdefault(model["flags"] & 0xFFFFFF, (DS_ARCHIVE, index, model))
 	return out
+def dropship_backdrop(rec, memory, output_dir):
+	b = bytes.fromhex(rec["bytes_hex"]); kind = "rings" if b[2] == 0x60 and b[4] == 0x12 and b[6] == 2 else "strips" if b[2] == 0x60 and b[4] == 0x12 and b[6] in (3, 5) else "wave" if b[2] == 0xA0 and b[4] == 9 else None
+	if kind is None: return None
+	def page(tpage, clut):
+		name = "backdrops/page_%04x_%04x.png" % (tpage, clut); write_output(output_dir / name, world.png(256, 256, ui.decode_page(memory, tpage, clut, True))); return name
+	profile = {"kind": kind, "source_callback": DS_H(0x800E9B34 if kind == "rings" else 0x800EA188 if b[6] == 3 else 0x800EAD08 if kind == "strips" else 0x800EB2B0)}
+	if kind == "wave":
+		row = struct.unpack("<4h", fire_rd(0x800ECDA0 + ((b[6] >> 1) & 0x38), 8)); profile.update(texture=page(0x2E, 0x7C92), flags=b[6], base=row[0], amplitude=row[1], velocity=list(row[2:]), source_table="0x800ECDA0", columns=11, rows=9, cell=32); return profile
+	row = struct.unpack("<6H", fire_rd(0x800ECC20 + b[11] * 12, 12)); tpage = ((row[0] & 0x3FF) >> 6) | ((row[1] & 0x100) >> 4) | ((row[1] & 0x200) << 2); palette = lambda alternate, offset=0: ((row[3 if alternate else 5] << 6) | (((row[2 if alternate else 4] + offset) >> 4) & 63))
+	profile.update(source_texture_table=DS_H(0x800ECC20 + b[11] * 12), v=row[1] & 255, tpage=tpage)
+	if kind == "rings":
+		palette_offsets = struct.unpack("<4b", fire_rd(0x800ECD58, 4)); profile.update(heights=list(struct.unpack("<4h", fire_rd(0x800ECD2C, 8))), radii=list(struct.unpack("<4h", fire_rd(0x800ECD38, 8))), half_sizes=list(struct.unpack("<4h", fire_rd(0x800ECD44, 8))), u_offsets=list(fire_rd(0x800ECD50, 8)), segments=32, angle_step=128, initial_phase=[i * 512 for i in range(4)], phase_velocity=[-6 - i for i in range(4)], camera_cull_angle=674, textures={key: [page(tpage, palette(alternate, offset)) for offset in palette_offsets] for key, alternate in (("normal", False), ("alternate", True))})
+	else: profile.update(variant=b[6], strip_top=64 if b[6] == 3 else 144, strip_u=list(fire_rd(0x800ECD60 if b[6] == 3 else 0x800ECD6C, 5 if b[6] == 3 else 10)), textures={key: page(tpage, palette(alternate)) for key, alternate in (("normal", False), ("alternate", True))})
+	return profile
 
-def export_dropship_scene(root=None, out_dir=None):
+def dropship_scene_branch(root=None, out_dir=None, return_to_flutter=False):
 	import world
 	root = Path(root or ROOT); dropship_load(root); out = Path(out_dir or root / "assets/levels") / DS_STAGE; out.mkdir(parents=True, exist_ok=True)
-	e, tracks, ticks = dropship_emulate(); tl = fire_timeline(DS_TIMELINE); native = fire_commands(DS_CAMERA); K = fire_K
+	camera_pointer = DS_RETURN_CAMERA if return_to_flutter else DS_CAMERA; timeline_pointer = DS_RETURN_TIMELINE if return_to_flutter else DS_TIMELINE; suffix = "return" if return_to_flutter else "departure"
+	e, tracks, ticks = dropship_emulate(return_to_flutter); tl = fire_timeline(timeline_pointer); native = fire_commands(camera_pointer); K = fire_K
 	if native[-1]["opcode"] != 0xFF: raise ValueError("camera stream is not terminated")
 	models = dropship_actor_models(root); area_of = {}; current = 0
+	memory = bytearray(1024 * 512 * 2)
+	for name in ("COMMON/INIT.BIN", "COMMON/GAME.BIN", "DAT/ST49T.BIN", "DAT/ST49.BIN"): world.texture_uploads((DS_D["disc"] / name).read_bytes(), memory, name)
 	for x in e.events:
 		if x["kind"] == "request_block" and x["state"] == 1: current = bytes.fromhex(x["bytes"])[5]
 		if x["kind"] == "spawn": area_of.setdefault(x["record"], current)
@@ -325,7 +344,9 @@ def export_dropship_scene(root=None, out_dir=None):
 	actors = []; slot_of = {}; omitted = []
 	for address in order:
 		item = flight_actor_entry(fire_record(int(address, 16)), area_of.get(address, 0), models, DS_STAGE, True)
-		if item["model"] is None: omitted.append({"record": address, "class": item["entry"]["actor_class"], "pool": item["entry"]["pool_type"], "reason": "no exported model for this (class, pool); not representable by native_scene.gd"}); continue
+		backdrop = dropship_backdrop(fire_record(int(address, 16)), memory, out)
+		if backdrop is not None: item["entry"]["native_backdrop"] = backdrop
+		if item["model"] is None and backdrop is None: omitted.append({"record": address, "class": item["entry"]["actor_class"], "pool": item["entry"]["pool_type"], "reason": "no exported model or procedural renderer for this (class, pool)"}); continue
 		slot_of[address] = item["slot"] = len(actors); actors.append(item)
 	copy_actor_models(root, out, actors)
 	commands = []; occupant = {}; adaptations = []
@@ -352,29 +373,34 @@ def export_dropship_scene(root=None, out_dir=None):
 	for slot, profile in controllers.items():
 		entry = actors[int(slot)]["entry"]; profile["source"] = "ST49T class 0x%02X (pool 0x%02X) update emulated once per native tick after the scene update; render helpers stubbed" % (entry["actor_class"], entry["pool_type"])
 	stage_request = fire_request(e.requests[-1])
-	if (stage_request["type"], stage_request["stage"], stage_request["area"], stage_request["position_raw"], stage_request["facing_raw"]) != (2, "ST%02X" % K(0x800E7358, 0x10), 0, [K(0x800E735C, 0x800), K(0x800E7364, -0x371), K(0x800E736C, -0x3400)], 0x800): raise ValueError("finish request differs: %s" % stage_request)
+	expected_request = (2, "ST%02X" % K(0x800E739C, 4), 0, [K(0x800E73A4, 0x108), K(0x800E73AC, -1), K(0x800E73B4, 0x140)], 0) if return_to_flutter else (2, "ST%02X" % K(0x800E7358, 0x10), 0, [K(0x800E735C, 0x800), K(0x800E7364, -0x371), K(0x800E736C, -0x3400)], 0x800)
+	if (stage_request["type"], stage_request["stage"], stage_request["area"], stage_request["position_raw"], stage_request["facing_raw"]) != expected_request: raise ValueError("finish request differs: %s" % stage_request)
 	bank = export_scene_player_clips(DS_STAGE, out)
-	scene = {"stage": DS_STAGE, "area": 2, "scene_id": DS_SCENE_ID, "native_tick_hz": 25, "callback_contract_file": "scene_18_callbacks.json", "commands": commands, "native_commands": native, "command_adaptations": adaptations, "omitted_actors": omitted, "timeline": tl, "actors": actors,
+	scene = {"stage": DS_STAGE, "area": 2, "scene_id": DS_SCENE_ID, "native_tick_hz": 25, "callback_contract_file": "scene_18_%s_callbacks.json" % suffix, "commands": commands, "native_commands": native, "command_adaptations": adaptations, "omitted_actors": omitted, "timeline": tl, "actors": actors,
 		"player": {"scene_init": {"position_raw": [0, 0, 0], "source": "scene state 0 does not write the player position"}, "track": compress(tracks["player"]), "camera_opcode_0x42_used": any(c["opcode"] == 0x42 for c in native)},
 		"face_tables": {"player_eyes": face_table(DS_EYES, 3), "player_mouth": face_table(DS_MOUTH, 3)},
 		"emulation": {"script": "tools/cinematics.py export_dropship_scene", "native_ticks": ticks, "events": [{k: v for k, v in x.items() if k != "sub7"} for x in e.events if x["kind"] not in ("move_local", "released", "alloc", "actor_free_3EA4C", "actor_free_3EB7C")]},
-		"source": {"overlay": "DAT/ST49T.BIN (load 0x800E7000, code size 0x%X)" % (DS_D["code_end"] - DS_BASE), "handler": "0x800E72B0 (GAME table 0x800DC490[0x18])", "state_table": DS_H(DS_STATES), "command_pointer": DS_H(DS_CAMERA), "timeline_pointer": DS_H(DS_TIMELINE), "trigger": "per-frame 0x800E7270 (GAME table 0x800DC66C[0x49])",
+		"source": {"overlay": "DAT/ST49T.BIN (load 0x800E7000, code size 0x%X)" % (DS_D["code_end"] - DS_BASE), "handler": "0x800E72B0 (GAME table 0x800DC490[0x18])", "state_table": DS_H(DS_STATES), "command_pointer": DS_H(camera_pointer), "timeline_pointer": DS_H(timeline_pointer), "trigger": "per-frame 0x800E7270 (GAME table 0x800DC66C[0x49])",
 			"player_bank": "DAT/ST49.BIN actor archive bank -> player_scene.json (%d clips)" % len(bank["clips"])}}
 	finish_ops = [op for op in finish if op["op"] != "stage_request"]
 	contract = {"schema": 1, "stage": DS_STAGE, "scene_id": DS_SCENE_ID, "source": "ST49T scene 0x18 handler 0x800E72B0; timeline callbacks %s" % ", ".join(sorted({t["callback"] for t in tl})),
 		"tick_basis": "tick = native ctx+0x28 of the step; program delays are the emulated substate counters (fades and XA reported idle immediately in emulation)",
-		"initialization": {"player_position_raw": [0, 0, 0], "player_yaw_raw": 0, "player_yaw_unverified": True, "player_yaw_note": "scene state 0 does not write the player transform", "spawn_records": [], "init_ops": init, "source": "0x800E72EC (GAME0x800C0C5C(0x800EC850, 0x800ECB20) at 0x800E734C; destination ST10:0 stored in ctx+0xC at 0x800E7358..0x800E7378)"},
+		"initialization": {"player_position_raw": [0, 0, 0], "player_yaw_raw": 0, "player_keep_transform": True, "player_yaw_note": "scene state 0 does not write the player transform", "spawn_records": [], "init_ops": init, "source": "0x800E72EC selects camera %s and timeline %s by flag0x5C1; stores native destination in ctx+0xC" % (DS_H(camera_pointer), DS_H(timeline_pointer))},
 		"segments": segments, "actor_controllers": controllers,
 		"finish": {"source": "ST49T 0x800E7500", "fade_exit": 0x22, "fade_exit_source": "0x800E74CC (state 1 -> 2 after the timeline ends or the scene is skipped)", "ops": finish_ops,
 			"skip_path": {"source": "0x800E74A8..0x800E74D4", "condition": "GAME0x800C10B4() and scratch byte 0x1F800004 != 0", "fade": 0x22, "native": "SLES0x8001392C(0x22,0); handler state 2"},
 			"restore_calls": ["GAME0x800CDE4C", "GAME0x800C11F0", "GAME0x800C0F58"], "player_render_flag": True,
 			"transition": {"destination_stage": stage_request["stage"], "destination_area": stage_request["area"], "destination_transform_raw": stage_request["position_raw"] + [stage_request["facing_raw"]], "native_transition_mode": stage_request["type"], "native_entry_fade": stage_request["fade_arrival"], "native_exit_fade": stage_request["fade_exit"], "source": "0x800E7560..0x800E7620 request block 0x80078D08", "request_bytes": stage_request["bytes"]}},
 		"xa": {"descriptor_index": 0x48, "table": "SLES0x8001B9B0", "answers": []}, "new_ops": flight_NEW_OPS}
-	world.write_output(out / "scene_18.json", json.dumps(scene, indent=1) + "\n", encoding="utf-8"); world.write_output(out / "scene_18_callbacks.json", json.dumps(contract, indent=1) + "\n", encoding="utf-8")
-	triggers = {"stage": DS_STAGE, "triggers": [{"entry_area": 2, "scene_id": DS_SCENE_ID, "source_function": "GAME0x800C0B0C", "file": "scene_18.json", "requires_event_flags_set": [DS_ENTRY_FLAG], "requires_event_flags_clear": [DS_CLEAR_VARIANT_FLAG],
-		"source": "ST49T per-frame 0x800E7270 (GAME table 0x800DC66C[0x49]) starts scene 0x18 while flag 0x5C0 or 0x5C1 is set; 0x5C0 is set by the ST01T Forbidden Island destination callback 0x800E8788 (0x800E87B0..0x800E87C4) that redirects the request to ST49 area 2; with 0x5C1 clear the scene ends at ST10:0"}]}
-	world.write_output(out / "scene_triggers.json", json.dumps(triggers, indent=1) + "\n", encoding="utf-8")
-	return {"ticks": ticks, "actors": len(actors), "omitted_actors": [o["record"] for o in omitted], "adaptations": len(adaptations), "transition": stage_request, "player_clips": len(bank["clips"]), "segments": len(segments)}
+	world.write_output(out / ("scene_18_%s_callbacks.json" % suffix), json.dumps(contract, indent=1) + "\n", encoding="utf-8")
+	return scene, {"ticks": ticks, "actors": len(actors), "omitted_actors": [o["record"] for o in omitted], "adaptations": len(adaptations), "transition": stage_request, "player_clips": len(bank["clips"]), "segments": len(segments)}
+def export_dropship_scene(root=None, out_dir=None):
+	root = Path(root or ROOT); out = Path(out_dir or root / "assets/levels") / DS_STAGE; departure, departure_report = dropship_scene_branch(root, out_dir); arrival, arrival_report = dropship_scene_branch(root, out_dir, True)
+	scene = {"stage": DS_STAGE, "scene_id": DS_SCENE_ID, "branch_event_flag": DS_CLEAR_VARIANT_FLAG, "branches": {"clear": departure, "set": arrival}}
+	write_output(out / "scene_18.json", json.dumps(scene, indent=1) + "\n", encoding="utf-8")
+	areas = [int(area["index"]) for area in json.loads((out / "manifest.json").read_text(encoding="utf-8"))["areas"]]
+	triggers = {"stage": DS_STAGE, "triggers": [{"entry_area": areas, "scene_id": DS_SCENE_ID, "source_function": "GAME0x800C0B0C", "file": "scene_18.json", "requires_event_flags_set": [DS_ENTRY_FLAG], "requires_event_flags_clear": [DS_CLEAR_VARIANT_FLAG], "source": "ST49T0x800E7270 starts scene0x18 with flag0x5C0 and flag0x5C1 clear, without an area check; ST01T0x800E8788 redirects the Forbidden Island destination to ST49:2"}, {"entry_area": areas, "scene_id": DS_SCENE_ID, "source_function": "GAME0x800C0B0C", "file": "scene_18.json", "requires_event_flags_set": [DS_CLEAR_VARIANT_FLAG], "source": "ST49T0x800E7270 starts scene0x18 with flag0x5C1 set, without an area check; scene init0x800E738C selects the return-to-Flutter branch"}]}
+	write_output(out / "scene_triggers.json", json.dumps(triggers, indent=1) + "\n", encoding="utf-8"); return {"departure": departure_report, "return": arrival_report}
 
 
 # ---- scenes ----
@@ -391,14 +417,14 @@ def scenes_export_church(source_dir, output_dir):
 			if phase == 255: break
 			timeline.append({"phase": phase, "step": step, "duration": duration, "callback": hex(callback), "source_ram": hex(address)}); address += 8
 		cells = [(63, 66), (64, 66)] if area == 0 else [(63, 62)]; tiles = stage.area(area)[0]; placements = [(struct.unpack_from("<H", tiles[cell])[0] & 0x7FF) for cell in cells]; target = 1 if area == 0 else 0; initial = [0, -896, 944] if area == 0 else [0, 0, -336]; arrival = [0, 0, -464, 2048] if area == 0 else [0, -896, 896, 0]
-		contract = {"schema": 1, "stage": "ST0B", "scene_id": 39, "initialization": {"player_position_raw": initial, "player_yaw_raw": 2048 if area == 0 else 0, "spawn_records": [item["source_ram"] for item in group["actors"]], "suppress_placements": placements, "source": "ST0B0x800E7B28..7D70"}, "segments": {"0:0": {"program": [{"op": "player_control", "control": 0}]}, "0:1": {"program": []}, "0:2": {"program": []}, "0:3": {"program": [{"op": "player_control", "control": 2, "start_record": 8}], "motion": [{"actor": "player", "from_tick": 0, "velocity_raw": [0, 0, -8]}, {"actor": "player", "from_tick": 20, "velocity_raw": [0, 0, -30]}]}}, "actor_controllers": {"0": {"total_yaw_increment": {"from_tick": 10, "through_tick": 120, "shift": 3, "maximum": 8, "sign": 1}}, "1": {"total_yaw_increment": {"from_tick": 10, "through_tick": 120, "shift": 3, "maximum": 8, "sign": -1}}}, "finish": {"source": "ST0B0x800E7E98..8004", "restore_calls": ["GAME0x800C11F0", "GAME0x800C0F58"], "transition": {"destination_stage": "ST0B", "destination_area": target, "destination_transform_raw": arrival, "native_transition_mode": 3, "native_entry_fade": 0xFF}}, "xa": {"descriptor_index": 99, "prepare": "SLES0x8001B714", "play": "SLES0x8001B864", "ready": "SLES0x8001AF94", "descriptor_ram": "0x800EEF28", "archive": "XA/PAL_37.XA", "sector_start": 124224, "sector_end": 125295, "channel": 7, "binding_status": "original_xa_pcm"}}
+		contract = {"schema": 1, "stage": "ST0B", "scene_id": 39, "initialization": {"player_position_raw": initial, "player_yaw_raw": 2048 if area == 0 else 0, "spawn_records": [item["source_ram"] for item in group["actors"]], "placement_streams": [{**world.placement_stream_visibility(stage, placement), "hidden_range": world.placement_stream_visibility(stage, placement)["open_hidden_range"]} for placement in placements], "source": "ST0B0x800E7B28..7D70"}, "segments": {"0:0": {"program": [{"op": "player_control", "control": 0}]}, "0:1": {"program": []}, "0:2": {"program": []}, "0:3": {"program": [{"op": "player_control", "control": 2, "start_record": 8}], "motion": [{"actor": "player", "from_tick": 0, "velocity_raw": [0, 0, -8]}, {"actor": "player", "from_tick": 20, "velocity_raw": [0, 0, -30]}]}}, "actor_controllers": {"0": {"hinge_raw": [-256, 0, 0], "total_yaw_increment": {"from_tick": 10, "through_tick": 120, "shift": 3, "maximum": 8, "sign": 1 if area == 0 else -1, "source": "ST0B0x800E8104; init 0x800E7B28 stores first spawned leaf at +0x2C (adds) in area 0 and at +0x30 (subtracts) in area 1"}}, "1": {"hinge_raw": [256, 0, 0], "total_yaw_increment": {"from_tick": 10, "through_tick": 120, "shift": 3, "maximum": 8, "sign": -1 if area == 0 else 1}}}, "finish": {"source": "ST0B0x800E7E98..8004", "restore_calls": ["GAME0x800C11F0", "GAME0x800C0F58"], "transition": {"destination_stage": "ST0B", "destination_area": target, "destination_transform_raw": arrival, "native_transition_mode": 3, "native_entry_fade": 0xFF}}, "xa": {"descriptor_index": 99, "prepare": "SLES0x8001B714", "play": "SLES0x8001B864", "ready": "SLES0x8001AF94", "descriptor_ram": "0x800EEF28", "archive": "XA/PAL_37.XA", "sector_start": 124224, "sector_end": 125295, "channel": 7, "binding_status": "original_xa_pcm"}}
 		file = f"scene_27_area{area}_callbacks.json"; write_output(output_dir / file, json.dumps(contract, indent=2) + "\n", encoding="utf-8"); branches[str(area)] = {"stage": "ST0B", "area": area, "scene_id": 39, "native_tick_hz": 25, "callback_contract_file": file, "commands": commands, "timeline": timeline, "actors": group["actors"], "source": {"handler": "0x800E7AEC", "initialize": "0x800E7B28", "update": "0x800E7E20", "finish": "0x800E7E98", "area_selector": "native save+0x11", "command_pointer": hex(start)}}
 	profile = {"stage": "ST0B", "scene_id": 39, "branches": branches}; write_output(output_dir / "scene_27.json", json.dumps(profile, indent=2) + "\n", encoding="utf-8"); write_output(output_dir / "scene_triggers.json", json.dumps({"stage": "ST0B", "triggers": [{"event_flag": 0x80, "scene_id": 0x27, "source_function": "GAME0x800C0B0C", "source": "ST0B0x800E7640 tests80; E7650 clears80; E7658 requests27"}]}, indent=2) + "\n", encoding="utf-8"); return profile
 def export_scene_audio(cue, source_dir, output_dir):
 	import audio
 	source_dir = Path(source_dir); output_dir = Path(output_dir); output_dir.mkdir(parents=True, exist_ok=True); overlay = (source_dir / "ST0BT.BIN").read_bytes(); descriptor = overlay[48 + 0x800EEF28 - 0x800E7000:48 + 0x800EEF28 - 0x800E7000 + 8]; entry = {"id": 99, "archive": "XA/PAL_37.XA", "sector_start": descriptor[1] * 65536 + struct.unpack_from("<H", descriptor, 2)[0], "sector_end": descriptor[5] * 65536 + struct.unpack_from("<H", descriptor, 6)[0], "channel": descriptor[4] & 31, "descriptor_ram": "0x800EEF28", "descriptor_bytes": descriptor.hex()}; path, start, frames = audio.cue_layout(Path(cue)); reader = audio.Mode2Track(path, start, frames)
 	try:
-		extent, _ = audio.archive_record(reader, entry["archive"]); result = audio.export_entry(reader, extent, entry, output_dir); result["file"] = "res://" + (output_dir / "xa_099.wav").resolve().relative_to(Path(__file__).resolve().parents[1]).as_posix(); write_output(output_dir / "manifest.json", json.dumps(result, indent=2) + "\n", encoding="utf-8"); return result
+		extent, _ = audio.archive_record(reader, entry["archive"]); result = audio.export_entry(reader, extent, entry, output_dir); manifest_path = output_dir / "manifest.json"; manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.is_file() else {}; manifest.update(result); write_output(manifest_path, json.dumps(manifest, indent=2) + "\n", encoding="utf-8"); return result
 	finally: reader.stream.close()
 def scenes_export_callbacks(stage, scene_id, output_dir):
 	if (stage, scene_id) != ("ST0A", 0x4D): raise ValueError(f"Native scene callback binding is unbound: {stage}:{scene_id:02X}")
@@ -1066,7 +1092,7 @@ def export_intro_scene():
 							{"kind": "music", "note": "no music cue call in scene 5 code; finish calls SLES0x8001B7E8(-1) which stores 0xFFFF at 0x800966BA (XA/music selection reset, semantics unverified)"}],
 			 "camera_interpolation": {"opcodes": {"0x18": "focus interpolation: header bits16..18 = ease mode, low16 = ticks; from current focus (absolute or actor-relative) to words[1..3] (GAME0x800C174C)", "0x19": "orbit interpolation: same header layout; from current orbit (+0x58..+0x60) to words[1..3] (GAME0x800C182C)"},
 									  "ease_table": "GAME0x800DC7E0: 0 linear 0x800C1EC4, 1 cosine in-out 0x800C2114, 2 quadratic ease-out 0x800C2234, 3 quadratic ease-in 0x800C2318, 4..7 linear",
-									  "runtime_support": "native_scene.gd _commands() treats opcodes 24/25 as unknown (sets message_failed) - must be added"},
+									  "runtime_support": "native_scene.gd consumes focus/orbit/eye interpolation with native integer easing and elapsed-zero sampling"},
 			 "emulation": {"script": "tools/cinematics.py", "native_ticks": ticks, "simulated_answers": e.answer_log, "finish_request_block": req, "cross_check": cross},
 			 "source": {"overlay": "DAT/ST39T.BIN (load 0x800E7000; ST3901T.BIN code region 0x30..0x1E000 byte-identical)", "handler_table": "0x800F2204 (init 0x800EB7CC, update 0x800EB960, finish 0x800EB9F4)", "dispatch": "0x800EB790",
 						"initialize": "0x800EB7CC (jump table 0x800E7048)", "update": "0x800EB960", "finish": "0x800EB9F4", "command_pointer": "0x800f1bac", "timeline_pointer": "0x800f1f14",
@@ -1099,7 +1125,7 @@ def export_intro_scene():
 				"xa": {"descriptor_index": 0x47, "prepare": "SLES0x8001B714", "play": "SLES0x8001B864", "ready": "SLES0x8001AF94", "descriptor_ram": xa["intro"]["descriptor_ram"], "archive": "XA/PAL_37.XA",
 					   "sector_start": xa["intro"]["sector_start"], "sector_end": xa["intro"]["sector_end"], "channel": xa["intro"]["channel"], "binding_status": "descriptor decoded; audio not exported", "answers": xa["answers"]},
 				"new_ops": intro_NEW_OPS,
-				"integration_notes": ["native_scene.gd _commands() rejects camera opcodes 0x18/0x19 (24/25, used 9 times) -> message_failed; add focus/orbit interpolation with the ease table", "native skips the frame increment on the tick a callback advances (ctx byte0 bit 0x08), so the next step sees tick 0; native_scene increments segment_tick after a program advance, which would skip tick-0 actions of steps 1,5,6,7,8 (callback-advanced predecessors 0,4,5,6,7)", "records span areas 0 and 1 and the scene performs three same-stage area changes; runtime spawns all records once into the starting area", "player controls 0x80..0x97 (and 1 with start_record 4) must exist in the player clip set for ST39", "opcode 0x11 targets actor slot 4 (ship 0x800f1b5c) at step 5"]}
+				"integration_notes": ["camera opcodes0x18/0x19 use native integer easing and elapsed-zero sampling", "native skips the frame increment on the tick a callback advances (ctx byte0 bit0x08), so the next step sees tick0", "records span areas0 and1 and the scene performs three same-stage area changes", "player controls0x80..0x97 (and1 with start_record4) must exist in the player clip set for ST39", "opcode0x11 targets actor slot4 (ship0x800f1b5c) at step5"]}
 	write_output(intro_OUT + "scene_05.json", json.dumps(scene, indent=1))
 	write_output(intro_OUT + "scene_05_callbacks.json", json.dumps(contract, indent=1))
 	write_output(intro_OUT + "scene_triggers.json", json.dumps({"stage": "ST39", "triggers": [{"entry_area": 0, "native_save_byte14": 0, "scene_id": 5, "source_function": "GAME0x800C0B0C", "source": "ST39T 0x800E72D8 starts scene 5 once per stage load (latch 0x80095E08) when +0x14 == 0"}]}, indent=1))
@@ -1137,7 +1163,7 @@ def export_intro_audio(cue):
 		for source in [{"id": xa["descriptor_index"], **{key: xa[key] for key in ("archive", "sector_start", "sector_end", "channel")}}] + [{key: answer[key] for key in ("id", "archive", "sector_start", "sector_end", "channel")} for answer in xa["answers"]]:
 			extent, size = audio.archive_record(reader, source["archive"])
 			if int(source["sector_end"]) >= (size + 2047) // 2048: raise ValueError("XA descriptor exceeds its ISO file")
-			item = audio.export_entry(reader, extent, source, output); item["file"] = "res://assets/levels/ST39/audio/" + Path(item["file"]).name; entries.append(item)
+			item = audio.export_entry(reader, extent, source, output); entries.append(item)
 	finally: reader.stream.close()
 	manifest = {"source": "ST39T scene 5 XA descriptors 0x800ED9AC and 0x800EDA34", "entries": entries}; write_output(output / "manifest.json", json.dumps(manifest, indent=2) + "\n", encoding="utf-8"); return manifest
 
@@ -1178,7 +1204,7 @@ def export_doors(dat_dir, levels_dir, out_dir):
 	source = Path(levels_dir) / fire_STAGE; target = Path(out_dir) / fire_STAGE; target.mkdir(parents=True, exist_ok=True); copies = []
 	if source.resolve() != target.resolve():
 		for item in [source / "manifest.json", *sorted(source.glob("area_??.glb"))]:
-			if not (target / item.name).exists(): shutil.copy2(item, target / item.name); copies.append(target / item.name)
+			if not (target / item.name).exists(): write_output(target / item.name, item.read_bytes()); copies.append(target / item.name)
 	overlay = (Path(dat_dir) / (fire_STAGE + "T.BIN")).read_bytes(); original = world.native_area_tables
 	world.native_area_tables = lambda data: {**original(data), "routes": [{"pointer_ram": ROUTES, "source_call": "0x800e73e8"}]} if data == overlay else original(data)
 	try: world.export_routes(Path(dat_dir), Path(out_dir), [fire_STAGE])
@@ -1403,9 +1429,9 @@ class Atlas:
 
 # ------------------------------------------------------------------ scene contract helpers
 fire_OPS = {"screen_transition": lambda x: {"op": "fade", "type": x["args"][0]}, "pool_clear": lambda x: {"op": "pool_clear", "mask": x["args"][0], "flags": x["args"][1]}, "sound": lambda x: {"op": "play_sound", "id": x["args"][0]},
-	"player_control": lambda x: {"op": "player_control", "control": x["args"][0], "start_record": x["args"][1]}, "xa_prepare": lambda x: {"op": "music_prepare", "id": x["args"][0] & 0xFFFF, "unverified": True, "note": "SLES0x8001B714(0xFF01): XA/music descriptor 0xFF01 (music stop/hold); no XA asset bound"},
-	"xa_play": lambda x: {"op": "music_play", "id": x["args"][0] & 0xFFFF, "unverified": True, "note": "SLES0x8001B864(0xFF01) after the result message"}, "overlay_show": lambda x: {"op": "result_banner", "args_raw": x["args"][:3], "unverified": True, "note": "SLES0x8003B918(0x44,0x30,2): screen overlay/banner (style table 0x8006B324)"},
-	"overlay_hide": lambda x: {"op": "result_banner_hide"}, "jingle": lambda x: {"op": "jingle", "args_raw": x["args"][:3], "unverified": True, "note": "SLES0x80020984(0xF,0x333,0)"}, "call_43F70": lambda x: {"op": "native_call", "function": "SLES0x80043F70", "args_raw": x["args"][:1], "unverified": True},
+	"player_control": lambda x: {"op": "player_control", "control": x["args"][0], "start_record": x["args"][1]}, "xa_prepare": lambda x: {"op": "music_prepare", "id": x["args"][0] & 0xFFFF, "note": "SLES0x8001B714 prepares XA; 0xFF01 resolves through SLES0x8001B9D0 to common descriptor0x8006962C"},
+	"xa_play": lambda x: {"op": "music_play", "id": x["args"][0] & 0xFFFF, "note": "SLES0x8001B864 starts the prepared XA descriptor after the result message"}, "overlay_show": lambda x: {"op": "result_banner", "args_raw": x["args"][:3], "unverified": True, "note": "SLES0x8003B918(0x44,0x30,2): screen overlay/banner (style table 0x8006B324)"},
+	"overlay_hide": lambda x: {"op": "result_banner_hide"}, "jingle": lambda x: {"op": "jingle", "args_raw": x["args"][:3], "note": "SLES0x80020984 selects sequence slots by mask and installs volume fade step and delay; SLES0x8001E374 updates and stops them"}, "call_43F70": lambda x: {"op": "native_call", "function": "SLES0x80043F70", "args_raw": x["args"][:1], "unverified": True},
 	"skip_lock": lambda x: {"op": "skip_lock", "set": x["set"]}, "flag_set": lambda x: {"op": "event_set", "id": x["args"][0]}, "flag_clear": lambda x: {"op": "event_clear", "id": x["args"][0]}, "close_windows": lambda x: {"op": "close_windows"}, "vibration": lambda x: {"op": "vibration", "args_raw": [a & 0xFFFFFFFF for a in x["args"][:2]]},
 	"message": lambda x: {"op": "message", "index": x["index"]}, "advance": lambda x: {"op": "advance"}, "xa_fade_out": lambda x: {"op": "xa_fade_out", "speed": x["args"][0]}}
 def fire_request(raw):
@@ -1489,7 +1515,7 @@ def build_result(success, manifest, runtime, out):
 			"skip_path": {"source": "0x800ED9DC..0x800EDA50", "condition": "GAME0x800C10B4() and scratch byte 0x1F800004 != 0", "fade": 0x22, "native": "SLES0x80048944(1); SLES0x8001392C(0x22,0); handler state 2"},
 			"restore_calls": ["GAME0x800CDE4C", "GAME0x800C11F0", "SLES0x8001B7E8(-1)", "GAME0x800C0F58"], "player_render_flag": True,
 			"transition": {"destination_stage": stage_request["stage"], "destination_area": stage_request["area"], "destination_transform_raw": stage_request["position_raw"] + [stage_request["facing_raw"]], "native_transition_mode": stage_request["type"], "native_entry_fade": stage_request["fade_arrival"], "native_exit_fade": stage_request["fade_exit"], "source": "0x800EDB44..0x800EDB80 request block 0x80078D08", "request_bytes": stage_request["bytes"]}},
-		"new_ops": fire_NEW_OPS, "integration_notes": ["camera opcode 0x42 (66) is used at step 1 tick 0: native_scene.gd _commands() treats it as unknown and fails the scene; add 'player transform set' (position words[1..3] 16.16, yaw = low half of words[4])", "fade ops in steps that the native code does not wait for (fade 1 / fade 2 reveals) block in native_scene.gd; harmless but adds the fade time", "player controls %s must exist in the ST1E player clip set" % sorted({op["control"] for s in segments.values() for op in s["program"] if op["op"] == "player_control"}), "unknown ops (music_prepare, music_play, result_banner, jingle, native_call, close_windows, event_clear) are ignored by native_scene.gd _action()"]}
+		"new_ops": fire_NEW_OPS, "integration_notes": ["camera opcode0x42 at step1 tick0 sets the player transform: position words[1..3]16.16, yaw low half of words[4]", "fade reveals preceding callback advances carry wait=false", "player controls %s must exist in the ST1E player clip set" % sorted({op["control"] for s in segments.values() for op in s["program"] if op["op"] == "player_control"}), "music_prepare/music_play bind original common XA; jingle selects sequence volume fades; native_call remains unbound"]}
 	world.write_output(out / (base + ".json"), json.dumps(scene, indent=1) + "\n", encoding="utf-8"); world.write_output(out / (base + "_callbacks.json"), json.dumps(contract, indent=1) + "\n", encoding="utf-8")
 	return {"file": base + ".json", "callbacks": base + "_callbacks.json", "ticks": ticks, "messages": [x["index"] for x in e.events if x["kind"] == "message"], "transition": stage_request, "flags_set": [x["args"][0] for x in e.events if x["kind"] == "flag_set"]}
 
@@ -1556,6 +1582,7 @@ def area_data(area):
 	if area == 0: entry["start_sequence"] = [{"op": "conversation", "message": x["index"], "window": x["args"][2], "caller": x["caller"]} if x["kind"] == "conversation" else {"op": x["kind"], "args_raw": x["args"][:3], "caller": x["caller"]} for x in ev if x["kind"] in ("conversation", "overlay_show", "overlay_hide")]
 	if area == 1:
 		extra = fire_record(EXTRA_FIRE); spawned = [x for x in trigger.events if x["kind"] == "spawn_table" and x["args"][0] & 0xFFFFFFFF == EXTRA_FIRE]
+		entry["reentry"] = {"fires_reset": True, "trigger_reset": True, "placement_variant_reset": False, "source": "ST1ET800E76E8..773C zeroes room+4/+6/+8/+10, spawns13normalfires and sets room+4=13; GAME800C02D0 resets area-local script state without resetting native placement variant bytes", "route_limit": "The original backward mission doors remain locked; room selection can force a revisit"}
 		entry["triggered_fires"] = [{"index": extra["index"], "position_raw": extra["position_raw"], "yaw_raw": extra["yaw_raw"], "size": extra["size"], "strength_max": fire_K(0x800EAA50, 0x1000), "variant": extra["variant"], "contact_damage": extra["contact_damage"], "behaviour": extra["behaviour"], "source_ram": extra["source_ram"], "bytes_hex": extra["bytes_hex"], "trigger": "room+6 (0x8009C906) set by extinguishing a fire with behaviour bit1 (0x800EA030); area 1 state 1 spawns it and adds 1 to the room fire count (0x800E7774)", "emulated": bool(spawned), "fire_count_after": spawned[0]["room"]["fires"] + 1 if spawned else None, "map_change": map_change(extra, area)}]
 	if area == 2:
 		entry["npcs"] = [{"record": fire_record(0x800EF3C8), "role": "Data (class 0x63 v0, handler 0x800E7BD4)"}, {"record": fire_record(0x800EF3F0), "role": "script actor class 0x1D playing message 0x03 (0x800EC130)"}]
@@ -1572,6 +1599,13 @@ def blast():
 		"flame": {"init_velocity": fire_K(0x800EC440, 0x80), "gravity": fire_K(0x800EC498, -0x20), "velocity_shift": 4, "move": "x/z += trig(yaw byte * 16 + 0x800)[0/1] * speed >> 12 (SLES0x80042674); y += (velocity << 16) >> 20; speed = effect +0xE = strength >> 7", "hitbox": {"size_shift": 3, "damage": "0x980000 | effect +0xD (contact damage 0x0A), a2 = byte2 << 24 | 0x480000 | size >> 3", "source": "0x800ED0CC"}},
 		"debris": {"init_velocity": [fire_K(0x800EC734, 0xA8), fire_K(0x800EC730, 0x3F)], "gravity": fire_K(0x800EC78C, 0x18), "velocity_shift": 4, "floor_probe_after": fire_K(0x800EC838, 0x11) - 1, "max_age": fire_K(0x800EC888, 0x40), "move": "x/z += trig(yaw byte * 16 + 0x800)[0/1] * speed >> 12 (SLES0x80042674); +0xD age counter"},
 		"flash": {"initial": 0xFF, "decay": -fire_K(0x800EC66C, -0x20), "end_below": fire_K(0x800EC658, 0x20), "draw": "GP0 0x62 gray (c, c, c) full-screen rectangle at (0,0), draw mode 0xE1000220 (additive), 0x800ECDF8", "initial_source": "0x800EC620 (sb -1 +0xC)"}}
+def fire_smoke_profile():
+	callback = struct.unpack_from("<I", fire_D["sles"], 0x8006B3E4 + 0x14 * 4 - 0x80010000 + 0x800)[0]
+	if callback != 0x800D73A0: raise ValueError("Fire smoke global class binding differs")
+	for address, shift in [(0x800D7CDC, 6), (0x800D7CEC, 1), (0x800D7D64, 11)]:
+		if (struct.unpack_from("<I", fire_D["game"], 0x30 + address - 0x800AD000)[0] >> 6) & 31 != shift: raise ValueError("Fire smoke wave shift differs")
+	color = (fire_K(0x800D74B8, 2, True) << 16) | fire_K(0x800D74BC, 0x202, True)
+	return {"actor_class": 0x14, "callback": hex(callback), "source": "GAME800D73A0/800D73DC initialize;800D7618 grow trail;800D783C drain;800D7938 draw paired untextured Gouraud strips, DR_MODE E1000240 subtract", "samples": fire_K(0x800D764C, 16, True), "rise_rng": [fire_K(0x800D744C, 8, True), fire_K(0x800D7448, 15, True)], "phase_mask": fire_K(0x800D7468, 0xF00, True), "width_raw": fire_K(0x800D7490, 4, True), "color_step": [color & 255, (color >> 8) & 255, (color >> 16) & 255], "face_frame": fire_K(0x800D797C, 4, True), "wave_tick_shift": 6, "wave_distance_shift": 1, "wave_sine_shift": 11, "source_limit": "Godot projection and depth testing replace integer GTE projection and ordering-table placement; the smoke renderer uses its own native update counter for the wave phase"}
 def fire_block(atlas, rows, boxes):
 	sizes = []
 	for size in range(4):
@@ -1593,7 +1627,7 @@ def fire_block(atlas, rows, boxes):
 			"size_raw": "(strength >> 4) - (strength >> 6)", "anchor_raise_raw": "strength >> 5", "size_semantics_unverified": True, "size_note": "the SLES consumer of the 0x1F800050 sprite packets was not traced; GAME buster projectiles use the same layout with word 0x18 = width_raw | rotation << 16", "uv_note": "frame w/h (and effect u1/v1) are inclusive end offsets: the drawn quad spans u..u+w, so the atlas cells are (w+1)x(h+1)", "animation": "each frame shows for frame.ticks ticks; after a frame with last=true the sequence restarts at 0 (0x800EA8B4..0x800EA92C)"},
 		"init": {"strength": "size table max", "ember_timer": "0x90 + (rand & 0x3F) (0x800E9F08..0x800E9F10)", "child": {"class": 0x3E, "handler": "0x800EB314", "submode": "1 if behaviour bit0 (child +0xE = record index & 1) else 3", "unverified": "visual role of class 0x3E"}},
 		"splash": {"rule": "hit with bit 0x2000 spawns class 0x3E submode 0 at the fire, killed after 8 ticks (0x800EA094..0x800EA15C)", "unverified": True},
-		"dying": {"rule": "kill children, sound 0x153; on odd ticks spawn effect 0x12 v1 (+6=2 steam) at (x+0x20-(rand&0x3F), y-((rand>>6)&7), z+0x20-((rand>>9)&0x3F)); after 3 puffs spawn global class 0x14 (smoke/scorch, unverified); free after 0x%X ticks" % fire_K(0x800EA5C4, 0x1D0), "counts": "room+4 -= 1, room+5 += 1, behaviour bit1 sets room+6 (0x800EA01C..0x800EA054)"},
+		"dying": {"rule": "kill children, sound 0x153; on odd ticks spawn effect 0x12 v1 (+6=2 steam); after three puffs spawn global class 0x14, then wait464ticks and request its drain", "counts": "room+4 -= 1, room+5 += 1, behaviour bit1 sets room+6 (0x800EA01C..0x800EA054)", "steam_subtype": fire_K(0x800EA4A8, 2), "steam_count": fire_K(0x800EA530, 3), "steam_offset_raw": fire_K(0x800EA4C4, 0x20), "steam_xz_mask": fire_K(0x800EA4DC, 0x3F), "steam_y_mask": fire_K(0x800EA4F0, 7), "steam_y_shift": SH(0x800EA4E4, 6), "steam_z_shift": SH(0x800EA504, 9), "smoke_life_ticks": fire_K(0x800EA5C4, 0x1D0)}, "global_smoke": fire_smoke_profile(),
 		"explosion": {"variant": 1, "record": fire_H(EXTRA_FIRE), "init": "0x800EAA18: strength = max = 0x1000; spawn effect 0x12 v3 (white additive flash 0xFFFFFF fading by 0x20 per tick, 0x800EC600/0x800EC648) and 16 effect 0x12 v4 debris (+6 cycling 0..2); GAME0x800C010C(map cell word at fire x/z, 1) (map change, unverified); SLES0x80016B1C(1,0x6000,0x800) camera shake; sound 0x8B",
 			"burning": "0x800EAC2C: same damage/regrow/out rules (0x800EA600) without room+6; every 4 ticks spawn effect 0x12 v2 flame (+0xE = strength >> 7); first 9 ticks also spawn v4 debris; hitbox offset 0x20 along yaw, radius 0x40 (a2 low 0x10), a3 0x8A0000|0x0A; no sprite of its own", "contact_damage": 0x0A, "blast": blast(),
 			"trigger": "Living Room fire index 12 (record 0x800EF33C, behaviour 2) extinguished -> room+6 -> area 1 state 1 spawns 0x800EF350"},
@@ -1652,8 +1686,8 @@ def export_fire_mission(root=None, out_dir=None, levels_dir=None):
 		"unverified": ["sprite packet size semantics (half vs full extent)", "class 0x3E / effect 0x12 v1..v6 / global class 0x14 roles", "ember arc helper SLES0x80042298 meaning", "Data damage gate ext+0xC bit 4", "weapon module providing hit bit 0x2000", "message 0x00 yes/no branch targets", "SLES0x8003B918 / 0x80020984 / 0x80043F70 effects", "GAME death handling vs HP==0 failure path"]}
 	world.write_output(out / "fire_mission.json", json.dumps(mission, indent=1) + "\n", encoding="utf-8")
 	triggers = {"stage": fire_STAGE, "triggers": [{"scene_id": 0, "file": "scene_00.json", "when": "door use: GAME door logic (0x800B7DA4..0x800B7E0C) fills request 0x80078D08 and sets flag 0x700; ST1ET per-frame 0x800E7488 starts scene 0 while 0x700 is set", "source_function": "GAME0x800C0B0C(0) at 0x800E7498", "runtime": "gameplay.gd _use_door already performs this natively"},
-		{"scene_id": 0xD, "branch": "success", "file": results["success"]["file"], "entry_area": 2, "when": "Kitchen (area 2, state 2) fire count reaches 0: flag 0x129 set then scene 0xD (0x800E7A54..0x800E7A60)", "requires_flag": 0x129, "source_function": "GAME0x800C0B0C(0xD)"},
-		{"scene_id": 0xD, "branch": "failure", "file": results["failure"]["file"], "entry_area": [0, 1, 2], "when": "area timer limit or player HP 0 (0x800E7B88 returns 1, no conversation active): Deck 0x800E75F8, Living Room 0x800E7804, Kitchen 0x800E79C4", "requires_flag_clear": 0x129, "source_function": "GAME0x800C0B0C(0xD)"}]}
+		{"scene_id": 0xD, "branch": "success", "file": results["success"]["file"], "completion_areas": [2], "when": "Kitchen (area 2, state 2) fire count reaches 0: flag 0x129 set then scene 0xD (0x800E7A54..0x800E7A60)", "requires_flag": 0x129, "source_function": "GAME0x800C0B0C(0xD)"},
+		{"scene_id": 0xD, "branch": "failure", "file": results["failure"]["file"], "completion_areas": [0, 1, 2], "when": "area timer limit or player HP 0 (0x800E7B88 returns 1, no conversation active): Deck 0x800E75F8, Living Room 0x800E7804, Kitchen 0x800E79C4", "requires_flag_clear": 0x129, "source_function": "GAME0x800C0B0C(0xD)"}]}
 	world.write_output(out / "scene_triggers.json", json.dumps(triggers, indent=1) + "\n", encoding="utf-8")
 	return {"doors": len(doors["area_transitions"]), "atlas": atlas_size, "areas": {k: (len(v["fires"]), v["timer_limit"], v["unlock_flag"], v["warnings"]) for k, v in areas.items()}, "results": {k: (v["ticks"], v["messages"], v["flags_set"]) for k, v in results.items()}, "door_scene": door_scene, "fire_formula_mismatches": len(fire["verification"]["formula_mismatches"])}
 
@@ -1732,6 +1766,7 @@ def flight_actor_entry(rec, area, models, stage=flight_STAGE, variant_key=False)
 
 def copy_actor_models(root, out, actors):
 	for item in actors:
+		if item["entry"].get("native_backdrop"): continue
 		source = root / item.pop("source_file"); folder = out / "actors" / item["model"]["source_archive"]; folder.mkdir(parents=True, exist_ok=True)
 		for path in source.parent.glob(source.stem + "*"):
 			if path.suffix in (".glb", ".png"): write_output(folder / path.name, path.read_bytes())
@@ -1849,7 +1884,7 @@ def arrival():
 landing_OPS = {"actor_free_3EA4C": lambda x: {"op": "despawn", "record": landing_H(HULL), "native": "SLES0x8003EA4C(ctx+0x2C)"}, "scene_flag_04": lambda x: {"op": "scene_flag", "mask": 4, "set": x["value"], "native": "ctx byte0 |= 4"},
 	"hull_fields": lambda x: {"op": "actor_fields", "record": landing_H(HULL), "fields_raw": {"0x0A": x["value"][0], "0x0C": x["value"][1], "0x0D": x["value"][2]}}}
 landing_NEW_OPS = {"actor_fields": {"params": "record, fields_raw {offset: u8}", "semantics": "scene writes to the hull actor: init 0x800F080C/0x800F0810 sets +0xC = 1, +0xD = 0; update sub 0 (0x800F0918..0x800F094C) sets +0xD = 0x40 and increments +0xA once the hull is within 0x200 of its landed height. ST08T class 0x30 variant 0 (0x800ED230) never reads them; 0x800ED318 (dust ring: 16 class-3 effects every 8 ticks while +0xD counts down) reads +0xD but has no caller or pointer in ST08T, and +0xD stays 0x40 in emulation", "sources": ["0x800F080C", "0x800F0810", "0x800F0944", "0x800F094C"]},
-	"scene_flag": {"params": "mask, set", "semantics": "ctx byte0 |= 4 at 0x800F0A48 together with fade 0x12; not the skip gate (GAME0x800C10B4 tests ctx byte0 & 0x20); no reader found in GAME/SLES", "sources": ["0x800F0A40..0x800F0A50"]},
+	"scene_flag": {"params": "mask, set", "semantics": "ctx byte0 |= 4 at 0x800F0A48 together with fade0x12; GAME0x800C1128 blocks a latched skip request while bit4 is set; GAME0x800C10D8 tests bit0x20 before recording Start", "sources": ["0x800F0A40..0x800F0A50", "GAME0x800C10D8", "GAME0x800C1128"]},
 	"native_prop_actor": {"semantics": "the scene subject is the hull spawned by the area handler (GAME0x800C0818(0x800F2670, 1) at 0x800E76D0, slot pointer 0x8009BE0C, copied to ctx+0x2C at 0x800F07CC); camera 0x11 targets native slot 0 = ctx+0x2C. The runtime spawns its own copy (scene slot 0) while native_props.gd keeps NativeStaticActor_ST08_46752 (same record, landed transform) visible; the runtime should drive or hide that prop for the scene and free it at 0x800F0B88 semantics (SLES0x8003EA4C) until the stage reloads"}}
 
 def export_landing_scene(root=None, out_dir=None):

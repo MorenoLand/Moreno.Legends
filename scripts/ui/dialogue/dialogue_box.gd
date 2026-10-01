@@ -45,6 +45,7 @@ var glyph_delay := 0
 var pending_typing_sound := false
 var page_ready := false
 var advance_blocker: Callable
+var preparation_blocker: Callable
 var heading_panel: Dictionary = {}
 var choice_sounds := false
 func _ready() -> void:
@@ -113,6 +114,7 @@ func present_message(stage: String, entry: Dictionary) -> Dictionary:
 	for index in range(pages.size()):
 		page_index = index; var native_index := native_page_sources[index]; current_native_speed = native_page_speeds[index]; current_native_choice = native_page_choices[index]; current_choice_index = int(current_native_choice.get("selected_index", -1)); current_layout_origin = native_page_layouts[index]["origin"]; current_frame = native_page_layouts[index]["frame"]; current_layout_flags = int(native_page_layouts[index]["flags"]); current_arrow = bool(native_page_layouts[index]["arrow"]); visible_glyphs = 0; native_tick_accumulator = 0.0; native_tick_index = 0; glyph_delay = 0; pending_typing_sound = false; text_complete = false
 		if native_index != last_native_page: native_page_started.emit(active_stage, active_index, native_index); last_native_page = native_index
+		while preparation_blocker.is_valid() and preparation_blocker.call(): await get_tree().process_frame
 		page_ready = true
 		queue_redraw()
 		if not current_native_choice.is_empty():
@@ -149,6 +151,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		choice_completed.emit(current_choice_index); return
 	if not (event.is_action_pressed("interact") or event.is_action_pressed("ui_accept")): return
 	get_viewport().set_input_as_handled()
+	if preparation_blocker.is_valid() and preparation_blocker.call(): return
 	if not text_complete: pending_typing_sound = not "\n".join(pages[page_index]).substr(visible_glyphs).strip_edges().is_empty(); visible_glyphs = _page_glyph_count(pages[page_index]); text_complete = true; queue_redraw(); return
 	if not current_native_choice.is_empty(): choice_completed.emit(current_choice_index); return
 	if advance_blocker.is_valid() and advance_blocker.call(): return

@@ -10,9 +10,12 @@ var in_air := false
 var wall_bit := false
 var wall_flag := false
 var last_distance := 0.0
+var carrier: CharacterBody3D
+var hold_phase := 0
+var thrown_hits: Dictionary = {}
 func configure(gameplay: Node, entry: Dictionary, metadata: Dictionary, path: String) -> bool:
 	if not super(gameplay, entry, metadata, path): return false
-	control = 3; control_at_start = 3; clock.play_control(3, 0, true); visible = false; top = 1; last_distance = _distance(); add_to_group("lock_targets")
+	control = 3; control_at_start = 3; clock.play_control(3, 0, true); visible = false; top = 1; last_distance = _distance(); add_to_group("lock_targets"); add_to_group("lift_targets")
 	var floor_hit := Motion.ray(self, global_position + Vector3.UP * 0.5, global_position - Vector3.UP * 60.0)
 	if not floor_hit.is_empty(): global_position.y = (floor_hit["position"] as Vector3).y
 	return true
@@ -26,6 +29,13 @@ func _wrapper() -> void:
 	if hurt_mode == 0xFF: return
 	_set_volume(256 if hurt_mode == 2 else 48, 100, 100); collision_layer = 8
 	if hurt_mode > 2: return
+	if hurt_mode == 1:
+		var actor_query := PhysicsShapeQueryParameters3D.new(); actor_query.shape = shape.shape; actor_query.transform = shape.global_transform; actor_query.collision_mask = 8; actor_query.exclude = [get_rid()]
+		for hit: Dictionary in get_world_3d().direct_space_state.intersect_shape(actor_query):
+			var actor := hit["collider"] as Node
+			if actor != null and actor.has_method("receive_hit") and not thrown_hits.has(actor.get_instance_id()):
+				thrown_hits[actor.get_instance_id()] = true
+				if actor.receive_hit(int(attributes[1]), 0xA0000, global_position.direction_to(actor.global_position)): hit_word |= 0x20000
 	var query := PhysicsShapeQueryParameters3D.new(); query.shape = shape.shape; query.transform = shape.global_transform; query.collision_mask = target.collision_layer; query.exclude = [get_rid()]
 	for hit in get_world_3d().direct_space_state.intersect_shape(query):
 		if hit["collider"] == target: contact_hit.emit(self, int(attributes[1]), 0xA0000); return
@@ -38,13 +48,53 @@ func _main() -> void:
 		0: _dormant()
 		1: _hop()
 		2: _spit()
+		3: _held()
 		4: _leave()
 		5: _retreat()
 		6: _knock(false)
 		7: _knock(true)
 		8: _fall_dead()
 		9: _air_dead()
-	_ground()
+	if (state_flags & 0x42) == 0: _ground()
+func can_lift() -> bool: return visible and top == 1 and (state_flags & 0x42) == 0 and hurt_mode in [0, 1, 2] and not is_instance_valid(carrier)
+func begin_lift(player: CharacterBody3D) -> bool:
+	if not can_lift(): return false
+	carrier = player; sub = 3; step = 0; hold_phase = 0; control = 9; counter = 120; state_flags = (state_flags & ~0x30) | 0x40; hurt_mode = 0xFF; collision_layer = 0; velocity = Vector3.ZERO; thrown_hits.clear(); return true
+func _attach_to_hands() -> void:
+	global_position = carrier.lift_anchor(float(bounds[3]) / 256.0); _face(roundi(-carrier.player_model.global_rotation.y * 4096.0 / TAU))
+func _detach() -> void:
+	if is_instance_valid(carrier): carrier.end_lift(self)
+	carrier = null
+func release_lift(_direction: Vector3, _vertical_raw: int, _forward_raw: int) -> void:
+	if sub != 3 or not is_instance_valid(carrier): return
+	if step == 2: _detach(); return
+	_attach_to_hands(); var pitch := -float(carrier.player_model.rotation.x); var launch := Basis(Vector3.RIGHT, pitch) * Vector3(0, -256, -1024); vertical = roundi(launch.y); speed = roundi(launch.z); gravity = 64; step = 1; hurt_mode = 1; in_air = true
+	var origin: Vector3 = carrier.global_position; var horizontal := Vector2.ZERO
+	if int(bounds[1]) > 32 or int(bounds[5]) > 32: horizontal = Vector2(float(int(bounds[1]) - 32) * (-1.0 if native_yaw < 2048 else 1.0), float(int(bounds[5]) - 32) * (-1.0 if ((native_yaw - 1024) & 4095) < 2048 else 1.0)) / 256.0
+	global_position = Vector3(origin.x + horizontal.x, global_position.y, origin.z + horizontal.y); _detach()
+func _held() -> void:
+	match step:
+		0:
+			if not is_instance_valid(carrier) or carrier.carried_actor != self: _escape(); return
+			_attach_to_hands(); counter -= 1
+			if counter <= 0:
+				if hold_phase == 0: control = 10; hold_phase = 1; counter = 20
+				else: step = 2; hold_phase = 0
+		1:
+			vertical += gravity; _move(vertical, speed); _ground()
+			if (hit_word & 0x20000) != 0: sub = 9; step = 0; state_flags |= 2
+			elif not in_air: sub = 5; step = 0; hurt_mode = 0; state_flags = (state_flags | 0x30) & ~0x40
+		2:
+			if hold_phase == 0: _escape()
+			elif hold_phase == 1:
+				if not target.hurt_phase.is_empty() or is_instance_valid(carrier) and not carrier.is_on_floor(): hold_phase = 2
+			else:
+				_move(vertical, speed); vertical += gravity; _ground()
+				if not in_air: sub = 4; step = 0; hold_phase = 0; state_flags = (state_flags | 0x30) & ~0x40
+func _escape() -> void:
+	if is_instance_valid(carrier): _attach_to_hands()
+	sub = 3; step = 2; hold_phase = 1; vertical = -128; speed = 128; gravity = 64; hurt_mode = 2; in_air = true
+func _exit_tree() -> void: _detach()
 func _go(value: int) -> void: sub = value; step = 0
 func _apply(damage: int) -> bool:
 	health = mini(health - damage, max_health)
@@ -76,6 +126,7 @@ func _dormant() -> void:
 	if step == 0:
 		if last_distance < 0xC01: step = 1; counter = 0x1E
 	elif step == 1:
+		_dust("spitter")
 		counter -= 1
 		if counter == 0: visible = true; state_flags |= 0x31; hurt_mode = 0; _sound(0x163); _sound(0xA3); step = 2
 	elif step == 2:
@@ -183,7 +234,7 @@ func _knock(airborne_hit: bool) -> void:
 	elif step == 3:
 		if (clock.record_flags & 128) != 0: sub = 4; step = 0; start_record = 0; state_flags = (state_flags | 0x30) & ~0x40
 func _fall_dead() -> void:
-	if step == 0: control = 7; hurt_mode = 3; step = 1
+	if step == 0: _death_effect("spitter"); control = 7; hurt_mode = 3; step = 1
 	elif step == 1:
 		if (clock.record_flags & 128) != 0: control = 8; step = 2; counter = 0x1E
 	elif step == 2:
@@ -191,7 +242,7 @@ func _fall_dead() -> void:
 		if counter == 0xF: hurt_mode = 0xFF
 		elif counter <= 0: drop_requested.emit(self, _drops()); top = 2
 func _air_dead() -> void:
-	if step == 0: visible = false; drop_requested.emit(self, _drops()); counter = 0xF; step = 1; hurt_mode = 3
+	if step == 0: _death_effect("spitter"); visible = false; drop_requested.emit(self, _drops()); counter = 0xF; step = 1; hurt_mode = 3
 	elif step == 1:
 		counter -= 1
 		if counter == 0: top = 2

@@ -92,6 +92,9 @@ func _spawn_ordinary(address: String) -> Node3D:
 	if is_instance_valid(previous): return previous
 	for node: Node3D in parent.find_children("*", "Node3D", true, false):
 		if str(node.get_meta("native_actor_source", {}).get("source_record_ram", "")).to_lower() == key: ordinary[key] = node; return node
+	for descriptor: Dictionary in catalogs["ST0F"].get("procedural_actors", []):
+		if str(descriptor["source_record_ram"]).to_lower() != key: continue
+		var radio: Node3D = preload("res://scripts/world/missions/mine/native_mine_radio.gd").new(); parent.add_child(radio); radio.configure(host, descriptor); radio.add_to_group("native_pool_actors"); ordinary[key] = radio; return radio
 	if key == "0x80100864":
 		for entry: Dictionary in catalogs["ST0F"]["records"]:
 			if str(entry["source_record_ram"]).to_lower() != key: continue
@@ -151,7 +154,7 @@ func _open_entrance() -> void:
 		mesh.hide()
 		for body: CollisionObject3D in mesh.find_children("*", "CollisionObject3D", true, false): body.collision_layer = 0; body.set_meta("native_floor_replaced", true)
 	for body: StaticBody3D in parent.find_children("NativePlacementFloor_%03d*" % int(entrance["placement"]), "StaticBody3D", true, false): body.collision_layer = 0; body.queue_free()
-	var node := scene.instantiate() as Node3D; parent.add_child(node); preload("res://scripts/world/rendering/native_material.gd").apply(node); preload("res://scripts/world/rendering/native_material.gd").depth_cue(node, host.depth_cue_parameters)
+	var node := scene.instantiate() as Node3D; parent.add_child(node); node.set_meta("native_map_face_flags", bool(parent.get_meta("native_map_face_flags", false))); preload("res://scripts/world/rendering/native_material.gd").apply(node); preload("res://scripts/world/rendering/native_material.gd").depth_cue(node, host.depth_cue_parameters)
 	for mesh: MeshInstance3D in node.find_children("*", "MeshInstance3D", true, false):
 		for layer in [1, 4]:
 			var body := StaticBody3D.new(); body.collision_layer = layer; body.collision_mask = 0; var shape := CollisionShape3D.new(); shape.shape = mesh.mesh.create_trimesh_shape()

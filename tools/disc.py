@@ -35,7 +35,8 @@ def relative_output(path):
     except ValueError: return None
 def may_write(path):
     path = Path(path); relative = relative_output(path)
-    if relative is None or not path.exists() or str(path.resolve()) in WRITTEN: return True
+    if not path.exists() or str(path.resolve()) in WRITTEN: return True
+    if relative is None: return OVERWRITE["all"]
     if relative.startswith("build/") and not relative.startswith("build/disc-assets/"): return True
     if OVERWRITE["all"]: return True
     parts = relative.split("/")
@@ -43,16 +44,124 @@ def may_write(path):
 def claim(path):
     """Return True when the run may create or replace this output; existing files are kept unless an overwrite flag allows them."""
     if may_write(path): WRITTEN.add(str(Path(path).resolve())); return True
-    KEPT.append(relative_output(path))
+    KEPT.append(relative_output(path) or str(Path(path).resolve()))
     if OVERWRITE["verbose"]: print("kept existing " + KEPT[-1])
     return False
 def kept_summary():
     return f"Kept {len(KEPT)} existing files; use --overwrite or --overwrite-only PATTERN to replace them." if KEPT else None
+IMPORT_PRESETS = {'png': {'importer': 'texture',
+         'importer_version': None,
+         'type': 'CompressedTexture2D',
+         'params': {'compress/mode': 0,
+                    'compress/high_quality': False,
+                    'compress/lossy_quality': 0.7,
+                    'compress/uastc_level': 0,
+                    'compress/rdo_quality_loss': 0.0,
+                    'compress/hdr_compression': 1,
+                    'compress/normal_map': 0,
+                    'compress/channel_pack': 0,
+                    'mipmaps/generate': False,
+                    'mipmaps/limit': -1,
+                    'roughness/mode': 0,
+                    'roughness/src_normal': '',
+                    'process/channel_remap/red': 0,
+                    'process/channel_remap/green': 1,
+                    'process/channel_remap/blue': 2,
+                    'process/channel_remap/alpha': 3,
+                    'process/fix_alpha_border': True,
+                    'process/premult_alpha': False,
+                    'process/normal_map_invert_y': False,
+                    'process/hdr_as_srgb': False,
+                    'process/hdr_clamp_exposure': False,
+                    'process/size_limit': 0,
+                    'detect_3d/compress_to': 0}},
+ 'glb': {'importer': 'scene',
+         'importer_version': 1,
+         'type': 'PackedScene',
+         'params': {'nodes/root_type': '',
+                    'nodes/root_name': '',
+                    'nodes/root_script': None,
+                    'nodes/apply_root_scale': True,
+                    'nodes/root_scale': 1.0,
+                    'nodes/import_as_skeleton_bones': False,
+                    'nodes/use_name_suffixes': True,
+                    'nodes/use_node_type_suffixes': True,
+                    'meshes/ensure_tangents': True,
+                    'meshes/generate_lods': False,
+                    'meshes/create_shadow_meshes': False,
+                    'meshes/light_baking': 0,
+                    'meshes/lightmap_texel_size': 0.2,
+                    'meshes/force_disable_compression': True,
+                    'skins/use_named_skins': True,
+                    'animation/import': True,
+                    'animation/fps': 30,
+                    'animation/trimming': False,
+                    'animation/remove_immutable_tracks': True,
+                    'animation/import_rest_as_RESET': False,
+                    'import_script/path': '',
+                    'materials/extract': 0,
+                    'materials/extract_format': 0,
+                    'materials/extract_path': '',
+                    '_subresources': {},
+                    'gltf/naming_version': 2,
+                    'gltf/embedded_image_handling': 3}},
+ 'fnt': {'importer': 'font_data_bmfont',
+         'importer_version': None,
+         'type': 'FontFile',
+         'params': {'fallbacks': [], 'compress': True, 'scaling_mode': 2}}}
+IMPORT_CONTROLLED = {'png': {'compress/mode': 0, 'mipmaps/generate': False, 'detect_3d/compress_to': 0, 'process/premult_alpha': False, 'process/fix_alpha_border': True}, 'glb': {'meshes/generate_lods': False, 'meshes/create_shadow_meshes': False, 'meshes/light_baking': 0, 'meshes/force_disable_compression': True, 'gltf/embedded_image_handling': 3}, 'fnt': {}}
+
+def resource_uid(path):
+    relative = relative_output(path)
+    if relative is None: return None
+    value = int.from_bytes(hashlib.sha256(("res://" + relative).encode("utf-8")).digest()[:8], "little") & 0x7FFFFFFFFFFFFFFF; text = ""; alphabet = "abcdefghijklmnopqrstuvwxy012345678"
+    while True:
+        value, remainder = divmod(value, 34); text = alphabet[remainder] + text
+        if not value: return "uid://" + text
+def import_keys(text, section, values):
+    ending = "\r\n" if "\r\n" in text else "\n"; match = re.search(r"(?m)^\[" + re.escape(section) + r"\][ \t]*\r?$", text)
+    if match:
+        end = re.search(r"(?m)^\[[^\]\r\n]+\][ \t]*\r?$", text[match.end():]); stop = match.end() + end.start() if end else len(text); body = text[match.end():stop]; prefix = text[:match.end()]; suffix = text[stop:]
+    else: prefix = text + ("" if not text or text.endswith("\n") else ending) + "[" + section + "]"; body = ending; suffix = ""
+    for key, value in values.items():
+        pattern = re.compile(r"(?m)^([ \t]*" + re.escape(key) + r"[ \t]*=[ \t]*)([^\r\n]*)(\r?)$")
+        if pattern.search(body): body = pattern.sub(lambda entry: entry[1] + json.dumps(value, ensure_ascii=False, separators=(",", ":")) + entry[3], body)
+        else: body += ("" if body.endswith("\n") else ending) + key + "=" + json.dumps(value, ensure_ascii=False, separators=(",", ":")) + ending
+    return prefix + body + suffix
+RUNTIME_LOADED = ("assets/levels", "assets/stage_props", "assets/opening", "assets/flutter", "assets/minimap")
+def runtime_loaded(relative): return relative is not None and relative.endswith((".glb", ".png")) and relative.startswith(tuple(folder + "/" for folder in RUNTIME_LOADED))
+def write_import_settings(path):
+    path = Path(path); extension = path.suffix.lower().lstrip("."); relative = relative_output(path)
+    if extension not in IMPORT_PRESETS or relative is None or runtime_loaded(relative) or not path.is_file(): return False
+    sidecar = path.with_name(path.name + ".import")
+    if not may_write(sidecar): return False
+    profile = IMPORT_PRESETS[extension]; uid = resource_uid(path); remap = {"importer": profile["importer"], "type": profile["type"], "uid": uid}
+    if profile["importer_version"] is not None: remap["importer_version"] = profile["importer_version"]
+    existing = sidecar.exists(); original = sidecar.read_bytes() if existing else b""; bom = original.startswith(b"\xef\xbb\xbf"); text = original.decode("utf-8-sig"); params = dict(IMPORT_CONTROLLED[extension] if existing else profile["params"])
+    text = import_keys(import_keys(text, "remap", remap), "params", params)
+    return write_output(sidecar, (b"\xef\xbb\xbf" if bom else b"") + text.encode("utf-8"))
+def write_resource_uid(path):
+    path = Path(path)
+    if path.suffix.lower() not in (".gd", ".gdshader") or relative_output(path) is None or not path.is_file(): return False
+    return write_output(path.with_name(path.name + ".uid"), (resource_uid(path) + "\n").encode("utf-8"))
+
+def generated_resource_uid(path, payload, encoding):
+    if path.suffix.lower() not in (".tres", ".tscn") or relative_output(path) is None: return payload
+    text = payload.decode(encoding); match = re.match(r"\[(gd_resource|gd_scene)\b([^\]\r\n]*)\]", text)
+    if not match: return payload
+    header = match[0]; uid = json.dumps(resource_uid(path))
+    header = re.sub(r'\buid="[^"]*"', "uid=" + uid, header) if re.search(r'\buid="[^"]*"', header) else header[:-1] + " uid=" + uid + "]"
+    return (header + text[match.end():]).encode(encoding)
+
 def write_output(path, data, encoding="utf-8"):
     path = Path(path); payload = data.replace("\n", os.linesep).encode(encoding) if isinstance(data, str) else bytes(data)
-    if not claim(path): return False
-    if path.is_file() and path.stat().st_size == len(payload) and path.read_bytes() == payload: return False
-    path.parent.mkdir(parents=True, exist_ok=True); temporary = path.with_name(path.name + ".tmp"); temporary.write_bytes(payload); temporary.replace(path); return True
+    changed = False
+    if claim(path):
+        payload = generated_resource_uid(path, payload, encoding)
+        if not (path.is_file() and path.stat().st_size == len(payload) and path.read_bytes() == payload):
+            path.parent.mkdir(parents=True, exist_ok=True); temporary = path.with_name(path.name + ".tmp"); temporary.write_bytes(payload); temporary.replace(path); changed = True
+    write_import_settings(path); write_resource_uid(path)
+    return changed
 def ensure_package(module, requirement):
     """Import a pip dependency from build/pydeps, installing it there on first use."""
     sys.path.insert(0, str(ROOT / "build/pydeps"))
@@ -139,17 +248,9 @@ class Mode2Track:
         return bytes(data)
 
     def copy_file(self, extent: int, size: int, destination: Path, append: bool = False) -> None:
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        mode = "ab" if append else "wb"
-        with destination.open(mode) as output:
-            remaining = size
-            lba = extent
-            while remaining:
-                block = self.sector(lba)
-                chunk = min(remaining, len(block))
-                output.write(block[:chunk])
-                remaining -= chunk
-                lba += 1
+        data = self.read_file(extent, size)
+        if append: data = destination.read_bytes() + data
+        write_output(destination, data)
 
 def iso_name(raw: bytes) -> str:
     name = raw.decode("ascii", errors="replace")
@@ -208,6 +309,9 @@ def extract(cue_path: Path, output: Path, includes: set[str], reuse: bool = Fals
                 target = relative / name
                 is_dir = bool(flags & 2)
                 multi_extent = bool(flags & 0x80)
+                if not relative.parts and name.upper() == "ZNULL.DAT":
+                    print(f"Skipped disc padding {target} ({file_size} declared bytes)")
+                    continue
                 if is_dir:
                     walk(file_extent, file_size, target)
                     continue
@@ -365,12 +469,9 @@ def disc_files(reader):
 def copy_raw_sectors(reader, first, last, destination):
 	if first < 0 or last > reader.frames or first >= last: raise ValueError("Movie extent is outside the original data track")
 	reader.stream.seek((reader.start_frame + first) * 2352)
-	with destination.open("wb") as output:
-		remaining = (last - first) * 2352
-		while remaining:
-			data = reader.stream.read(min(remaining, 2352 * 4096))
-			if not data: raise ValueError("Truncated original raw movie sectors")
-			output.write(data); remaining -= len(data)
+	data = reader.stream.read((last - first) * 2352)
+	if len(data) != (last - first) * 2352: raise ValueError("Truncated original raw movie sectors")
+	write_output(destination, data)
 def audit_track(reader):
 	reader.stream.seek(reader.start_frame * 2352); counts = Counter(); groups = []; current = {}; digest = hashlib.sha256()
 	for first in range(0, reader.frames, 4096):
@@ -397,7 +498,7 @@ def export_movies(cue):
 			ffmpeg = shutil.which("ffmpeg")
 			if not ffmpeg: raise RuntimeError("FFmpeg is required to transcode original STR movies")
 			name = f"native_{index:03d}"; raw = WORK / (name + ".str"); destination = OUTPUT / (name + ".ogv"); copy_raw_sectors(reader, group["first_lba"], group["last_lba"] + 1, raw)
-			if claim(destination): subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(raw), "-map", "0:v:0", "-map", "0:a:0?", "-c:v", "libtheora", "-q:v", "9", "-c:a", "libvorbis", "-q:a", "6", str(destination)], check=True)
+			if may_write(destination): write_output(destination, subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error", "-i", str(raw), "-map", "0:v:0", "-map", "0:a:0?", "-c:v", "libtheora", "-q:v", "9", "-c:a", "libvorbis", "-q:a", "6", "-f", "ogg", "pipe:1"], check=True, stdout=subprocess.PIPE).stdout)
 			movies.append({"file": destination.name, "source": group, "raw_sector_bytes": 2352, "raw_sha256": hashlib.sha256(raw.read_bytes()).hexdigest()})
 	finally: reader.stream.close()
 	manifest = {"movies": movies, "transport_audit": audit, "xa_archives": [entry for entry in files if entry["file"].startswith("XA/")], "native_startup": {"source": "SLES 0x80012D7C..0x80012F28", "logo_resource": "COMMON/LOGO.BIN", "logo_renderer": "0x800132F8", "logo_rect": [48, 192, 544, 96], "logo_fade_step": 4, "logo_fade_max": 128, "logo_hold_counter": 180, "next_scene": {"stage": "ST02", "area": 0, "engine_phase": 4}, "intro_type": "Original engine scene; no standard STR/XA video sectors present on this disc"}, "native_attract": {"source": "DEMO 0x800AD308..0x800AD5FC", "counter_updates": 512, "counter_formula": "(3-titleFrameBufferCount)*256; titleFrameBufferCount=1", "cycle_index_update": "(index+1)&3", "stages": [{"cycle_index": 0, "stage": "ST02", "demo_mode": 0, "source_pc": "0x800AD48C"}, {"cycle_index": 1, "stage": "ST50", "demo_mode": 2, "area_fields": [13, 13], "source_pc": "0x800AD4B4"}, {"cycle_index": 2, "stage": "ST22", "demo_mode": 3, "area_fields": [8, 8], "source_pc": "0x800AD4F8"}, {"cycle_index": 3, "stage": "ST51", "demo_mode": 4, "area_fields": [0, 0], "source_pc": "0x800AD548"}], "mode_consumer": "GAME 0x800C3780 and jump table 0x800AE154 configure native player equipment for modes2/3/4", "recorded_input_stream": "not yet identified; stages are engine scenes rather than STR movie playback"}, "limits": ["No substitute movies are generated for native engine scenes", "Tick counts are verified; PAL wall-clock conversion remains unverified"]}; write_output(OUTPUT / "manifest.json", json.dumps(manifest, indent=2) + "\n", encoding="utf-8"); return manifest

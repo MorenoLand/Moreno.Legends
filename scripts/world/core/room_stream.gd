@@ -79,6 +79,11 @@ func _refresh_native_floor_apertures(room_key: String) -> void:
 		var source_side := _room_key(str(portal["source"]["stage"]), int(portal["source"]["area"])) == room_key
 		if not source_side and _room_key(str(portal["destination"]["stage"]), int(portal["destination"]["area"])) != room_key: continue
 		keys.append(key); holes.append(_bounded_portal_region(room_key, portal, source_side))
+	for portal: Dictionary in transition_doors.values():
+		if _room_key(str(portal["source"]["stage"]), int(portal["source"]["area"])) != room_key: continue
+		var bounds: AABB = room_bounds[room_key]; var position := bounds.position; var end := bounds.end; var axis := 0 if str(portal["normal_axis"]) == "x" else 2; var lateral := 2 if axis == 0 else 0; var center: Array = portal["world_center"]; var size: Array = portal["shared_panel_size"]
+		position[lateral] = float(center[lateral]) - float(size[0]) * 0.5; end[lateral] = float(center[lateral]) + float(size[0]) * 0.5; position.y = float(center[1]) - float(size[1]) * 0.5; end.y = float(center[1]) + float(size[1]) * 0.5
+		keys.append(_portal_key(portal)); holes.append(AABB(position, end - position))
 	keys.sort(); var signature := ",".join(PackedStringArray(keys))
 	for body: StaticBody3D in rooms[room_key].find_children("NativePlacementFloor_*", "StaticBody3D", true, false):
 		if str(body.get_meta("native_aperture_signature", "unset")) == signature: continue
@@ -174,7 +179,7 @@ func set_parked_exterior(stage: String, area: int) -> bool:
 	for clock: Node in exterior.find_children("NativeAnimationClock", "Node", true, false): clock.process_mode = Node.PROCESS_MODE_PAUSABLE
 	parked_exterior = exterior
 	_clip_parked_exterior()
-	preload("res://scripts/world/rendering/native_material.gd").depth_cue(exterior, preload("res://scripts/world/rendering/native_material.gd").area_parameters("res://assets/levels/%s/lighting.json" % stage, area), true)
+	preload("res://scripts/world/rendering/native_material.gd").depth_cue(exterior, preload("res://scripts/world/rendering/native_material.gd").area_parameters("res://assets/levels/%s/lighting.json" % stage, area))
 	var weather: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://assets/weather/manifest.json")); var snow := false
 	if weather is Dictionary:
 		for record: Dictionary in weather.get("stages", {}).get(stage, {}).get("areas", {}).get(str(area), []): snow = snow or int(record.get("native_variant", -1)) == 1
@@ -368,7 +373,10 @@ func open_route(stage: String, area: int, route: Dictionary, player_position: Ve
 	return false
 func preload_route(stage: String, area: int, route: Dictionary) -> void:
 	var portal := portal_for_route(stage, area, route)
-	if portal.is_empty(): return
+	if portal.is_empty():
+		var destination_stage := str(route.get("destination_stage", stage)); var destination_area := int(route["destination_area"]); var destination_key := _room_key(destination_stage, destination_area)
+		if not seamless_ladder(stage, area, route).is_empty() and not rooms.has(destination_key) and not loading_rooms.has(destination_key): await _ensure_room_loaded(destination_stage, destination_area)
+		return
 	var source_side := str(portal["source"]["stage"]) == stage and int(portal["source"]["area"]) == area; var destination: Dictionary = portal["destination"] if source_side else portal["source"]; var key := _room_key(str(destination["stage"]), int(destination["area"]))
 	if not rooms.has(key) and not loading_rooms.has(key): await _ensure_room_loaded(str(destination["stage"]), int(destination["area"]))
 	var profile: Dictionary = portal.get("source_native_door", {}) if source_side else portal.get("reverse_native_door", {})
@@ -387,14 +395,16 @@ func open_transition_door(stage: String, area: int, route: Dictionary, rate: flo
 	var center := _as_vector3(source["center"]) + offset
 	var bounds: Dictionary = source["bounds"]
 	var lateral := 2 if int(source["axis"]) == 0 else 0
-	var portal := {"source": {"stage": stage, "area": area}, "destination": {"stage": str(route["destination_stage"]), "area": int(route["destination_area"])}, "source_panel": source, "source_slot": int(route["door_slot"]), "source_contact_raw": route["source_transform_raw"], "source_yaw_raw": int(route["source_transform_raw"][3]), "normal_axis": "x" if int(source["axis"]) == 0 else "z", "world_center": [center.x, center.y, center.z], "shared_panel_size": [float(bounds["max"][lateral]) - float(bounds["min"][lateral]), float(bounds["max"][1]) - float(bounds["min"][1])]}
+	var portal := {"source": {"stage": stage, "area": area}, "destination": {"stage": str(route["destination_stage"]), "area": int(route["destination_area"])}, "source_panel": source, "source_native_door": route.get("native_door", {}), "source_slot": int(route["door_slot"]), "source_contact_raw": route["source_transform_raw"], "source_yaw_raw": int(route["source_transform_raw"][3]), "normal_axis": "x" if int(source["axis"]) == 0 else "z", "world_center": [center.x, center.y, center.z], "shared_panel_size": [float(bounds["max"][lateral]) - float(bounds["min"][lateral]), float(bounds["max"][1]) - float(bounds["min"][1])]}
 	var key := _portal_key(portal)
 	if transition_doors.has(key): return true
 	transition_doors[key] = portal
+	_refresh_native_floor_apertures(_room_key(stage, area))
 	_refresh_open_meshes(_room_key(stage, area), str(source["node"]))
 	_refresh_camera_layers()
 	if await _open_leaf(portal, true): return true
 	transition_doors.erase(key)
+	_refresh_native_floor_apertures(_room_key(stage, area))
 	_refresh_open_meshes(_room_key(stage, area), str(source["node"]))
 	_refresh_camera_layers()
 	return false
@@ -410,15 +420,20 @@ func close_transition_door(stage: String, area: int, route: Dictionary) -> void:
 		portal_leaves.erase(key); leaf.queue_free()
 	if portal_depth_views.has(key): portal_depth_views[key].queue_free(); portal_depth_views.erase(key)
 	transition_doors.erase(key)
+	_refresh_native_floor_apertures(_room_key(stage, area))
 	_refresh_open_meshes(_room_key(stage, area), str(portal["source_panel"]["node"]))
 	_refresh_camera_layers()
-func is_ladder_route(stage: String, area: int, route: Dictionary) -> bool:
+func ladder_transition(stage: String, area: int, route: Dictionary) -> Dictionary:
 	var destination_stage := str(route.get("destination_stage", stage)); var destination_area := int(route["destination_area"])
 	for transition: Dictionary in ladder_transitions:
 		var forward := str(transition["source"]["stage"]) == stage and int(transition["source"]["area"]) == area and str(transition["destination"]["stage"]) == destination_stage and int(transition["destination"]["area"]) == destination_area
 		var reverse := str(transition["destination"]["stage"]) == stage and int(transition["destination"]["area"]) == area and str(transition["source"]["stage"]) == destination_stage and int(transition["source"]["area"]) == destination_area
-		if forward or reverse: return true
-	return false
+		if forward or reverse: return transition
+	return {}
+func is_ladder_route(stage: String, area: int, route: Dictionary) -> bool: return not ladder_transition(stage, area, route).is_empty()
+func seamless_ladder(stage: String, area: int, route: Dictionary) -> Dictionary:
+	var transition := ladder_transition(stage, area, route)
+	return transition if bool(transition.get("seamless", false)) and has_room(str(route.get("destination_stage", stage)), int(route["destination_area"])) else {}
 func close_cleared_portals(player_position: Vector3, camera_position: Vector3, radius: float) -> void:
 	camera_space_position = camera_position
 	has_camera_space_position = true
@@ -494,6 +509,7 @@ func _open_leaf(portal: Dictionary, source_side: bool) -> bool:
 	if scene == null: return false
 	var raw: Array = portal["source_contact_raw"] if source_side else portal["reverse_source_contact_raw"]; var yaw := int(raw[3]); var quadrant := ((yaw + (0x200 if controller == 2 else 0)) & 4095) >> 10; var directions := [-1, 0, 1, 0, -1]; var a := int(directions[quadrant]); var b := int(directions[quadrant + 1]); var offsets: Array = profile.get("offset_raw", [80, 64]); var c := int(offsets[0]); var e := int(offsets[1]); var hinge: Vector3 = Vector3(-float(raw[0] + a * c + b * e), -float(raw[1]), float(raw[2] + b * c - a * e)) / 256.0 + room_offsets[room_key]; var closed_yaw := -float((yaw + 0x800) & 4095) * TAU / 4096.0
 	var pivot := Node3D.new(); pivot.name = "OpenDoor_" + room_key.replace(":", "_"); add_child(pivot); pivot.global_position = hinge; pivot.rotation.y = closed_yaw; pivot.set_meta("closed_yaw", closed_yaw); var panel := scene.instantiate() as Node3D; pivot.add_child(panel); var scale: Array = model["native_scale_raw"]; panel.scale = Vector3(float(scale[0]), float(scale[1]), float(scale[2])) / 512.0; preload("res://scripts/world/rendering/native_material.gd").apply(panel, 128.0)
+	var transition := transition_doors.has(_portal_key(portal))
 	if portal.has("destination_panel") and not _compose_leaf_faces(portal, panel, controller == 2): pivot.queue_free(); return false
 	if controller == 2:
 		var companion_model: Dictionary = {}
@@ -503,10 +519,11 @@ func _open_leaf(portal: Dictionary, source_side: bool) -> bool:
 		var companion_scene: PackedScene = await _threaded_scene("res://assets/stage_props/" + str(companion_model["model_file"]))
 		if companion_scene == null: pivot.queue_free(); return false
 		var companion := companion_scene.instantiate() as Node3D; pivot.add_child(companion); companion.top_level = true; companion.global_position = Vector3(-float(raw[0] - a * c + b * e), -float(raw[1]), float(raw[2] - b * c - a * e)) / 256.0 + room_offsets[room_key]; companion.global_rotation.y = closed_yaw; var companion_scale: Array = companion_model["native_scale_raw"]; companion.scale = Vector3(float(companion_scale[0]), float(companion_scale[1]), float(companion_scale[2])) / 512.0; preload("res://scripts/world/rendering/native_material.gd").apply(companion, 128.0)
-		for node: MeshInstance3D in companion.find_children("*", "MeshInstance3D", true, false): _add_collision(node, node.mesh, [4])
-	for node: MeshInstance3D in panel.find_children("*", "MeshInstance3D", true, false): _add_collision(node, node.mesh, [4])
+		for node: MeshInstance3D in companion.find_children("*", "MeshInstance3D", true, false): if not transition: _add_collision(node, node.mesh, [4])
+	for node: MeshInstance3D in panel.find_children("*", "MeshInstance3D", true, false): if not transition: _add_collision(node, node.mesh, [4])
+	if transition: portal["leaf_slab"] = _leaf_bounds(pivot).grow(1.0 / 256.0); _refresh_open_meshes(room_key, str(portal["source_panel"]["node"]))
 	_create_doorway_depth(portal, panel)
-	var open_yaw := closed_yaw - 0x3C0 * TAU / 4096.0; var transition := transition_doors.has(_portal_key(portal))
+	var open_yaw := closed_yaw - 0x3C0 * TAU / 4096.0
 	pivot.set_meta("sweep_bounds", _door_sweep_bounds(pivot, panel, closed_yaw, closed_yaw - (0x6C0 if transition else 0x3C0) * TAU / 4096.0))
 	portal_leaves[_portal_key(portal)] = pivot; door_sound.emit(0xB8)
 	if transition:
@@ -607,6 +624,22 @@ func _close_leaf(leaf: Node3D) -> void:
 	door_sound.emit(int(sounds[2]))
 	for index in leaf.get_child_count(): tween.tween_property(leaf.get_child(index), "position", closed[index], float(leaf.get_meta("closing_ticks")) / float(leaf.get_meta("tick_rate")))
 	await tween.finished
+func _leaf_bounds(leaf: Node3D) -> AABB:
+	var result := AABB(leaf.global_position, Vector3.ZERO)
+	for node: MeshInstance3D in leaf.find_children("*", "MeshInstance3D", true, false):
+		var bounds := node.mesh.get_aabb()
+		for corner in 8: result = result.expand(node.to_global(bounds.position + Vector3(bounds.size.x if corner & 1 else 0.0, bounds.size.y if corner & 2 else 0.0, bounds.size.z if corner & 4 else 0.0)))
+	return result
+func _slab_faces(node: MeshInstance3D, source: Mesh, slab: AABB) -> Dictionary:
+	var result := {}
+	for surface in source.get_surface_count():
+		var arrays: Array = source.surface_get_arrays(surface); var points: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]; var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX] if arrays[Mesh.ARRAY_INDEX] is PackedInt32Array else PackedInt32Array(); var count := indices.size() if not indices.is_empty() else points.size(); var faces: Array = []
+		for triangle in range(0, count, 3):
+			var ids := [indices[triangle] if not indices.is_empty() else triangle, indices[triangle + 1] if not indices.is_empty() else triangle + 1, indices[triangle + 2] if not indices.is_empty() else triangle + 2]; var inside := true
+			for id: int in ids: inside = inside and slab.has_point(node.to_global(points[id]))
+			if inside: faces.append([points[ids[0]], points[ids[1]], points[ids[2]]])
+		if not faces.is_empty(): result[surface] = faces
+	return result
 func _door_sweep_bounds(pivot: Node3D, panel: Node3D, closed_yaw: float, open_yaw: float) -> AABB:
 	var points := PackedVector3Array()
 	var parent := pivot.get_parent() as Node3D
@@ -741,6 +774,11 @@ func _open_mesh_for(room_key: String, node_name: String, extra_key: String = "")
 			open_keys.append(portal_key)
 			for quad: Dictionary in side[1]["quads"]:
 				var surface := int(quad.get("primitive_index", side[1]["primitive_index"])); var triangles: Array = faces_by_surface.get(surface, []); triangles.append_array(quad["triangles_local"]); faces_by_surface[surface] = triangles
+			if portal.has("leaf_slab"):
+				open_keys[open_keys.size() - 1] += "+slab"
+				var slab_faces := _slab_faces(mesh_node, original, portal["leaf_slab"])
+				for surface: int in slab_faces:
+					var triangles: Array = faces_by_surface.get(surface, []); triangles.append_array(slab_faces[surface]); faces_by_surface[surface] = triangles
 	open_keys.sort(); var cache_key := key + "|" + ",".join(PackedStringArray(open_keys)) + "|" + str(original.get_instance_id())
 	if not open_mesh_cache.has(cache_key): open_mesh_cache[cache_key] = _mesh_without_faces(original, faces_by_surface)
 	return open_mesh_cache[cache_key]
@@ -1138,6 +1176,11 @@ func prefetch_near(position: Vector3) -> void:
 			if source_key != active_room_key and destination_key != active_room_key: continue
 			var center: Array = portal["world_center"]; var other: Dictionary = portal["destination"] if source_key == active_room_key else portal["source"]
 			prefetch_portals.append({"stage": str(other["stage"]), "area": int(other["area"]), "key": destination_key if source_key == active_room_key else source_key, "center": Vector3(float(center[0]), float(center[1]), float(center[2]))})
+		for transition: Dictionary in ladder_transitions:
+			var source_key := _room_key(str(transition["source"]["stage"]), int(transition["source"]["area"])); var destination_key := _room_key(str(transition["destination"]["stage"]), int(transition["destination"]["area"]))
+			if not bool(transition.get("seamless", false)) or (source_key != active_room_key and destination_key != active_room_key): continue
+			var from_source := source_key == active_room_key; var foot: Array = transition["source_transform_raw"] if from_source else transition["destination_transform_raw"]; var other: Dictionary = transition["destination"] if from_source else transition["source"]
+			prefetch_portals.append({"stage": str(other["stage"]), "area": int(other["area"]), "key": destination_key if from_source else source_key, "center": Vector3(-float(foot[0]), 0.0 if int(foot[1]) == -1 else -float(foot[1]), float(foot[2])) / 256.0 + offset_for(str(transition["source"]["stage"]) if from_source else str(transition["destination"]["stage"]), int(transition["source"]["area"]) if from_source else int(transition["destination"]["area"]))})
 	nearby_keys.clear()
 	for entry: Dictionary in prefetch_portals:
 		var distance := (entry["center"] as Vector3).distance_squared_to(position)

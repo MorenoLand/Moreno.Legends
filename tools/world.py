@@ -16,6 +16,7 @@ COORDINATE_BASIS = {"native_to_godot": [-1, -1, 1], "unit": "1/256 map unit", "r
 AREA_TEXTURE_BANKS = {("ST3A", 3): [{"file": "ST3A01.BIN", "file_id": 252, "source": "ST3AT overlay callback 0x800F2FEC via SLES0x8001B2D8"}, {"file": "ST3A02.BIN", "file_id": 253, "source": "ST3AT overlay callback 0x800F40A8 via SLES0x8001B2D8"}]}
 AREA_PLACEMENT_VARIANTS = {("ST06", 3): [{"tile": [63, 64], "event_flag": 0xD6, "item": "television", "overlay_words": {0x800E7410: 0x0C03016D, 0x800E7414: 0x240400D6, 0x800E7420: 0x24020040, 0x800E7448: 0x2503003F, 0x800E7468: 0x8C440000, 0x800E746C: 0x0C030043, 0x800E7470: 0x24050001}, "source": "ST06T living room handler 0x800E73A4 (table 0x800E8FF0[3]): flag 0xD6 clear -> GAME 0x800C010C(tile (63,64), 1) at 0x800E746C"}], ("ST06", 4): [{"tile": [64, 64], "event_flag": 0xD4, "item": "refrigerator", "overlay_words": {0x800E7534: 0x0C03016D, 0x800E7538: 0x240400D4, 0x800E7540: 0x24020040, 0x800E7568: 0x24C30040, 0x800E7588: 0x8C440000, 0x800E758C: 0x0C030043, 0x800E7590: 0x24050001}, "source": "ST06T kitchen handler 0x800E7510 (table 0x800E8FF0[4]): flag 0xD4 clear -> GAME 0x800C010C(tile (64,64), 1) at 0x800E758C"}], ("ST1E", 1): [{"tile": [64, 63], "item": "door", "runtime": "fire mission explosion", "overlay_words": {0x800EABE0: 0x8C640000, 0x800EABE4: 0x0C030043, 0x800EABE8: 0x24050001, 0x800EABF0: 0x24056000, 0x800EABF4: 0x0C005AC7, 0x800EABF8: 0x24060800, 0x800EABFC: 0x2404008B}, "source": "ST1ET variant 1 fire init 0x800EAA18: tile ((x>>9)+0x40, (z>>9)+0x40) of the fire -> GAME 0x800C010C(tile, 1) at 0x800EABE4; then SLES 0x80016B1C(1, 0x6000, 0x800) camera shake and sound 0x8B"}]}
 STAGE_FLAG_RULES = {"ST06": [{"when_event_flag": 0xD1, "flags": [0x717, 0x719], "overlay_words": {0x800E72A4: 0x0C03016D, 0x800E72A8: 0x240400D1, 0x800E72B4: 0x0C030156, 0x800E72B8: 0x24040717, 0x800E72BC: 0x0C030156, 0x800E72C0: 0x24040719, 0x800E72CC: 0x0C030161, 0x800E72D0: 0x24040717, 0x800E72D4: 0x0C030161, 0x800E72D8: 0x24040719}, "source": "ST06T stage frame 0x800E729C (GAME table 0x800DC66C[6]): flag 0xD1 set -> set 0x717/0x719 (0x800C0558), clear -> clear them (0x800C0584); the Deck 2 living room and storage doors lock on them"}]}
+AREA_COLLISION_VARIANTS = {("ST08", 1): [{"tile": [63, 64], "variant": 1, "predicate": {"all": [{"kind": "native_save_byte_equals", "key": "native_save_byte14", "default": 0, "value": 0, "negate": True}]}, "overlay_words": {0x800E75B4: 0x14620019, 0x800E75BC: 0x90820014, 0x800E75C4: 0x10400015, 0x800E75C8: 0x24020040, 0x800E75F0: 0x24E3003F, 0x800E7614: 0x0C030043, 0x800E7618: 0x24050001}, "source": "ST08T800E75B0..7618: area1 and saveByte14 nonzero select tile63,64 collision variant1 via GAME800C010C; geometry remains unchanged"}]}
 def check_overlay_words(overlay, words, label):
 	for address, expected in words.items():
 		actual = struct.unpack_from("<I", overlay, 48 + address - 0x800E7000)[0]
@@ -33,7 +34,7 @@ def texture_vram(paths):
 		if not uploads: raise ValueError(f"no texture sections decoded in {path.name}")
 		banks.append({"file": path.name, "sha256": digest(source), "upload_count": len(uploads)})
 	return vram, banks
-def texture_page(vram, clut, tpage):
+def texture_page(vram, clut, tpage, pixels_only=False):
 	x = (tpage & 15) * 64; y = ((tpage >> 4) & 1) * 256; depth = (tpage >> 7) & 3; px = (clut & 63) * 16; py = clut >> 6
 	if depth > 2: raise ValueError(f"unsupported texture depth {depth}")
 	pixels = bytearray()
@@ -43,7 +44,7 @@ def texture_page(vram, clut, tpage):
 				shift = 2 if depth == 0 else 1; bits = 4 if depth == 0 else 8; word = read_u16(vram, ((y + v) * 1024 + x + (u >> shift)) * 2); index = (word >> ((u & ((1 << shift) - 1)) * bits)) & ((1 << bits) - 1); color = read_u16(vram, (py * 1024 + px + index) * 2)
 			else: color = read_u16(vram, ((y + v) * 1024 + x + u) * 2)
 			pixels.extend((((color & 31) * 255 + 15) // 31, (((color >> 5) & 31) * 255 + 15) // 31, (((color >> 10) & 31) * 255 + 15) // 31, 0 if color == 0 else 255))
-	return png(256, 256, pixels)
+	return pixels if pixels_only else png(256, 256, pixels)
 class Stage:
 	def __init__(self, source):
 		self.data, _ = decompress_section(source, 0); b = self.data; self.base = read_u32(b, 0) * 4; self.placement_base = read_u32(b, 4) * 4; count = read_u32(b, 8)
@@ -107,10 +108,12 @@ def map_config_info(data, area, source_name="overlay"):
 	position = address - base + 48
 	config = registers[6]
 	if config is None or not 48 <= config - base + 48 <= end - 36: raise ValueError(f"{source_name} map configuration pointer is unresolved")
-	return {"source_call": hex(base + call - 48), "uv_pointer": hex(address), "uv_words": list(struct.unpack_from("<32I", data, position)), "config_pointer": hex(config), "config_bytes_hex": data[config - base + 48:config - base + 84].hex(), "native_renderer": "SLES0x80027E84 selects terrain when cell&0x4000; UV0x80028534; TPAGE0x80026EB8; CLUT0x80028950"}
+	palette = registers[5]
+	return {"source_call": hex(base + call - 48), "uv_pointer": hex(address), "uv_words": list(struct.unpack_from("<32I", data, position)), "palette_pointer": hex(palette) if palette is not None else None, "palette_offsets": list(struct.unpack_from("<32I", data, palette - base + 48)) if palette is not None and 48 <= palette - base + 48 <= end - 128 else [], "config_pointer": hex(config), "config_bytes_hex": data[config - base + 48:config - base + 84].hex(), "native_renderer": "SLES0x80027E84 selects terrain when cell&0x4000; UV0x80028534; TPAGE0x80026EB8; CLUT0x80028950"}
 def terrain_groups(tiles, binding, placements):
 	groups = defaultdict(list)
 	seen = set()
+	binding["palette_disabled_cells"] = []
 	executable = (ROOT / "build/disc-assets/SLES_035.56").read_bytes(); rotation_base = 0x800 + 0x8006af14 - 0x80010000
 	for (x, z), tile in tiles.items():
 		flags = read_u16(tile, 0)
@@ -123,6 +126,7 @@ def terrain_groups(tiles, binding, placements):
 		key = (x, z, flags, bytes(tile[4:12]))
 		if key in seen: continue
 		seen.add(key)
+		if flags & 0x20: binding["palette_disabled_cells"].append([x, z])
 		word = binding["uv_words"][flags & 31]; u0, v0, u1, v1 = struct.unpack("<4B", struct.pack("<I", word)); v1 = (v1 + 31) & 255; uv = [(u0 + .5, v0 + .5), (u1 + .5, v0 + .5), (u0 + .5, v1 + .5), (u1 + .5, v1 + .5)]
 		rotation = ((flags >> 8) & 3); order = list(executable[rotation_base + rotation * 4:rotation_base + rotation * 4 + 4]); uv = [uv[index] for index in order]
 		x0 = ((x << 9) - 0x8000) * UNIT; z0 = ((z << 9) - 0x8000) * UNIT; heights = [tile[index] * 16 * UNIT for index in range(4, 8)]
@@ -180,7 +184,7 @@ def export_maps(stage_name, input_dir, output_dir):
 	for index in range(len(stage.grids)):
 		area = stage.area(index)
 		if area is None: continue
-		tiles, ids = area; glb = Glb(vram, texture_cache); quads = 0
+		tiles, ids = area; glb = Glb(vram, texture_cache); quads = 0; placement_streams = []
 		ground = terrain_groups(tiles, terrain_binding(texture_path, index), stage.placements) if any(read_u16(tile, 0) != 0xffff and read_u16(tile, 0) & 0x8000 and (read_u16(tile, 0) & 0x4000 or stage.placements[read_u16(tile, 0) & 0x7ff][3] & 0x8000) for tile in tiles.values()) else {}
 		if ground: glb.instance("terrain", -1, ground, [0, 0, 0]); quads += sum(len(faces) for faces in ground.values())
 		if not ids and not ground: continue
@@ -188,9 +192,19 @@ def export_maps(stage_name, input_dir, output_dir):
 			state, model_id, flags, height, x, z = stage.placements[placement_id]; a, h, directory = stage.directories[model_id]; variant = flags & 3; variants = ((h >> 24) & 1) + 1
 			if variant >= variants: raise ValueError(f"placement {placement_id} selects invalid variant {variant}")
 			pointer = read_u16(stage.data, stage.base + (directory & 65535) * 4 + variant * 12); groups = stage.model(pointer); tile = tiles[(x, z)]; oy = 0x400 - tile[6] * 16 - ((height & 0x7f00) >> 4); translation = [-((x << 9) - (0x7e00 if h & 0x10000000 else 0x7f00)) * UNIT, -oy * UNIT, ((z << 9) - (0x7e00 if h & 0x20000000 else 0x7f00)) * UNIT]; glb.instance(f"placement_{placement_id:03d}_model_{model_id:03d}", pointer, groups, translation, stage.face_metadata[pointer]); quads += sum(len(f) for f in groups.values())
-		name = f"area_{index:02d}.glb"; bounds = glb.save(destination / name); areas.append({"index": index, "file": name, "placements": len(ids), "models": len(glb.meshes), "quads": quads, "bounds": bounds, "native_map_face_flags_in_alpha": True}); print(f"{stage_name}/{name}: {len(ids)} placements, {quads} quads, {len(glb.pages)} texture pages")
+			streams = placement_stream_visibility(stage, placement_id)
+			if streams: placement_streams.append(streams)
+		name = f"area_{index:02d}.glb"; bounds = glb.save(destination / name); areas.append({"index": index, "file": name, "placements": len(ids), "models": len(glb.meshes), "quads": quads, "bounds": bounds, "native_map_face_flags_in_alpha": True, "placement_streams": placement_streams}); print(f"{stage_name}/{name}: {len(ids)} placements, {quads} quads, {len(glb.pages)} texture pages")
 	manifest = {"stage": stage_name, "coordinate_basis": COORDINATE_BASIS, "source_sha256": hashlib.sha256(source).hexdigest(), "textures_sha256": hashlib.sha256(texture_path.read_bytes()).hexdigest(), "texture_sections": texture_count, "areas": areas}; write_output(destination / "manifest.json", json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 	return manifest
+def placement_stream_visibility(stage, placement_id):
+	_, model_id, flags, _, _, _ = stage.placements[placement_id]; _, _, directory = stage.directories[model_id]; descriptor = read_u32(stage.data, stage.base + (directory & 65535) * 4 + (flags & 3) * 12 + 4)
+	if not descriptor & 0x10000000: return None
+	first = 4 if descriptor & 0x01000000 else 0; pointer = read_u16(stage.data, stage.base + (directory & 65535) * 4 + (flags & 3) * 12); base = stage.base + pointer * 4; count, materials = stage.data[base:base + 2]; ranges = []; order = 0
+	for stream in range(count):
+		faces = read_u16(stage.data, base + 4 + materials * 4 + stream * 8 + 2); ranges.append([order, order + faces]); order += faces
+	closed = ranges[first + 1] if first + 1 < len(ranges) else [-1, -1]; opened = ranges[first] if first < len(ranges) else [-1, -1]
+	return {"placement": placement_id, "closed_hidden_range": closed, "open_hidden_range": opened, "default_hidden_range": opened if flags & 4 else closed, "source": "SLES0x80038EF4 sets placement flags bit4; full-LOD renderer0x8002F274..2F2F0 builds stream skip mask1/2 (shift4 when descriptor&0x01000000); 0x80030008..30024 shifts once per8-byte stream descriptor"}
 def maps_cli():
 	parser = argparse.ArgumentParser(); parser.add_argument("--input-dir", type=Path, default=Path("build/disc-assets/DAT")); parser.add_argument("--output-dir", type=Path, default=Path("assets/levels")); parser.add_argument("--stage", default="ST0F"); args = parser.parse_args(); export_maps(args.stage.upper(), args.input_dir, args.output_dir)
 
@@ -307,9 +321,29 @@ def export_depth_cue(dat_dir=None, output_dir=None, stages=None):
 		stage_data = Stage(root_path.read_bytes())
 		try: cue = map_depth_cue_info(overlay_path.read_bytes(), exe_code, exe_load, len(stage_data.grids))
 		except ValueError as error: result["unresolved"][stage] = str(error); continue
+		if stage == "ST0D":
+			background_overlay = overlay_path.read_bytes(); check_overlay_words(background_overlay, {0x800E71EC: 0x92220011, 0x800E71F0: 0x24630004, 0x800E71FC: 0x8C440000, 0x800E7200: 0x0C02FBD9}, "ST0D native background binding")
+			vram, _ = textures(overlay_path)
+			palette_atlases = set()
+			for profile in cue["area_parameters"]:
+				pointer = read_u32(background_overlay, 48 + 0x800F0004 - 0x800E7000 + int(profile["area"]) * 4); colors = list(struct.unpack_from("<48I", background_overlay, 48 + pointer - 0x800E7000))
+				if len(set(colors)) != 1 or colors[0] & 0xFF000000: raise ValueError("ST0D native background is no longer a solid Gouraud strip")
+				profile["background"] = {"mode": "solid", "rgb": list(struct.pack("<I", colors[0])[:3]), "source_call": "ST0DT800E7200->GAME800BEF64", "source_table": "0x800F0004", "source_bands": hex(pointer), "draw_source": "GAME800BEFB8..800BF164, 32-pixel Gouraud bands"}
+				binding = map_config_info(background_overlay, int(profile["area"])); offsets = [value & 65535 for value in binding["palette_offsets"]]
+				if len(offsets) != 32 or offsets != [0] * 10 + [1] * 3 + [2] * 3 + [3] * 2 + [4] * 2 + [5] * 2 + [6] + [7] * 9: raise ValueError("ST0D native depth palette table changed")
+				variants = sorted(set(offsets)); geometry = stage_data.area(int(profile["area"])); tiles, placements = geometry; groups = terrain_groups(tiles, binding, stage_data.placements); materials = set(groups)
+				for placement in placements:
+					_, model, flags, _, _, _ = stage_data.placements[placement]; _, _, directory = stage_data.directories[model]; variant = flags & 3; model_pointer = read_u16(stage_data.data, stage_data.base + (directory & 65535) * 4 + variant * 12); materials.update(stage_data.model(model_pointer))
+				atlases = {}
+				for (clut, tpage), _, _ in sorted(materials):
+					name = f"clut_{clut:04x}_page_{tpage:04x}"; target = output_dir / stage / "palette_fog" / (name + ".png")
+					if name not in palette_atlases and disc.may_write(target):
+						pixels = b"".join(texture_page(vram, clut + offset, tpage, True) for offset in variants); write_output(target, png(256, 256 * len(variants), pixels))
+					palette_atlases.add(name); atlases[name] = "palette_fog/" + target.name
+				profile["palette_fog"] = {"enabled": True, "directory": f"res://assets/levels/{stage}", "source_table": binding["palette_pointer"], "offsets": offsets, "variants": variants, "atlases": atlases, "terrain_disabled_cells": binding["palette_disabled_cells"], "bucket_shift": int(profile["depth_shift"]) + 9, "source": "SLES289D8..28A08 terrain flag20 clear; 2FA48..2FA7C placements; max quad SZ>>2 shifted by scratchB5+7 indexes scratchA8 u32 table and adds low16 to CLUT"}
 		for area in cue["area_parameters"]:
 			geometry = stage_data.area(area["area"]); tiles = geometry[0] if geometry is not None else {}; cells = {}
-			grid = stage_data.grids[area["area"]]; area["visibility"]["window"] = {"enabled": geometry is not None and area["mode"] in (0, 1), "grid_bounds": list(stage_data.data[grid:grid + 4]), "math_manifest": "res://assets/levels/visibility_math.json", "source": "SLES270CC..276E4 near square plus yaw-dependent2770C/27A24 scan bands; mode1 equivalent2984C", "half_ray_angle_raw": 256}
+			grid = stage_data.grids[area["area"]]; area["visibility"]["window"] = {"enabled": geometry is not None and area["mode"] in (0, 1), "grid_bounds": list(stage_data.data[grid:grid + 4]), "math_manifest": "res://assets/levels/visibility_math.json", "source": "SLES270CC..276E4 near square plus yaw-dependent2770C/27A24 scan bands; mode1 equivalent29E4C/2A48C/2A7A4", "half_ray_angle_raw": 256}
 			for (x, z), tile in sorted(tiles.items()):
 				flags = read_u16(tile, 0)
 				if flags == 0xFFFF or not flags & 0x8000 or flags & 0x4000: continue
@@ -399,14 +433,14 @@ def export_bitmap_minimaps(dat_dir, output_dir, stages=None):
 def minimap_cli():
 	parser = argparse.ArgumentParser(); parser.add_argument("--dat-dir", type=Path, default=Path("build/disc-assets/DAT")); parser.add_argument("--maps-dir", type=Path, default=Path("build/maps")); parser.add_argument("--output-dir", type=Path, default=Path("assets/minimap/ST0F")); args = parser.parse_args(); export_minimap(args.dat_dir, args.maps_dir, args.output_dir)
 
-def export_floor_shapes(path):
+def export_floor_shapes(path, variants=None):
 	stage = Stage(Path(path).read_bytes()); result = {}
 	for area in range(len(stage.grids)):
 		parsed = stage.area(area)
 		if parsed is None: continue
 		tiles, placements = parsed; boxes = []
 		for placement in placements:
-			_, model, flags, height, x, z = stage.placements[placement]; _, header, directory = stage.directories[model]; variant = stage.base + (directory & 65535) * 4 + (flags & 3) * 12; pointer = struct.unpack_from("<H", stage.data, variant + 2)[0] * 4 + stage.base; count = stage.data[variant + 6]; offset_x = (x << 9) - (0x7E00 if header & 0x10000000 else 0x7F00); offset_z = (z << 9) - (0x7E00 if header & 0x20000000 else 0x7F00); offset_y = 0x400 - tiles[(x, z)][6] * 16 - ((height & 0x7F00) >> 4)
+			_, model, flags, height, x, z = stage.placements[placement]; _, header, directory = stage.directories[model]; variant = stage.base + (directory & 65535) * 4 + (variants.get(placement, flags & 3) if variants else flags & 3) * 12; pointer = struct.unpack_from("<H", stage.data, variant + 2)[0] * 4 + stage.base; count = stage.data[variant + 6]; offset_x = (x << 9) - (0x7E00 if header & 0x10000000 else 0x7F00); offset_z = (z << 9) - (0x7E00 if header & 0x20000000 else 0x7F00); offset_y = 0x400 - tiles[(x, z)][6] * 16 - ((height & 0x7F00) >> 4)
 			for index in range(count):
 				offset = pointer + index * 16; values = struct.unpack_from("<6h2H", stage.data, offset)
 				boxes.append({"x": [values[0] + offset_x, values[1] + offset_x], "z": [values[2] + offset_z, values[3] + offset_z], "y": [values[4] + offset_y, values[5] + offset_y], "kind": values[6], "mask": values[7], "placement": placement, "source_offset": hex(offset), "contact_raw": [int((values[0] + values[1]) / 2) + offset_x, int((values[4] + values[5]) / 2) + offset_y, int((values[2] + values[3]) / 2) + offset_z]})
@@ -424,7 +458,14 @@ def export_floor_shapes(path):
 	return result
 
 def floor_collision_manifest(path):
-	return {area: {"boxes": source["boxes"], "walls": source["walls"], "wall_source": source["wall_source"], "source": source["source"], "slope_source": "GAME0x800B1C48;kind10:+Z,11:-Z,12:+X,13:-X;B1EA8 integer interpolation;B2868 upper surface"} for area, source in export_floor_shapes(path).items()}
+	path = Path(path); result = {area: {"boxes": source["boxes"], "walls": source["walls"], "wall_source": source["wall_source"], "source": source["source"], "slope_source": "GAME0x800B1C48;kind10:+Z,11:-Z,12:+X,13:-X;B1EA8 integer interpolation;B2868 upper surface"} for area, source in export_floor_shapes(path).items()}
+	for (stage_name, area), rules in AREA_COLLISION_VARIANTS.items():
+		if stage_name != path.stem.upper(): continue
+		stage = Stage(path.read_bytes()); tiles, _ = stage.area(area); overlay = path.with_name(stage_name + "T.BIN").read_bytes()
+		for rule in rules:
+			check_overlay_words(overlay, rule["overlay_words"], stage_name + " collision variant"); placement = read_u16(tiles[tuple(rule["tile"])], 0) & 0x7FF; alternate = export_floor_shapes(path, {placement: rule["variant"]})[str(area)]["boxes"]
+			result[str(area)].setdefault("placement_variants", []).append({"placement": placement, "variant": rule["variant"], "predicate": rule["predicate"], "boxes": [record for record in alternate if record["placement"] == placement], "source": rule["source"]})
+	return result
 
 def bind_route_contacts(routes, floors):
 	for route in routes:
@@ -443,6 +484,22 @@ NATIVE_INTERACTION_TARGETS.update({"ST0B": {(0, 0): (0x800EF45C, 0x800EF468)}, "
 NATIVE_SCRIPTED_INTERACTIONS.update({"ST2C": {(0, 0): (0x800E7454, 0x800E78D4, 0, False)}})
 NATIVE_INTERACTION_TARGETS.update({"ST2C": {(0, 0): (0x800EA884, 0x800EA890)}})
 NATIVE_SCRIPTED_INTERACTIONS["ST09"][(0, 1)] = (0x800E9D0C, 0x800EA33C, 0, True)
+NATIVE_SCRIPTED_INTERACTIONS["ST0B"][(1, 0)] = (0x800E9C94, 0x800E9FC8, 2, False)
+NATIVE_INTERACTION_TARGETS["ST0B"][(1, 0)] = (0x800EFD9C, 0x800EFD9C)
+NATIVE_SCRIPTED_INTERACTIONS.setdefault("ST10", {})[(1, 0)] = (0x800E7A4C, 0x800E7D80, 2, False)
+NATIVE_INTERACTION_TARGETS.setdefault("ST10", {})[(1, 0)] = (0x800F8348, 0x800F8348)
+NATIVE_SCRIPTED_INTERACTIONS.setdefault("ST17", {})[(1, 0)] = (0x800E7C24, 0x800E7F58, 2, False)
+NATIVE_INTERACTION_TARGETS.setdefault("ST17", {})[(1, 0)] = (0x80106E80, 0x80106E80)
+NATIVE_SCRIPTED_INTERACTIONS.setdefault("ST1D", {})[(1, 0)] = (0x800E7B00, 0x800E7E34, 2, False)
+NATIVE_INTERACTION_TARGETS.setdefault("ST1D", {})[(1, 0)] = (0x800FCB4C, 0x800FCB4C)
+NATIVE_SCRIPTED_INTERACTIONS.setdefault("ST1F", {})[(1, 0)] = (0x800E9BF4, 0x800E9F28, 2, False)
+NATIVE_INTERACTION_TARGETS.setdefault("ST1F", {})[(1, 0)] = (0x80101C08, 0x80101C08)
+NATIVE_SCRIPTED_INTERACTIONS.setdefault("ST24", {})[(1, 0)] = (0x800E945C, 0x800E9790, 2, False)
+NATIVE_INTERACTION_TARGETS.setdefault("ST24", {})[(1, 0)] = (0x800F2D94, 0x800F2D94)
+NATIVE_SCRIPTED_INTERACTIONS.setdefault("ST3C", {})[(1, 0)] = (0x800EA54C, 0x800EA880, 2, False)
+NATIVE_INTERACTION_TARGETS.setdefault("ST3C", {})[(1, 0)] = (0x800FF3B4, 0x800FF3B4)
+NATIVE_SCRIPTED_INTERACTIONS.setdefault("ST3F", {})[(1, 0)] = (0x800E931C, 0x800E9650, 2, False)
+NATIVE_INTERACTION_TARGETS.setdefault("ST3F", {})[(1, 0)] = (0x800F0288, 0x800F0288)
 def bind_scripted_interactions(stage, records, overlay, source_key="source_bytes_hex", address_key="source_record_ram"):
 	base = read_u32(overlay, 12)
 	for record in records:
@@ -629,7 +686,7 @@ def export_geometry(input_dir, output_dir, stages):
 			ground = terrain_groups(tiles, ground_binding, stage.placements) if ground_binding else {}
 			if ground: glb.instance("terrain", -1, ground, [0, 0, 0]); quads += sum(len(faces) for faces in ground.values())
 			if not placement_ids and not ground: continue
-			variant_rules = []; variant_manifest = []
+			variant_rules = []; variant_manifest = []; placement_streams = []
 			for rule in AREA_PLACEMENT_VARIANTS.get((stage_name, area_index), []):
 				tile_flags = read_u16(tiles[tuple(rule["tile"])], 0)
 				if tile_flags & 0xc000 != 0x8000: raise ValueError(f"{stage_name} area {area_index:02d} tile {rule['tile']} holds no placement")
@@ -638,12 +695,14 @@ def export_geometry(input_dir, output_dir, stages):
 				_, model_id, flags, height, x, z = stage.placements[placement_id]; _, header, directory = stage.directories[model_id]; variant = flags & 3; variant_count = ((header >> 24) & 1) + 1
 				if variant >= variant_count: raise ValueError(f"{stage_name} area {area_index:02d} placement {placement_id} selects invalid variant {variant}")
 				pointer = read_u16(stage.data, stage.base + (directory & 0xffff) * 4 + variant * 12); groups = stage.model(pointer); tile = tiles[(x, z)]; oy = 0x400 - tile[6] * 16 - ((height & 0x7f00) >> 4); translation = [-((x << 9) - (0x7e00 if header & 0x10000000 else 0x7f00)) * UNIT, -oy * UNIT, ((z << 9) - (0x7e00 if header & 0x20000000 else 0x7f00)) * UNIT]; node_name = f"placement_{placement_id:03d}_model_{model_id:03d}"; glb.instance(node_name, pointer, groups, translation, stage.face_metadata[pointer]); quads += sum(len(faces) for faces in groups.values())
+				streams = placement_stream_visibility(stage, placement_id)
+				if streams: placement_streams.append(streams)
 				variant_rule = next((rule for rule in variant_rules if rule["placement"] == placement_id), None)
 				if variant_rule is not None:
 					if variant_count != 2 or variant != 0: raise ValueError(f"{stage_name} area {area_index:02d} placement {placement_id} is not a two-variant placement")
 					variant_pointer = read_u16(stage.data, stage.base + (directory & 0xffff) * 4 + 12); variant_groups = stage.model(variant_pointer); glb.instance(node_name + "_variant_1", variant_pointer, variant_groups, translation, stage.face_metadata[variant_pointer])
 					variant_manifest.append({"placement": placement_id, "model": model_id, "item": variant_rule["item"], "base_node": node_name, "base_variant": 0, "variant_node": node_name + "_variant_1", "variant": 1, **({"event_flag": variant_rule["event_flag"], "variant_when_set": 0, "variant_when_clear": 1} if "event_flag" in variant_rule else {"runtime": variant_rule["runtime"]}), "tile": variant_rule["tile"], "source": variant_rule["source"]})
-			file_name = f"area_{area_index:02d}.glb"; bounds = glb.save(stage_dir / file_name); area_manifest = {"index": area_index, "name": display_name.removeprefix(family + " ").removeprefix("- ") if display_name and family else display_name or "Area %02d" % area_index, "file": file_name, "placements": len(placement_ids), "models": len(glb.meshes), "quads": quads, "bounds": bounds, "native_map_code": {"stage": int(stage_name[2:], 16), "area": area_index}, "terrain_source": ground_binding, "native_map_face_flags_in_alpha": True}
+			file_name = f"area_{area_index:02d}.glb"; bounds = glb.save(stage_dir / file_name); area_manifest = {"index": area_index, "name": display_name.removeprefix(family + " ").removeprefix("- ") if display_name and family else display_name or "Area %02d" % area_index, "file": file_name, "placements": len(placement_ids), "models": len(glb.meshes), "quads": quads, "bounds": bounds, "native_map_code": {"stage": int(stage_name[2:], 16), "area": area_index}, "terrain_source": ground_binding, "native_map_face_flags_in_alpha": True, "placement_streams": placement_streams}
 			if variant_manifest: area_manifest["placement_variants"] = variant_manifest
 			if area_banks: area_manifest["texture_state"] = {"source_order": [{"file": f"DAT/{texture_path.name}", "file_id": 254, "sha256": digest(texture_bytes), "source": "GAME0x800BA600 default ST3A root/T loader"}, *[{"file": f"DAT/{bank['file']}", "file_id": bank["file_id"], "sha256": item["sha256"], "source": bank["source"]} for bank, item in zip(area_banks, loaded_banks[1:])]], "applied_in_vram_order": True}
 			areas.append(area_manifest); print(f"{stage_name}_{area_index:02d}: {len(placement_ids)} placements, {quads} quads")
@@ -712,6 +771,12 @@ def export_routes(dat_dir, output_dir, stages):
 			for key, value in old.items(): route.setdefault(key, value)
 		floor_manifest = floor_collision_manifest(dat_dir / (stage + ".BIN")); bind_route_contacts(routes, floor_manifest)
 		map_interactions = [{"source_area": int(area), "native_contacts": [{**contact, "type": 16, "automatic": False, "probe_forward_raw": -64 if contact["mask"] & 0x8000 else 0}], "runtime_index": contact["mask"] & 255, "message_kind": 0, "window": 0, "source_function": "GAME0x800B81CC/0x800BE330", "source_bank_pointer": "0x8010C000", "action_required": True} for area, collision in floor_manifest.items() for contact in collision.get("boxes", []) if contact["kind"] == 0x1000 and contact["mask"] & 0x4000]
+		for area, collision in floor_manifest.items():
+			for variant in collision.get("placement_variants", []):
+				for interaction in map_interactions:
+					if interaction["source_area"] != int(area) or interaction["native_contacts"][0]["placement"] != variant["placement"]: continue
+					if any(record["kind"] == 0x1000 and record["mask"] & 255 == interaction["runtime_index"] for record in variant["boxes"]): continue
+					interaction["availability"] = {"all": [{**condition, "negate": not condition.get("negate", False)} for condition in variant["predicate"]["all"]], "source": variant["source"]}
 		walk = native_automatic_walk(data); hinge_bindings = native_hinged_door_bindings(data)
 		for route in routes:
 			if any(contact["automatic"] for contact in route["native_contacts"]): route["native_automatic_walk"] = walk
@@ -1095,6 +1160,19 @@ def select_panel(faces, center, axis):
 	if not match: raise ValueError(f"unexpected map placement node {node}")
 	return {"center": face_center, "axis": axis, "bounds": bounds, "placement_id": int(match.group(1)), "model_id": int(match.group(2)), "node": node, "mesh_index": mesh_index, "primitive_index": primitive_index, "material_index": material_index, "quads": [{"quad_index": face["quad_index"], "primitive_index": face["primitive_index"], "first_vertex": face["quad_index"] * 6, "first_triangle": face["quad_index"] * 2, "triangle_count": 2, "triangles_local": face["triangles_local"]} for face in selected_quads], "score": best[0]}
 
+FLUTTER_LADDER_STAGES = {"ST04", "ST05", "ST06", "ST07"}
+
+def ladder_link(assets_dir, room_catalog, route, reverse, a, b):
+	"""Stack the two rooms of a ladder pair: the lower room's ceiling hatch (its black-out loop height) meets the bottom of the upper room's ladder pit, with the two ladder foot points (each route's source transform) on one vertical line."""
+	down = (int(route["door_mode"]) & 15) not in (0, 2); upper, lower = (a, b) if down else (b, a)
+	roofs = assets_dir / lower[0] / "area_roofs.json"
+	if not roofs.is_file(): return None
+	heights = [point[1] for entry in json.loads(roofs.read_text(encoding="utf-8"))["areas"] if entry["area"] == lower[1] for loop in entry["roof"].get("blackouts", []) for point in loop]
+	pit = room_catalog[upper]["bounds"]["min"][1]
+	if not heights or pit >= 0: return None
+	hatch = math.floor(max(heights) * 256) / 256; source = native_point(route["source_transform_raw"]); arrival = native_point(reverse["source_transform_raw"]); rise = hatch - pit
+	return {"delta": [source[0] - arrival[0], -rise if down else rise, source[2] - arrival[2]], "upper": {"stage": upper[0], "area": upper[1]}, "lower": {"stage": lower[0], "area": lower[1]}, "hatch_height": hatch, "pit_depth": pit}
+
 def export_room_layout(assets_dir, output_path, stages=STAGES):
 	STAGES = stages; town = "ST09" in stages
 	room_catalog = {}; route_data = {}; route_hashes = {}; external = []
@@ -1103,7 +1181,7 @@ def export_room_layout(assets_dir, output_path, stages=STAGES):
 		for index, area in stage_areas.items():
 			if town and stage == "ST47" and index != 0: continue
 			room_catalog[(stage, index)] = {"manifest": f"assets/levels/{stage}/manifest.json", "file": area["file"], "bounds": area["bounds"]}
-	all_routes = [(stage, route) for stage, routes in route_data.items() for route in routes]; edges = []; ladder_transitions = []; paired = set()
+	all_routes = [(stage, route) for stage, routes in route_data.items() for route in routes]; edges = []; ladder_transitions = []; ladder_edges = []; paired = set()
 	for stage, route in all_routes:
 		a = (stage, route["source_area"]); b = (route["destination_stage"], route["destination_area"])
 		if a not in room_catalog: continue
@@ -1114,7 +1192,10 @@ def export_room_layout(assets_dir, output_path, stages=STAGES):
 		if len(reverses) != 1: raise ValueError(f"{a} to {b} has {len(reverses)} reciprocal routes")
 		reverse = reverses[0]; paired.update(((a, b), (b, a)))
 		if frozenset((a, b)) in LADDER_PAIRS:
-			ladder_transitions.append({"source": {"stage": a[0], "area": a[1]}, "destination": {"stage": b[0], "area": b[1]}, "door_id": route["door_id"], "door_mode": route["door_mode"], "reverse_door_mode": reverse["door_mode"], "source_route_file_offset": route["file_offset"], "reverse_route_file_offset": reverse["file_offset"], "source_transform_raw": route["source_transform_raw"], "destination_transform_raw": route["destination_transform_raw"]}); continue
+			link = ladder_link(assets_dir, room_catalog, route, reverse, a, b) if a[0] in FLUTTER_LADDER_STAGES and b[0] in FLUTTER_LADDER_STAGES else None
+			ladder_transitions.append({"source": {"stage": a[0], "area": a[1]}, "destination": {"stage": b[0], "area": b[1]}, "door_id": route["door_id"], "door_mode": route["door_mode"], "reverse_door_mode": reverse["door_mode"], "source_route_file_offset": route["file_offset"], "reverse_route_file_offset": reverse["file_offset"], "source_transform_raw": route["source_transform_raw"], "destination_transform_raw": route["destination_transform_raw"], "seamless": link is not None, **(link or {})})
+			if link: ladder_edges.append({"a": a, "b": b, "delta": tuple(link["delta"])})
+			continue
 		native_a = route.get("native_door", {}).get("source_panel"); native_b = reverse.get("native_door", {}).get("source_panel")
 		if not (native_a and native_b): center_a, axis_a = route_center(route, reverse, True); center_b, axis_b = route_center(route, reverse, False)
 		if not (native_a and native_b) and axis_a != axis_b: raise ValueError(f"{a} to {b} uses different local portal axes")
@@ -1122,7 +1203,7 @@ def export_room_layout(assets_dir, output_path, stages=STAGES):
 		if face_a["axis"] != face_b["axis"]: raise ValueError(f"{a} to {b} panel normal axes disagree")
 		translation = tuple((-route["source_transform_raw"][1] + reverse["source_transform_raw"][1]) / 256 if town and i == 1 else face_a["center"][i] - face_b["center"][i] for i in range(3)); edges.append({"a": a, "b": b, "route": route, "reverse": reverse, "panel_a": face_a, "panel_b": face_b, "delta": translation, "glb_a": path_a, "glb_b": path_b})
 	adjacency = {}
-	for edge in edges:
+	for edge in edges + ladder_edges:
 		adjacency.setdefault(edge["a"], []).append((edge["b"], edge["delta"])); adjacency.setdefault(edge["b"], []).append((edge["a"], tuple(-value for value in edge["delta"])))
 	offsets = {}; components = []; residuals = []
 	for anchor in sorted(room_catalog):
@@ -1144,14 +1225,14 @@ def export_room_layout(assets_dir, output_path, stages=STAGES):
 			bottom = max(pa["bounds"]["min"][1] + offsets[a][1], pb["bounds"]["min"][1] + offsets[b][1]); top = min(pa["bounds"]["max"][1] + offsets[a][1], pb["bounds"]["max"][1] + offsets[b][1]); portal["world_center"][1] = (bottom + top) * 0.5; portal["shared_panel_size"][1] = top - bottom
 		portals.append(portal)
 	components_json = [[{"stage": stage, "area": area} for stage, area in component] for component in components]; anchor = components[0][0] if components else ("", 0); ladder_transitions.sort(key=lambda item: (item["source"]["stage"], item["source"]["area"], item["destination"]["stage"], item["destination"]["area"]))
-	manifest = {"coordinate_basis": {"native_to_godot": UNIT_BASIS, "unit": "1/256 map unit", "rotation": "identity for every room"}, "parked_exterior_enabled": "ST04" in STAGES, "placement_source": "reciprocal native Flutter door routes matched to static door-face quads in area GLBs; vertical ladder routes remain transitions", "anchor": {"stage": anchor[0], "area": anchor[1], "world_offset": [0, 0, 0]}, "graph": {"room_count": len(rooms), "reciprocal_edge_count": len(edges), "connected": len(components) == 1, "component_count": len(components), "is_tree": len(components) == 1 and len(edges) == len(rooms) - 1, "is_forest": len(edges) == len(rooms) - len(components), "components": components_json, "cycle_residuals": residuals}, "rooms": rooms, "portals": portals, "ladder_transitions": ladder_transitions, "external_routes": external, "route_data_remains_local": True, "source_sha256": {stage: {"manifest": hashlib.sha256((assets_dir / stage / "manifest.json").read_bytes()).hexdigest(), "doors": route_hashes[stage]} for stage in STAGES}}
+	manifest = {"coordinate_basis": {"native_to_godot": UNIT_BASIS, "unit": "1/256 map unit", "rotation": "identity for every room"}, "parked_exterior_enabled": "ST04" in STAGES, "placement_source": "reciprocal native Flutter door routes matched to static door-face quads in area GLBs; ladder pairs stack their rooms at the ladder foot points", "anchor": {"stage": anchor[0], "area": anchor[1], "world_offset": [0, 0, 0]}, "graph": {"room_count": len(rooms), "reciprocal_edge_count": len(edges), "connected": len(components) == 1, "component_count": len(components), "is_tree": len(components) == 1 and len(edges) == len(rooms) - 1, "is_forest": len(edges) == len(rooms) - len(components), "components": components_json, "cycle_residuals": residuals}, "rooms": rooms, "portals": portals, "ladder_transitions": ladder_transitions, "external_routes": external, "route_data_remains_local": True, "source_sha256": {stage: {"manifest": hashlib.sha256((assets_dir / stage / "manifest.json").read_bytes()).hexdigest(), "doors": route_hashes[stage]} for stage in STAGES}}
 	output_path.parent.mkdir(parents=True, exist_ok=True); write_output(output_path, json.dumps(manifest, indent=2) + "\n", encoding="utf-8"); print(f"Flutter room layout: {len(rooms)} rooms, {len(portals)} paired portals, {len(external)} external routes -> {output_path}"); return manifest
 
 def export_stage_regions(output_path):
 	game = GAME_PATH.read_bytes(); base = struct.unpack_from("<I", game, 0xc)[0]; table = 0x800DBDA0; count = 0x5D
 	return write_output(output_path, json.dumps({"source": {"file": str(GAME_PATH.relative_to(ROOT)), "sha256": hashlib.sha256(game).hexdigest(), "table_ram": hex(table), "consumer": "GAME 0x800BA374 stores table[stage] to game+0x12 unless 0xFF, then 0x800BA420 counts region changes", "counter_function": "0x800BA420", "counter_bytes": "game+0x7C..0x83 (non-zero, below 0xFF, incremented once per region change at stage >= 8)", "last_region_byte": "game+0x84"}, "regions": list(game[48 + table - base:48 + table - base + count])}, indent=2) + "\n", encoding="utf-8")
 def room_layout_cli():
-	parser = argparse.ArgumentParser(); parser.add_argument("--assets-dir", type=Path, default=ROOT / "assets/levels"); parser.add_argument("--output", type=Path, default=ROOT / "assets/locations/room_layout.json"); args = parser.parse_args(); export_room_layout(args.assets_dir, args.output)
+	parser = argparse.ArgumentParser(); parser.add_argument("--assets-dir", type=Path, default=ROOT / "assets/levels"); parser.add_argument("--output", type=Path, default=ROOT / "assets/locations/room_layout.json"); parser.add_argument("--overwrite", action="store_true"); args = parser.parse_args(); disc.configure_overwrite(args.overwrite); export_room_layout(args.assets_dir, args.output)
 SHOP_ROOT = Path(__file__).resolve().parent.parent
 SHOP_OUTPUT = SHOP_ROOT / "assets/shops"
 """Shop scene data (junk shops, general stores): the shop module and its data are identical in every shop stage overlay; the overlay message bank, stock tables and item catalog are exported to assets/shops."""

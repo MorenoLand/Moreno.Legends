@@ -144,8 +144,10 @@ func _start_page(id: int) -> void:
 	var window: Dictionary = windows[id]; var layout_entry: Dictionary = window["layouts"][window["page"]]; window["frame"] = layout_entry["frame"]; window["glyphs"] = 0; window["delay"] = 0; window["complete"] = false; window["waiting"] = 0; window["selection"] = int(layout_entry["choice"].get("selected_index", 0)) if not (layout_entry["choice"] as Dictionary).is_empty() else 0
 	if str(window["pages"][window["page"]]).is_empty(): window["complete"] = true
 func _step_windows() -> void:
+	var shared_input := input.duplicate()
 	for id: int in windows.keys():
 		if not windows.has(id): continue
+		input = shared_input.duplicate()
 		var window: Dictionary = windows[id]; var page := int(window["page"]); var text := str(window["pages"][page]); var layout_entry: Dictionary = window["layouts"][page]
 		if not bool(window["complete"]):
 			if input.has("confirm") and id != 4: window["glyphs"] = text.length(); window["complete"] = true; input.erase("confirm"); continue
@@ -157,6 +159,7 @@ func _step_windows() -> void:
 			if int(window["glyphs"]) >= text.length(): window["complete"] = true
 			continue
 		_step_page_end(id, window, layout_entry)
+	input = shared_input
 func _step_page_end(id: int, window: Dictionary, layout_entry: Dictionary) -> void:
 	var choice: Dictionary = layout_entry["choice"]
 	if not choice.is_empty():

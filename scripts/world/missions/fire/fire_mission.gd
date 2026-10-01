@@ -15,9 +15,12 @@ var data_rescued := false
 var started := false
 var kitchen_greeted := false
 var busy := false
+var radio_pending := 0
 var ember_block := 0
 var kitchen_data: Node3D
 var trig: Array = []
+var broken_placements: Dictionary = {}
+var effects: Node3D
 func configure(gameplay: Node3D) -> bool:
 	host = gameplay
 	var path := "res://assets/levels/ST1E/fire_mission.json"
@@ -30,6 +33,7 @@ func enter_area(parent: Node3D, index: int) -> void:
 	for fire in fires:
 		if is_instance_valid(fire): fire.queue_free()
 	fires.clear(); level = parent; area = index; idle = 0; ember_block = 0
+	for node_name: String in broken_placements.get(index, []): preload("res://scripts/world/flutter/room_variants.gd").apply_runtime(parent, node_name)
 	if is_instance_valid(kitchen_data): kitchen_data.queue_free()
 	var profile: Dictionary = data["areas"].get(str(index), {})
 	if profile.is_empty() or finished: return
@@ -65,7 +69,16 @@ func _spawn(entry: Dictionary) -> void:
 func _explode(fire: Node3D) -> void:
 	var shake: Dictionary = data["fire"]["explosion"]["blast"]["init"]["shake"]; host.player.camera_shake(int(shake["mode"]), int(shake["magnitude"]), int(shake["decay"]))
 	var change: Dictionary = fire.record.get("map_change", {})
-	if not change.is_empty(): preload("res://scripts/world/flutter/room_variants.gd").apply_runtime(level, str(change["node"]))
+	if not change.is_empty():
+		var nodes: Array = broken_placements.get(area, []); var node_name := str(change["node"])
+		if not nodes.has(node_name): nodes.append(node_name); broken_placements[area] = nodes
+		preload("res://scripts/world/flutter/room_variants.gd").apply_runtime(level, node_name)
+func _effects() -> Node3D:
+	if not is_instance_valid(effects) or effects.get_parent() != level:
+		effects = preload("res://scripts/world/missions/fire/native_blast.gd").new(); effects.name = "FireSteam"; level.add_child(effects); effects.configure(data, trig, atlas, host.player, _rand)
+	return effects
+func _steam(position_raw: Vector3i, subtype: int) -> void: _effects().spawn_steam(position_raw, subtype)
+func _smoke(position_raw: Vector3i) -> Dictionary: return _effects().spawn_smoke(position_raw)
 func _contact(fire: Node3D, damage: int) -> void:
 	if host.player.no_clip or not host.player.hurt_phase.is_empty(): return
 	host.player.take_hit(maxi(1, (damage * 3) >> 2), 0, host.player.global_position - fire.global_position)
@@ -84,18 +97,28 @@ func _check_clear() -> void:
 			"flag_clear": _set_flag(int(operation["value"]), false)
 			"scene_start": _finish(true)
 func _physics_process(delta: float) -> void:
-	if finished or area < 0 or not started or host.loading or busy or bool(host.dialogue_box.get("active")): return
+	if finished or area < 0 or not started or host.loading or busy or host.native_scenes.active or bool(host.dialogue_box.get("active")) and radio_pending == 0: return
 	elapsed += delta * float(data.get("native_tick_hz", 25))
-	while elapsed >= 1.0 and not finished: elapsed -= 1.0; _tick()
+	while elapsed >= 1.0 and not finished and not busy: elapsed -= 1.0; _tick()
 func _tick() -> void:
 	var profile: Dictionary = data["areas"].get(str(area), {})
 	if profile.is_empty(): return
 	var tick := int(timers.get(area, 0)) + 1; timers[area] = tick
+	if tick >= int(profile["timer_limit"]) or host.player.health <= 0: _finish(false); return
 	for warning: Dictionary in profile["warnings"]:
-		if int(warning["tick"]) == tick: _sequence([{"op": "conversation", "message": int(warning["message"]), "window": 1}])
-	idle = 0 if is_instance_valid(host.player.hose) and host.player.hose.spraying else idle + 1
-	if idle >= int(profile["hint"]["idle_ticks"]): idle = 0; _sequence([{"op": "conversation", "message": int(profile["hint"]["message"]), "window": 1}])
-	if tick >= int(profile["timer_limit"]) or host.player.health <= 0: _finish(false)
+		if int(warning["tick"]) == tick: idle = 0; _radio(int(warning["message"])); return
+	var flags: Dictionary = host.native_context.get("event_flags", {})
+	if bool(flags.get(0x681, flags.get(str(0x681), false))) or is_instance_valid(host.player.hose) and host.player.hose.spraying: idle = 0
+	elif idle >= int(profile["hint"]["idle_ticks"]): idle = 0; _radio(int(profile["hint"]["message"])); return
+	else: idle += 1
+func _radio(message: int) -> void:
+	radio_pending += 1; _set_flag(0x681, true)
+	while is_inside_tree() and bool(host.dialogue_box.get("active")): await get_tree().process_frame
+	if not is_inside_tree(): return
+	await host.event_script.play_bound_message("ST1E", "0x8010C000", message, "0x800E7B20", null, 4)
+	if not is_instance_valid(host) or not host.is_inside_tree(): return
+	radio_pending -= 1
+	if radio_pending == 0: _set_flag(0x681, false)
 func _sequence(operations: Array) -> void:
 	busy = true
 	for operation: Dictionary in operations:
@@ -124,6 +147,7 @@ func _finish(success: bool) -> void:
 	if not is_instance_valid(host) or not host.is_inside_tree(): return
 	if not ok: push_error(str(host.native_scenes.last_error))
 	else: data_rescued = success
+	if host.native_scenes.transition_requested: return
 	host.player.camera_pivot.rotation = Vector3(deg_to_rad(-12.0), host.player.player_model.rotation.y, 0.0); host.player.camera.make_current(); host.player.refresh_room_camera(); host.area_picker.disabled = false; host.loading = false; host.player.set_physics_process(true)
 func _set_flag(id: int, value: bool) -> void:
 	var flags: Dictionary = host.native_context.get("event_flags", {}); flags[id] = value; flags.erase(str(id)); host.native_context["event_flags"] = flags

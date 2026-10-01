@@ -226,11 +226,11 @@ static func _surface_data(node: MeshInstance3D) -> Array:
 	for surface in node.mesh.get_surface_count():
 		if node.mesh.surface_get_primitive_type(surface) == Mesh.PRIMITIVE_TRIANGLES: surfaces.append({"surface": surface, "arrays": node.mesh.surface_get_arrays(surface)})
 	return surfaces
-static func _source_decorator(face: Dictionary) -> bool: return int(face["source_flags"]) >= 0 and (int(face["source_flags"]) & 0xC0) == 0xC0
+static func _source_decorator(face: Dictionary) -> bool: return int(face["source_flags"]) >= 0 and (int(face["source_flags"]) & 0xC0) == 0x80
 static func _face_before(first: Dictionary, second: Dictionary) -> bool:
 	var first_decorator := _source_decorator(first); var second_decorator := _source_decorator(second)
 	if first_decorator != second_decorator: return not first_decorator
-	if int(first["source_order"]) >= 0 and int(second["source_order"]) >= 0 and int(first["source_order"]) != int(second["source_order"]): return int(first["source_order"]) < int(second["source_order"])
+	if int(first["source_order"]) >= 0 and int(second["source_order"]) >= 0 and int(first["source_order"]) != int(second["source_order"]): return int(first["source_order"]) > int(second["source_order"])
 	return _comes_after(second, first)
 static func _polygon_bounds(polygon: PackedVector2Array) -> Rect2:
 	var bounds := Rect2(polygon[0], Vector2.ZERO)

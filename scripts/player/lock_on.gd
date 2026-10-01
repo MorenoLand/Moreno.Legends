@@ -33,6 +33,13 @@ func clear() -> void:
 	target = null; acquired_tick = -1; player.locked_target = null
 	if is_instance_valid(mesh): (mesh.mesh as ImmediateMesh).clear_surfaces()
 func lock_point(node: Node3D) -> Vector3:
+	var profile: Dictionary = node.get_meta("native_lock_on", {})
+	if profile.has("point_offset_raw"):
+		var raw: Array = profile["point_offset_raw"]; return node.global_position + Vector3(-float(raw[0]), -float(raw[1]), float(raw[2])) / 256.0
+	if profile.has("point_bone"):
+		var skeletons := node.find_children("*", "Skeleton3D", true, false); var skeleton := skeletons[0] as Skeleton3D if not skeletons.is_empty() else null
+		var bone := int(profile["point_bone"])
+		if skeleton != null and bone < skeleton.get_bone_count(): return skeleton.to_global(skeleton.get_bone_global_pose(bone).origin)
 	# Native lock point = centre of the hit volume the actor registered (SLES 0x80042704); stage actors build their collision box from it.
 	var center: Variant = node.get("hit_center")
 	if center is Vector3: return center
@@ -42,7 +49,7 @@ func lock_point(node: Node3D) -> Vector3:
 func _tick(held: bool) -> void:
 	tick += 1
 	if not held: clear(); return
-	if is_instance_valid(target) and not target.is_in_group("lock_targets"): target = null
+	if is_instance_valid(target) and not _registered(target): target = null
 	if not is_instance_valid(target):
 		target = _search(); acquired_tick = tick if target != null else -1
 	player.locked_target = target
@@ -53,13 +60,23 @@ func _tick(held: bool) -> void:
 	pitch = clampi(goal, pitch - PITCH_STEP, pitch + PITCH_STEP)
 	var model := player.player_model as Node3D; var step := float(YAW_STEP) * TAU / 4096.0
 	model.rotation.y += clampf(wrapf(atan2(-offset.x, -offset.z) - model.rotation.y, -PI, PI), -step, step)
+func _registered(node: Node3D) -> bool:
+	if not node.is_in_group("lock_targets") or not node.is_visible_in_tree(): return false
+	var profile: Dictionary = node.get_meta("native_lock_on", {})
+	if not profile.is_empty():
+		var mask := int(profile["mask"]); var category := (mask & 0xE00000) >> 21
+		if category not in [2, 4, 5] or (mask & 0x80000) != 0: return false
+		if node is CollisionObject3D: return (node as CollisionObject3D).collision_layer != 0
+		var body := node.get_node_or_null("NativeActorCollision") as CollisionObject3D
+		return body == null or body.collision_layer != 0
+	return not node is CollisionObject3D or (node as CollisionObject3D).collision_layer != 0
 func _search() -> Node3D:
 	var camera := player.camera as Camera3D; var size := get_viewport().get_visible_rect().size
 	var skip: Node3D = last_target if tick - released_tick <= RESELECT_TICKS and is_instance_valid(last_target) else null
 	var best_screen: Node3D = null; var screen_distance := SCREEN_RANGE; var best_near: Node3D = null; var near_distance := NEAR_RANGE
 	for candidate in get_tree().get_nodes_in_group("lock_targets"):
 		var node := candidate as Node3D
-		if node == null or node == skip or not node.is_visible_in_tree(): continue
+		if node == null or node == skip or not _registered(node): continue
 		var point := lock_point(node); var distance := Vector2(point.x - player.global_position.x, point.z - player.global_position.z).length()
 		var on_screen := not camera.is_position_behind(point) and camera.unproject_position(point).x >= 0.0 and camera.unproject_position(point).x < size.x
 		if on_screen and distance < screen_distance: screen_distance = distance; best_screen = node

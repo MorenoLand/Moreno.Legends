@@ -1,6 +1,7 @@
 extends Node
 signal data_save_menu_finished(saved: bool)
 var gameplay: Node3D
+var debug_overlay: CanvasLayer
 var overlay: Control
 var pages: Dictionary = {}
 var status: Label
@@ -20,7 +21,6 @@ var data_save_menu_active := false
 var opening: Control
 var opening_loading := false
 var locations: Array = []
-var pending_custom_menu := false
 var menu_transitioning := false
 var achievements := ConfigFile.new()
 var achievement_catalog: Dictionary = {}
@@ -158,7 +158,6 @@ func _ready() -> void:
 	status.hide()
 	session_loading = false
 	_show("main")
-	if pending_custom_menu: pending_custom_menu = false; _toggle_custom_menu()
 func _play_opening(_stage: String) -> void:
 	if session_loading or opening_loading or is_instance_valid(opening): return
 	opening_loading = true
@@ -169,7 +168,6 @@ func _play_opening(_stage: String) -> void:
 		status.text = AssetStore.last_error
 		title.show_press_start()
 		_show("main")
-		if pending_custom_menu: pending_custom_menu = false; _toggle_custom_menu()
 		return
 	status.hide()
 	opening = preload("res://scripts/cinematics/opening_sequence.gd").new()
@@ -186,7 +184,6 @@ func _play_opening(_stage: String) -> void:
 			_opening_finished(false))
 	if not opening.configure(): _opening_finished(false)
 	opening_loading = false
-	if pending_custom_menu: pending_custom_menu = false; _toggle_custom_menu()
 func _opening_finished(_skipped: bool) -> void:
 	if not is_instance_valid(opening): return
 	if is_instance_valid(opening):
@@ -290,7 +287,6 @@ func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0, co
 		if pages["saves"].visible: save_menu.set_message(AssetStore.last_error)
 		elif custom.visible: custom.set_location_message(AssetStore.last_error)
 		else: status.text = AssetStore.last_error; status.show()
-		if pending_custom_menu: pending_custom_menu = false; _toggle_custom_menu()
 		return
 	var stage_path := "res://assets/levels/" + stage + "/manifest.json"
 	if not FileAccess.file_exists(stage_path) or not ResourceLoader.exists("res://assets/player/megaman.glb"):
@@ -299,7 +295,6 @@ func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0, co
 			status.text = "Prepare your disc assets with tools/assets.py before starting."
 			status.show()
 		session_loading = false
-		if pending_custom_menu: pending_custom_menu = false; _toggle_custom_menu()
 		return
 	var stage_manifest: Variant = JSON.parse_string(FileAccess.get_file_as_string(stage_path))
 	var area_index := -1
@@ -311,7 +306,6 @@ func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0, co
 		if pages["saves"].visible: save_menu.set_message("This area's native ID is not available.")
 		elif custom.visible: custom.set_location_message("This area's native ID is not available.")
 		session_loading = false
-		if pending_custom_menu: pending_custom_menu = false; _toggle_custom_menu()
 		return
 	var weapon_policy: Variant = stage_manifest.get("native_combat_policy", null)
 	var buster_allowed := bool(weapon_policy.get("buster_allowed", true)) if weapon_policy is Dictionary else true
@@ -324,7 +318,6 @@ func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0, co
 	if scene == null or player_scene == null:
 		session_loading = false
 		await _show_error("The game could not be opened.")
-		if pending_custom_menu: pending_custom_menu = false; _toggle_custom_menu()
 		return
 	await get_tree().process_frame
 	var previous := gameplay
@@ -370,7 +363,6 @@ func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0, co
 		else:
 			status.text = "The starting area could not be loaded."
 			status.show()
-		if pending_custom_menu: pending_custom_menu = false; _toggle_custom_menu()
 		return
 	if load_feedback: audio.play_sound(0xEF); await save_menu.finish_load()
 	if is_instance_valid(previous) and previous.audio != null and candidate.audio != null: candidate.audio.adopt_music(previous.audio.capture_music())
@@ -401,7 +393,6 @@ func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0, co
 		gameplay.set_meta("native_landing_active", false)
 	await gameplay.transition_overlay.request(entry_fade_code)
 	gameplay.player.set_physics_process(true); session_loading = false
-	if pending_custom_menu: pending_custom_menu = false; _toggle_custom_menu()
 func _game_over() -> void:
 	if not is_instance_valid(gameplay): return
 	var previous := gameplay
@@ -550,22 +541,10 @@ func _input(event: InputEvent) -> void:
 			else: _pause(); audio.play_ui("menu_confirm")
 		get_viewport().set_input_as_handled()
 		return
-	if not event.is_action_pressed("custom_menu"): return
-	if session_loading or opening_loading: pending_custom_menu = not pending_custom_menu
-	else: _toggle_custom_menu()
+	if not event.is_action_pressed("debug_overlay"): return
+	if not is_instance_valid(debug_overlay): debug_overlay = preload("res://scripts/ui/hud/debug_overlay.gd").new(); debug_overlay.name = "DebugOverlay"; add_child(debug_overlay); debug_overlay.configure(self)
+	debug_overlay.toggle()
 	get_viewport().set_input_as_handled()
-func _toggle_custom_menu() -> void:
-	if menu_transitioning: return
-	if custom.visible: _close_custom(); return
-	if pages["pause"].visible: _resume(); return
-	pause_return = ""
-	for key in pages:
-		if overlay.visible and pages[key].visible: pause_return = key
-	if is_instance_valid(opening):
-		opening.set_process(false)
-		opening.audio.stream_paused = true
-	get_tree().paused = is_instance_valid(gameplay)
-	_show("pause")
 func _open_custom(page: String) -> void:
 	if page == "extra": _options("pause"); return
 	custom.open_page(page)

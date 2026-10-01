@@ -30,6 +30,7 @@ var blast: Node3D
 var flame_phase := 0
 var flame_wave := 0
 var debris_count := 0
+var smoke: Dictionary = {}
 func configure(source: Dictionary, entry: Dictionary, texture: Texture2D, target: Node3D) -> void:
 	mission = source; record = entry; atlas = texture; player = target
 	size = int(entry["size"]); strength_max = int(entry["strength_max"]); strength = strength_max; behaviour = int(entry.get("behaviour", 0)); contact_damage = int(entry.get("contact_damage", 8))
@@ -49,7 +50,11 @@ func _physics_process(delta: float) -> void:
 func _tick() -> void:
 	if dying >= 0:
 		dying += 1
-		if dying >= 0x1D0: queue_free()
+		var death: Dictionary = mission["fire"]["dying"]; var steam_ticks := int(death["steam_count"]) * 2 - 1
+		if dying <= steam_ticks and dying & 1:
+			var random: int = controller._rand(); var base := _base(); controller._steam(base + Vector3i(int(death["steam_offset_raw"]) - (random & int(death["steam_xz_mask"])), -((random >> int(death["steam_y_shift"])) & int(death["steam_y_mask"])), int(death["steam_offset_raw"]) - ((random >> int(death["steam_z_shift"])) & int(death["steam_xz_mask"]))), int(death["steam_subtype"]))
+		if dying == steam_ticks: smoke = controller._smoke(_base())
+		if dying >= steam_ticks + int(death["smoke_life_ticks"]): smoke["closing"] = true; queue_free()
 		return
 	var fire: Dictionary = mission["fire"]
 	if explosion:
@@ -99,6 +104,7 @@ func _burn(fire: Dictionary) -> void:
 	else: loop_timer -= 1
 	if is_instance_valid(player) and player.global_position.distance_to(hit_center) < spray_radius + 0.2: contact_hit.emit(self, contact_damage)
 func _exit_tree() -> void:
+	if not smoke.is_empty(): smoke["closing"] = true
 	if is_instance_valid(blast): blast.finish()
 func _draw() -> void:
 	if sprite == null: return

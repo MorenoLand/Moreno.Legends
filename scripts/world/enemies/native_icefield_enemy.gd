@@ -4,6 +4,7 @@ signal drop_requested(actor: CharacterBody3D, entries: Array)
 signal contact_hit(actor: CharacterBody3D, damage: int, flags: int)
 const Motion := preload("res://scripts/world/actors/native_actor_motion.gd")
 static var bios_seed := 1
+static var additive_shader: Shader
 var source: Dictionary = {}
 var host: Node
 var target: CharacterBody3D
@@ -37,6 +38,7 @@ var base_scale := Vector3.ONE
 var shape: CollisionShape3D
 var shape_height := 0.0
 var shape_radius := 0.0
+var native_ticks := 0
 var hit_center: Vector3:
 	get: return shape.global_position if is_instance_valid(shape) else global_position
 func configure(gameplay: Node, entry: Dictionary, metadata: Dictionary, path: String) -> bool:
@@ -62,7 +64,7 @@ func _physics_process(delta: float) -> void:
 	elapsed += delta * 25.0
 	while elapsed >= 1.0 and not removed: elapsed -= 1.0; _tick()
 func _tick() -> void:
-	control_at_start = control; _set_light(128.0); _run()
+	native_ticks += 1; control_at_start = control; _set_light(128.0); _run()
 	if stagger_count < 0: stagger_count += 1
 	if not removed and top != 4: _animate()
 func _run() -> void: pass
@@ -120,6 +122,22 @@ func _face(yaw: int) -> void: native_yaw = yaw & 4095; rotation.y = -float(nativ
 func _random() -> int: random_state = (((random_state << 1) + (random_state >> 31) + 1) ^ 0x873CA9E5) & 0xFFFFFFFF; return random_state
 func _bios_rand() -> int: bios_seed = (bios_seed * 0x41C64E6D + 0x3039) & 0xFFFFFFFF; return (bios_seed >> 16) & 0x7FFF
 func _sound(id: int) -> void: sound_requested.emit(id, global_position)
+func _dust(profile: String) -> void:
+	if (native_ticks & 4) == 0: return
+	var data: Dictionary = preload("res://scripts/world/enemies/native_icefield_effect.gd").data().get("dust", {})
+	if data.is_empty(): return
+	var rng := Callable(self, "_random") if profile == "spitter" else Callable(self, "_bios_rand"); var point := global_position
+	var x := int(rng.call()) & 255; var y := int(rng.call()) & (255 if profile == "burrower_burst" else 63); var z := int(rng.call()) & 255
+	point += Vector3(float(x - 128), float(y), float(128 - z)) / 256.0
+	var effect := preload("res://scripts/world/enemies/native_icefield_effect.gd").new(); get_parent().add_child(effect); effect.configure(host, point, int(data["size_base_raw"][profile]) + (int(rng.call()) & int(data["size_random_mask"])))
+func _death_effect(profile: String) -> void:
+	var data: Dictionary = preload("res://scripts/world/enemies/native_icefield_effect.gd").data().get("death", {})
+	if data.is_empty(): return
+	var row: Dictionary = data[profile]; var effect := preload("res://scripts/world/missions/mine/native_mine_death.gd").new(); get_parent().add_child(effect); effect.configure(global_position + Vector3.UP * float(row["y_offset_raw"]) / 256.0, int(row["radius_raw"]), int(row["ticks"]), Callable(preload("res://scripts/world/enemies/native_icefield_effect.gd"), "random"), "res://assets/levels/ST11/" + str(data["texture"])); effect.sound_requested.connect(host.audio.play_at)
+func _translucent() -> void:
+	if additive_shader == null:
+		additive_shader = Shader.new(); additive_shader.code = preload("res://shaders/native_model.gdshader").code.replace("render_mode unshaded, cull_disabled;", "render_mode unshaded, cull_disabled, blend_add, depth_draw_never;").replace("void fragment() {", "void fragment() {\n\tALPHA = 1.0;")
+	for material in materials: material.shader = additive_shader
 func _drops() -> Array:
 	if pickup_data.is_empty(): return []
 	var profile := int(attributes[5])

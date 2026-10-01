@@ -54,6 +54,17 @@ var invulnerable := false
 var free_flight := false
 var no_clip := false
 var inverse_mouse_y := false
+var first_person := false
+var first_person_mesh_layers: Dictionary = {}
+var camera_default_cull_mask := 0
+var first_person_model_hidden := false
+var first_person_arm: Node3D
+var first_person_arm_skeleton: Skeleton3D
+var first_person_source_skeleton: Skeleton3D
+var first_person_arm_materials: Array = []
+var first_person_muzzle_node: Node3D
+var first_person_muzzle_bone := -1
+var camera_was_current := false
 var controller_layout := 0
 var buster_auto_lock := false
 var special_auto_lock := false
@@ -67,6 +78,8 @@ var interaction_duration := 0.0
 var interaction_loop := false
 var interaction_vertical_speed := 0.0
 var interaction_movement_ticks := 0
+var interaction_target_y := NAN
+var camera_arm_scale := 1.0
 var scripted_walk: Dictionary = {}
 var special_actions: Dictionary = {}
 var equipped_special := 0
@@ -92,6 +105,12 @@ var jump_moving := false
 var jump_velocity := 0
 var jump_ticks := 0
 var jump_accumulator := 0.0
+var ledge_phase := ""
+var ledge_ticks := 0
+var ledge_accumulator := 0.0
+var ledge_forward := Vector3.ZERO
+var ledge_probe := Vector3.ZERO
+var ledge_vertical := 0
 var look_head_units := 0
 var look_root_units := 0
 var look_accumulator := 0.0
@@ -119,6 +138,9 @@ func _ready() -> void:
 	if camera_pivot is SpringArm3D: (camera_pivot as SpringArm3D).add_excluded_object(get_rid())
 	_fit_model()
 	_apply_native_materials()
+	for mesh: MeshInstance3D in player_model.find_children("*", "MeshInstance3D", true, false): first_person_mesh_layers[mesh] = mesh.layers
+	camera_default_cull_mask = camera.cull_mask
+	if first_person: camera.set_cull_mask_value(20, false)
 	var players := player_model.find_children("*", "AnimationPlayer", true, false)
 	if not players.is_empty(): animation_player = players[0] as AnimationPlayer
 	var metadata: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://assets/player/manifest_civilian.json" if not combat_allowed else ("res://assets/player/manifest.json" if buster_allowed else "res://assets/player/manifest_normal.json")))
@@ -127,6 +149,7 @@ func _ready() -> void:
 		interaction_roles = metadata.get("interactionRoleProvenance", {})
 		special_actions = metadata.get("specialActions", {})
 	_configure_animation_tree(metadata if metadata is Dictionary else {})
+	_configure_first_person_arm()
 	hose = preload("res://scripts/player/special_hose.gd").new(); hose.name = "SpecialHose"; add_child(hose)
 	if not hose.configure(self): hose.queue_free(); hose = null
 	lock_on = preload("res://scripts/player/lock_on.gd").new(); lock_on.name = "LockOn"; add_child(lock_on); lock_on.configure(self)
@@ -142,8 +165,14 @@ func _ready() -> void:
 	health = max_health
 func _process(delta: float) -> void:
 	_update_special_action(delta)
-	if interaction_role in ["ladder_up", "ladder_down"]: camera_pivot.rotation = Vector3(deg_to_rad(-12.0), player_model.rotation.y, 0.0); _update_camera(delta)
-	if camera_pivot is SpringArm3D:
+	_set_first_person_model_hidden(first_person and camera.current)
+	if first_person_arm != null: first_person_arm.visible = first_person and camera.current and player_model.is_visible_in_tree() and combat_allowed and buster_allowed and active_special() != 15 and special_action.is_empty() and ledge_phase.is_empty() and not is_instance_valid(carried_actor)
+	if camera.current != camera_was_current: camera_world_valid = false; camera_distance = -1.0; camera_was_current = camera.current
+	if camera.current and interaction_role in ["ladder_up", "ladder_down"]: camera_pivot.rotation = Vector3(deg_to_rad(-12.0), player_model.rotation.y, 0.0); _update_camera(delta)
+	if camera.current and first_person:
+		camera.global_transform = Transform3D(camera_pivot.global_basis, global_position + Vector3.UP * (body_height * 0.9 + float(camera_shake_raw >> 8) / 256.0))
+		camera_world_position = camera.global_position; camera_world_origin = camera_pivot.global_position; camera_world_basis = camera.global_basis; camera_world_valid = true; camera_distance = 0.0
+	elif camera.current and camera_pivot is SpringArm3D:
 		var allowed := maxf((camera_pivot as SpringArm3D).get_hit_length(), 0.0)
 		var basis := camera_pivot.global_basis
 		var orbit_changed := camera_world_valid and not basis.is_equal_approx(camera_world_basis)
@@ -183,6 +212,7 @@ func _process(delta: float) -> void:
 			var ticks := mini(floori(interaction_elapsed * 30.0 + 0.000001), roundi(interaction_duration * 30.0))
 			global_position.y += float(ticks - interaction_movement_ticks) * interaction_vertical_speed / 30.0
 			interaction_movement_ticks = ticks
+			if is_finite(interaction_target_y) and (global_position.y - interaction_target_y) * signf(interaction_vertical_speed) >= 0.0: global_position.y = interaction_target_y; interaction_duration = interaction_elapsed
 	if not interaction_role.is_empty() and interaction_elapsed >= interaction_duration:
 		var finished_role := interaction_role
 		interaction_role = ""
@@ -204,15 +234,16 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 	elif event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		if interaction_role in ["ladder_up", "ladder_down"]: return
+		if not camera.current or not is_physics_processing() or input_blocker.is_valid() and input_blocker.call() or interaction_role in ["ladder_up", "ladder_down"]: return
 		camera_pivot.rotation.y -= event.relative.x * mouse_sensitivity
-		camera_pivot.rotation.x = clampf(camera_pivot.rotation.x + event.relative.y * mouse_sensitivity * (1.0 if inverse_mouse_y else -1.0), deg_to_rad(-55.0), deg_to_rad(25.0))
+		camera_pivot.rotation.x = clampf(camera_pivot.rotation.x + event.relative.y * mouse_sensitivity * (1.0 if inverse_mouse_y else -1.0), deg_to_rad(-85.0 if first_person else -55.0), deg_to_rad(85.0 if first_person else 25.0))
 		camera_pivot.rotation.z = 0.0
 
 func _physics_process(delta: float) -> void:
 	if not scripted_walk.is_empty(): _update_scripted_walk(delta); return
 	if not interaction_role.is_empty(): return
 	if input_blocker.is_valid() and input_blocker.call(): velocity = Vector3.ZERO; return
+	if not ledge_phase.is_empty(): _update_ledge(delta); _update_camera(delta); return
 	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and (Input.is_action_just_pressed("special") or active_special() == 15 and Input.is_action_just_pressed("fire")): use_special()
 	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and Input.is_action_just_pressed("kick"): kick()
 	lock_on.update(delta, combat_allowed and hurt_phase.is_empty() and not is_instance_valid(carried_actor) and (Input.is_action_pressed("lock_on") or Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and (buster_auto_lock and buster_allowed and active_special() == 0 or special_auto_lock and active_special() != 0) and (Input.is_action_pressed("fire") or Input.is_action_pressed("aim"))))
@@ -259,6 +290,8 @@ func _physics_process(delta: float) -> void:
 	if grounded and not free_flight and not no_clip and jump_phase == JumpPhase.GROUNDED and velocity.y <= 0.0: velocity.y = _slope_velocity()
 	var before_slide := global_transform; var intended := Vector3(velocity.x, 0.0, velocity.z) * delta
 	move_and_slide()
+	if not free_flight and not no_clip and _try_grab_ledge(before_slide.origin, intended): _update_camera(delta); return
+	if grounded and jump_phase == JumpPhase.GROUNDED and not free_flight and not no_clip: apply_floor_snap()
 	if not free_flight and not no_clip:
 		var drift := global_position - before_slide.origin; drift.y = 0.0
 		if drift.length() > intended.length() + 0.08:
@@ -293,6 +326,76 @@ func _physics_process(delta: float) -> void:
 		arm_blend = 1.0 if gun_pose_active or is_instance_valid(carried_actor) else 0.0
 		motion_tree.set("parameters/UpperBody/blend_amount", arm_blend)
 	_update_look(delta)
+func _ledge_floor(point: Vector3) -> Dictionary:
+	var query := PhysicsRayQueryParameters3D.create(point + Vector3.UP * (181.0 / 256.0), point + Vector3.UP * (104.0 / 256.0), 1, [get_rid()])
+	while true:
+		var hit := get_world_3d().direct_space_state.intersect_ray(query)
+		if hit.is_empty(): return {}
+		var collider := hit["collider"] as CollisionObject3D
+		if collider != null and bool(collider.get_meta("native_ledge_floor", false)) and (hit["normal"] as Vector3).y > 0.0: return hit
+		var excluded := query.exclude; excluded.append(hit["rid"]); query.exclude = excluded
+	return {}
+func _try_grab_ledge(previous: Vector3, intended: Vector3) -> bool:
+	if is_on_floor() or velocity.y >= 0.0 or not hurt_phase.is_empty() or gun_pose_active or aiming or not special_action.is_empty() or is_instance_valid(carried_actor): return false
+	var correction := global_position - previous - intended; correction.y = 0.0
+	if maxf(absf(correction.x), absf(correction.z)) > 32.0 / 256.0: return false
+	var below := get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(global_position, global_position + Vector3.DOWN * (32767.0 / 256.0), 89, [get_rid()]))
+	if not below.is_empty() and global_position.y - (below["position"] as Vector3).y < 64.0 / 256.0: return false
+	if not has_meta("native_ledge_trig"):
+		var weather: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://assets/weather/manifest.json")); set_meta("native_ledge_trig", weather.get("trig4096", []) if weather is Dictionary else [])
+	var trig: Array = get_meta("native_ledge_trig"); if trig.size() != 4096: return false
+	var angle := (2048 - roundi(player_model.rotation.y * 4096.0 / TAU)) & 4095; var left: Array = trig[(angle - 512) & 4095]; var right: Array = trig[(angle + 512) & 4095]
+	var first_point := global_position + Vector3(-float(int(left[0]) * 52), 0.0, float(int(left[1]) * 52)) / 1048576.0
+	var second_point := global_position + Vector3(-float(int(right[0]) * 52), 0.0, float(int(right[1]) * 52)) / 1048576.0
+	var first := _ledge_floor(first_point); var second := _ledge_floor(second_point)
+	if first.is_empty() or second.is_empty(): return false
+	var height := roundi((first["position"] as Vector3).y * 256.0)
+	if height != roundi((second["position"] as Vector3).y * 256.0): return false
+	var rise := height - roundi(global_position.y * 256.0)
+	if rise <= 104 or rise >= 180: return false
+	if not animation_player.has_animation("clip_029") or not animation_player.has_animation("clip_030") or not animation_player.has_animation("clip_031"): return false
+	global_position.y = float(height - 180) / 256.0; ledge_forward = Vector3(-float(trig[angle][0]), 0.0, float(trig[angle][1])) / 4096.0; ledge_probe = first_point
+	velocity = Vector3.ZERO; jump_velocity = 0; jump_accumulator = 0.0; pending_shot = false; gun_pose_active = false; ledge_phase = "grab"; ledge_ticks = 0; ledge_accumulator = 0.0
+	_play_ledge_clip("clip_029"); special_sound_requested.emit(0x94); return true
+func _play_ledge_clip(clip: String) -> void:
+	locomotion.animation = clip; motion_role = ""; motion_tree.set("parameters/MotionSeek/seek_request", 0.0); motion_tree.set("parameters/UpperBody/blend_amount", 0.0)
+	animation_player.get_animation(clip).loop_mode = Animation.LOOP_LINEAR if bool(native_clips.get(clip, {}).get("loops", false)) else Animation.LOOP_NONE; motion_tree.set("parameters/MotionSpeed/scale", 25.0 / 30.0)
+	if upper_modifier != null: upper_modifier.active = false
+func _release_ledge() -> void:
+	ledge_phase = ""; ledge_ticks = 0; ledge_accumulator = 0.0; velocity = Vector3.ZERO; jump_velocity = 0; jump_accumulator = 0.0; _set_jump_phase(JumpPhase.FALLING)
+	motion_tree.set("parameters/MotionSpeed/scale", 1.0)
+	if upper_modifier != null: upper_modifier.active = true
+func _update_ledge(delta: float) -> void:
+	if free_flight or no_clip or not hurt_phase.is_empty(): _release_ledge(); return
+	if ledge_phase == "hang" and Input.is_action_just_pressed("move_back"): _release_ledge(); return
+	ledge_accumulator += delta * 25.0
+	while ledge_accumulator >= 1.0 and not ledge_phase.is_empty():
+		ledge_accumulator -= 1.0; ledge_ticks += 1
+		if ledge_phase == "grab":
+			if ledge_ticks >= int(native_clips.get("clip_029", {}).get("durationTicks", 5)): ledge_phase = "hang"; ledge_ticks = 0; _play_ledge_clip("clip_030")
+		elif ledge_phase == "hang":
+			ledge_probe.y = global_position.y
+			var top := _ledge_floor(ledge_probe)
+			if top.is_empty(): _release_ledge(); return
+			var height := (top["position"] as Vector3).y - 180.0 / 256.0
+			if absf(height - global_position.y) >= 32.0 / 256.0: _release_ledge(); return
+			global_position.y = height
+			if Input.is_action_pressed("move_forward"): ledge_phase = "climb"; ledge_ticks = 0; ledge_vertical = 144; _play_ledge_clip("clip_031")
+		elif ledge_phase == "climb":
+			var event_tick := 0; var elapsed := 0
+			for record: Dictionary in native_clips.get("clip_031", {}).get("records", []):
+				if int(record["event"]) == 1: event_tick = elapsed; break
+				elapsed += int(record["durationTicks"])
+			var advance := ledge_ticks > event_tick
+			if ledge_ticks == event_tick + 1: ledge_vertical = 432
+			elif advance: ledge_vertical -= 48
+			velocity = (ledge_forward * (80.0 / 4096.0 if advance else 0.0) + Vector3.UP * (float(ledge_vertical) / 4096.0)) / get_physics_process_delta_time()
+			move_and_slide()
+			if is_on_floor():
+				ledge_phase = ""; jump_velocity = 0; _set_jump_phase(JumpPhase.LANDING); landed.emit()
+				motion_tree.set("parameters/MotionSpeed/scale", 1.0)
+				if upper_modifier != null: upper_modifier.active = true
+			elif ledge_ticks >= int(native_clips.get("clip_031", {}).get("durationTicks", 20)): _release_ledge()
 func _set_carry_filter(value: bool) -> void:
 	if carrying_filter == value or motion_tree == null: return
 	carrying_filter = value
@@ -310,6 +413,14 @@ func lift_anchor(height: float) -> Vector3:
 	var point := Vector3.ZERO
 	for bone in [4, 7]: point += skeleton.global_transform * skeleton.get_bone_global_pose(skeleton.find_bone("Bone_%02d" % bone)).origin
 	return point * 0.5 - Vector3.UP * height * 0.5
+func end_lift(actor: CharacterBody3D) -> void:
+	if carried_actor != actor: return
+	carried_actor = null
+	if special_action == "lift_throw": return
+	special_action = ""; motion_role = ""; _set_carry_filter(false)
+	if upper_modifier != null: upper_modifier.active = true
+	if motion_tree != null: motion_tree.set("parameters/UpperBody/blend_amount", 0.0)
+	_play_animation("idle")
 func active_special() -> int:
 	if special_mode == 2: equipped_special = 15
 	return equipped_special if special_mode != 0 and special_usable else 0
@@ -509,9 +620,14 @@ func _fire() -> void:
 	var aim := _aim_point()
 	var muzzle := global_position + Vector3.UP * body_height * 0.7 + Basis(Vector3.UP, player_model.rotation.y) * Vector3(body_height * 0.22, 0, -body_height * 0.22)
 	if muzzle_node != null: muzzle = muzzle_node.global_position
-	var heading := aim - muzzle if aiming or is_instance_valid(locked_target) else -camera.global_basis.z
+	var view_muzzle := first_person and camera.current and first_person_muzzle_node != null
+	if view_muzzle:
+		_update_first_person_arm(true)
+		muzzle = first_person_arm_skeleton.global_transform * first_person_arm_skeleton.get_bone_global_pose(first_person_muzzle_bone) * first_person_muzzle_node.position
+	var heading := aim - muzzle if first_person or aiming or is_instance_valid(locked_target) else -camera.global_basis.z
 	var chest := global_position + Vector3.UP * body_height * 0.7
 	var obstruction := get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(chest, muzzle, 1))
+	if view_muzzle and obstruction.is_empty(): obstruction = get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(camera.global_position, muzzle, 1))
 	var projectile := projectile_scene.instantiate() as Node3D
 	get_parent().add_child(projectile)
 	projectile.launch(muzzle, heading)
@@ -544,10 +660,15 @@ func _fit_model() -> void:
 func _update_camera(delta: float) -> void:
 	camera_shake_clock += delta * 25.0
 	while camera_shake_clock >= 1.0: camera_shake_clock -= 1.0; camera_shake_raw = maxi(camera_shake_raw - camera_shake_decay, 0)
+	if not camera.current: return
+	if first_person:
+		camera_pivot.position = Vector3(0.0, body_height * 0.9 + float(camera_shake_raw >> 8) / 256.0, 0.0)
+		if camera_pivot is SpringArm3D: (camera_pivot as SpringArm3D).spring_length = 0.0
+		return
 	if camera_yaw_constraint.is_valid(): camera_pivot.rotation.y = lerp_angle(camera_pivot.rotation.y, camera_yaw_constraint.call(global_position, camera_pivot.rotation.y), 1.0 - exp(-delta * 10.0))
 	if not camera_pivot is SpringArm3D: return
 	var arm := camera_pivot as SpringArm3D
-	arm.spring_length = lerpf(arm.spring_length, body_height * (1.8 if aiming else 3.4), minf(delta * 10, 1))
+	arm.spring_length = lerpf(arm.spring_length, body_height * (1.8 if aiming else 3.4) * camera_arm_scale, minf(delta * 10, 1))
 	var offset := arm.basis.x * (body_height * 0.3 if aiming else 0.0)
 	var current := Vector3(arm.position.x, 0, arm.position.z)
 	offset = current.lerp(offset, minf(delta * 10, 1))
@@ -616,7 +737,7 @@ func _play_animation(role: String) -> void:
 		return
 	if animation_player.current_animation == name and animation_player.is_playing(): return
 	animation_player.play(name, 0.1)
-func begin_interaction(role: String = "door_open", quick: bool = false) -> Dictionary:
+func begin_interaction(role: String = "door_open", quick: bool = false, target_y: float = NAN) -> Dictionary:
 	var name := str(animation_roles.get(role, ""))
 	if motion_tree == null or animation_player == null or not animation_player.has_animation(name) or not interaction_roles.has(role): return {}
 	if is_instance_valid(carried_actor): carried_actor.release_lift(-player_model.global_basis.z, -256, -896)
@@ -628,7 +749,8 @@ func begin_interaction(role: String = "door_open", quick: bool = false) -> Dicti
 	interaction_role = role
 	interaction_elapsed = 0.0
 	var rate := 3.0 if quick and role == "door_open" else 1.0
-	interaction_duration = float(source["duration_ticks"]) / (30.0 * rate)
+	interaction_target_y = target_y if int(source.get("loop_ticks", 0)) > 0 else NAN
+	interaction_duration = 3600.0 if is_finite(interaction_target_y) else float(source["duration_ticks"]) / (30.0 * rate)
 	interaction_loop = int(source.get("loop_ticks", 0)) > 0
 	interaction_vertical_speed = -float(source.get("vertical_raw", 0)) * 30.0 / 4096.0
 	interaction_movement_ticks = 0
@@ -663,6 +785,79 @@ func begin_scripted_walk(source: Dictionary, yaw: float) -> bool:
 	return true
 func camera_shake(mode: int, magnitude: int, decay: int) -> void:
 	if mode == 0 or magnitude > camera_shake_raw: camera_shake_raw = magnitude; camera_shake_decay = decay
+func set_first_person(enabled: bool) -> void:
+	first_person = enabled
+	if not is_node_ready(): return
+	camera.cull_mask = camera_default_cull_mask & ~(1 << 19) if enabled else camera_default_cull_mask
+	camera_world_valid = false; camera_distance = -1.0
+	if not enabled: camera_pivot.rotation.x = clampf(camera_pivot.rotation.x, deg_to_rad(-55.0), deg_to_rad(25.0))
+	if camera_pivot is SpringArm3D: (camera_pivot as SpringArm3D).spring_length = 0.0 if enabled else body_height * (1.8 if aiming else 3.4)
+	_set_first_person_model_hidden(enabled and camera.current)
+	_update_camera(0.0)
+func _set_first_person_model_hidden(hidden: bool) -> void:
+	if first_person_model_hidden == hidden: return
+	for mesh: MeshInstance3D in first_person_mesh_layers:
+		if is_instance_valid(mesh): mesh.layers = (1 << 19) if hidden else int(first_person_mesh_layers[mesh])
+	first_person_model_hidden = hidden
+func _configure_first_person_arm() -> void:
+	if not combat_allowed or not buster_allowed or upper_modifier == null: return
+	first_person_source_skeleton = upper_modifier.get_parent() as Skeleton3D
+	first_person_arm = Node3D.new(); first_person_arm.name = "FirstPersonArm"; camera.add_child(first_person_arm); first_person_arm.position = Vector3(0.0, -body_height * 0.9, -body_height * 0.2); first_person_arm.visible = false
+	first_person_arm_skeleton = Skeleton3D.new(); first_person_arm_skeleton.name = "Skeleton3D"; first_person_arm.add_child(first_person_arm_skeleton)
+	first_person_arm_skeleton.transform = player_model.global_transform.affine_inverse() * first_person_source_skeleton.global_transform
+	for bone in range(first_person_source_skeleton.get_bone_count()):
+		first_person_arm_skeleton.add_bone(first_person_source_skeleton.get_bone_name(bone)); first_person_arm_skeleton.set_bone_parent(bone, first_person_source_skeleton.get_bone_parent(bone)); first_person_arm_skeleton.set_bone_rest(bone, first_person_source_skeleton.get_bone_rest(bone))
+	if muzzle_node != null:
+		var attachment := BoneAttachment3D.new(); first_person_arm_skeleton.add_child(attachment); attachment.bone_name = (muzzle_node.get_parent() as BoneAttachment3D).bone_name
+		first_person_muzzle_bone = first_person_arm_skeleton.find_bone(attachment.bone_name); first_person_muzzle_node = Node3D.new(); attachment.add_child(first_person_muzzle_node); first_person_muzzle_node.position = muzzle_node.position
+	var arm_bones: Array[int] = []
+	for bone_name in ["Bone_05", "Bone_06", "Bone_07"]: arm_bones.append(first_person_source_skeleton.find_bone(bone_name))
+	for source: MeshInstance3D in first_person_mesh_layers:
+		if source.mesh == null or source.skin == null: continue
+		var arm_mesh := ArrayMesh.new()
+		for surface in range(source.mesh.get_surface_count()):
+			var arrays := source.mesh.surface_get_arrays(surface)
+			var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+			var bones: PackedInt32Array = arrays[Mesh.ARRAY_BONES]
+			var weights: PackedFloat32Array = arrays[Mesh.ARRAY_WEIGHTS]
+			if vertices.is_empty() or bones.is_empty(): continue
+			var influences := bones.size() / vertices.size()
+			var source_indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX] if arrays[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
+			if source_indices.is_empty():
+				for vertex in range(vertices.size()): source_indices.append(vertex)
+			var indices := PackedInt32Array()
+			for triangle in range(0, source_indices.size(), 3):
+				var keep := true
+				for corner in range(3):
+					var vertex := source_indices[triangle + corner]
+					for influence in range(influences):
+						var slot := vertex * influences + influence
+						if weights[slot] <= 0.0: continue
+						var bind := bones[slot]
+						var bone := first_person_source_skeleton.find_bone(source.skin.get_bind_name(bind)) if not source.skin.get_bind_name(bind).is_empty() else source.skin.get_bind_bone(bind)
+						if bone not in arm_bones: keep = false; break
+				if keep: indices.append_array(source_indices.slice(triangle, triangle + 3))
+			if indices.is_empty(): continue
+			arrays[Mesh.ARRAY_INDEX] = indices
+			arm_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, source.mesh.surface_get_format(surface) & Mesh.ARRAY_FLAG_USE_8_BONE_WEIGHTS)
+			var source_material := source.get_active_material(surface) as ShaderMaterial
+			var material := source_material.duplicate() as ShaderMaterial
+			for parameter in ["native_actor_visible", "native_map_placement_visible", "part_visible"]: material.set_shader_parameter(parameter, true)
+			for parameter in ["native_depth_cue_enabled", "native_palette_enabled", "native_map_terrain", "portal_clip_enabled"]: material.set_shader_parameter(parameter, false)
+			for parameter in ["interior_clip_count", "room_clip_count", "portal_floor_clip_count"]: material.set_shader_parameter(parameter, 0)
+			material.set_shader_parameter("hidden_face_range", Vector2(-1.0, -1.0)); first_person_arm_materials.append([source_material, material]); arm_mesh.surface_set_material(arm_mesh.get_surface_count() - 1, material)
+		if arm_mesh.get_surface_count() == 0: continue
+		var mesh := MeshInstance3D.new(); mesh.mesh = arm_mesh; mesh.skin = source.skin; mesh.layers = 1 << 18; mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF; first_person_arm.add_child(mesh); mesh.skeleton = mesh.get_path_to(first_person_arm_skeleton)
+	first_person_source_skeleton.skeleton_updated.connect(_update_first_person_arm)
+func _update_first_person_arm(force: bool = false) -> void:
+	if first_person_arm == null or not first_person_arm.visible and not force: return
+	for pair: Array in first_person_arm_materials:
+		for parameter in ["light_rgb", "color_scale"]: (pair[1] as ShaderMaterial).set_shader_parameter(parameter, (pair[0] as ShaderMaterial).get_shader_parameter(parameter))
+	for bone in range(first_person_source_skeleton.get_bone_count()): first_person_arm_skeleton.set_bone_pose(bone, first_person_source_skeleton.get_bone_pose(bone))
+	var shoulder := first_person_arm_skeleton.transform * first_person_arm_skeleton.get_bone_global_pose(first_person_arm_skeleton.find_bone("Bone_05")).origin
+	var barrel := first_person_arm_skeleton.transform.basis * -first_person_arm_skeleton.get_bone_global_pose(first_person_arm_skeleton.find_bone("Bone_06")).basis.y
+	first_person_arm.basis = Basis(Quaternion(barrel.normalized(), Vector3.FORWARD))
+	first_person_arm.position = Vector3(-body_height * 0.18, -body_height * 0.2, -body_height * 0.12) - first_person_arm.basis * shoulder
 func refresh_room_camera(preserve_world: bool = false) -> void:
 	if not preserve_world: camera_world_valid = false; camera_distance = -1.0
 	_update_camera(0.0)
@@ -743,6 +938,8 @@ func _apply_native_materials() -> void:
 			mesh.set_surface_override_material(surface, material)
 func reset_at(point: Vector3) -> void:
 	cancel_scripted_walk()
+	ledge_phase = ""; ledge_ticks = 0; ledge_accumulator = 0.0
+	if motion_tree != null: motion_tree.set("parameters/MotionSpeed/scale", 1.0)
 	interaction_role = ""
 	if is_instance_valid(carried_actor): carried_actor.release_lift(-player_model.global_basis.z, -768, -64)
 	carried_actor = null
@@ -777,6 +974,7 @@ func reset_at(point: Vector3) -> void:
 	_play_animation("idle")
 func take_hit(amount: int = 16, flags: int = 0, incoming: Vector3 = Vector3.ZERO) -> void:
 	if invulnerable or hurt_immunity > 0 or not hurt_phase.is_empty() or health < 0: return
+	if not ledge_phase.is_empty(): _release_ledge()
 	if is_instance_valid(carried_actor): carried_actor.release_lift(-player_model.global_basis.z, -768, -64)
 	carried_actor = null
 	special_action = ""

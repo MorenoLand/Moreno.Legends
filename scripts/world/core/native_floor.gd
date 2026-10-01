@@ -2,10 +2,20 @@ extends RefCounted
 const SIMPLE_RAMP_ORIENTATION := {0x04: 0, 0x05: 1, 0x06: 2, 0x07: 3, 0x10: 0, 0x11: 1, 0x12: 2, 0x13: 3, 0x25: 0, 0x26: 2, 0x35: 2, 0x36: 1, 0x45: 1, 0x46: 3, 0x55: 3, 0x56: 0}
 const DIAGONAL_ORIENTATION := {0x14: 4, 0x16: 2, 0x17: 3, 0x15: 5, 0x23: 2, 0x24: 2, 0x33: 3, 0x34: 3, 0x43: 4, 0x44: 4, 0x53: 5, 0x54: 5}
 const BOX_KINDS := [0, 2, 3, 0x1C]
+const WALL_KIND := 0x1B
 const TRIANGULAR_PRISM := [0x22, 0x32, 0x42, 0x52]
+static func active_boxes(source: Dictionary, area: int, native_context: Dictionary = {}) -> Array:
+	var data: Dictionary = source.get(str(area), {}); var records: Array = data.get("boxes", []).duplicate()
+	for variant: Dictionary in data.get("placement_variants", []):
+		if not preload("res://scripts/world/actors/native_props.gd")._conditions_met(variant["predicate"]["all"], native_context, area): continue
+		records = records.filter(func(record: Dictionary) -> bool: return int(record["placement"]) != int(variant["placement"])); records.append_array(variant["boxes"])
+	return records
 static func apply(level: Node3D, source: Dictionary, area: int, native_context: Dictionary = {}) -> int:
 	var groups := {}; var automatic := {}; var manual := {}; var elevators := {}; var count := 0
-	for record: Dictionary in source.get(str(area), {}).get("boxes", []):
+	for terrain: MeshInstance3D in level.find_children("terrain", "MeshInstance3D", true, false):
+		for child in terrain.get_children():
+			if child is StaticBody3D and child.name == "RoomCollision_1": child.set_meta("native_ledge_floor", true)
+	for record: Dictionary in active_boxes(source, area, native_context):
 		var placement := int(record["placement"])
 		if not groups.has(placement): groups[placement] = []
 		if int(record["kind"]) >> 8 == 15 and (int(record["mask"]) & 0x8000) == 0: automatic[placement] = true
@@ -17,10 +27,10 @@ static func apply(level: Node3D, source: Dictionary, area: int, native_context: 
 		for record: Dictionary in records:
 			var kind := int(record["kind"]); ramp = ramp or (SIMPLE_RAMP_ORIENTATION.has(kind) and kind not in [0x04, 0x05, 0x06, 0x07]) or DIAGONAL_ORIENTATION.has(kind)
 			if kind not in BOX_KINDS and kind not in TRIANGULAR_PRISM and not SIMPLE_RAMP_ORIENTATION.has(kind) and not DIAGONAL_ORIENTATION.has(kind): unported = true
-		if not elevators.has(placement) and not ramp and not automatic.has(placement) and (unported or records.is_empty() or manual.has(placement)): continue
+		if not elevators.has(placement) and not ramp and not automatic.has(placement) and (unported or records.is_empty()): continue
 		var meshes := level.find_children("placement_%03d_model_*" % placement, "MeshInstance3D", true, false)
 		if meshes.is_empty(): continue
-		var body := StaticBody3D.new(); body.name = "NativePlacementFloor_%03d" % placement; body.collision_layer = 1; body.collision_mask = 0
+		var body := StaticBody3D.new(); body.name = "NativePlacementFloor_%03d" % placement; body.collision_layer = 1; body.collision_mask = 0; body.set_meta("native_ledge_floor", true)
 		for record: Dictionary in records:
 			var kind := int(record["kind"]); var x: Array = record["x"]; var y: Array = record["y"]; var z: Array = record["z"]
 			if kind == 0x1C and (elevators.has(placement) or not _volume_enabled(native_context)): continue
@@ -46,7 +56,7 @@ static func apply(level: Node3D, source: Dictionary, area: int, native_context: 
 					var surface := _diagonal_height(orientation, reverse, corner.x, corner.y, x, y, z)
 					points.append(_point(corner.x, surface, corner.y)); points.append(_point(corner.x, float(y[1]), corner.y))
 				var wedge := ConvexPolygonShape3D.new(); wedge.points = points; shape.shape = wedge
-			body.add_child(shape)
+			shape.set_meta("native_floor_record", record); body.add_child(shape)
 		if body.get_child_count() > 0:
 			if not unported and not elevators.has(placement):
 				for mesh: MeshInstance3D in meshes:
@@ -55,10 +65,15 @@ static func apply(level: Node3D, source: Dictionary, area: int, native_context: 
 			level.add_child(body); count += 1
 		else: body.free()
 	var walls: Array = source.get(str(area), {}).get("walls", [])
-	if not walls.is_empty():
+	var wall_boxes: Array = active_boxes(source, area, native_context).filter(func(record: Dictionary) -> bool: return int(record["kind"]) == WALL_KIND and (int(record["mask"]) & 1) != 0)
+	if not walls.is_empty() or not wall_boxes.is_empty():
 		var wall_body := StaticBody3D.new(); wall_body.name = "NativeWallCells"; wall_body.collision_layer = 0; wall_body.collision_mask = 0; wall_body.set_script(preload("res://scripts/world/core/native_wall_cells.gd"))
 		for rect: Array in walls:
 			var shape := CollisionShape3D.new(); var box := BoxShape3D.new(); box.size = Vector3(float(rect[1]) - float(rect[0]), 0x8000, float(rect[3]) - float(rect[2])) / 256.0; shape.shape = box; shape.position = Vector3(-float(rect[0]) - float(rect[1]), 0.0, float(rect[2]) + float(rect[3])) / 512.0; wall_body.add_child(shape)
+		for record: Dictionary in wall_boxes:
+			var x: Array = record["x"]; var y: Array = record["y"]; var z: Array = record["z"]; var shape := CollisionShape3D.new(); var box := BoxShape3D.new(); box.size = Vector3(float(x[1]) - float(x[0]), float(y[1]) - float(y[0]), float(z[1]) - float(z[0])) / 256.0
+			if box.size.x <= 0.0 or box.size.y <= 0.0 or box.size.z <= 0.0: continue
+			shape.shape = box; shape.position = Vector3(-float(x[0]) - float(x[1]), -float(y[0]) - float(y[1]), float(z[0]) + float(z[1])) / 512.0; wall_body.add_child(shape)
 		level.add_child(wall_body)
 	return count
 static func _volume_enabled(native_context: Dictionary) -> bool:

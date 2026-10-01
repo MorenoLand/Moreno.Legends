@@ -57,7 +57,9 @@ func _ready() -> void:
 	reticle = Label.new()
 	reticle.text = "+"
 	reticle.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	reticle.position -= Vector2(5, 12)
+	reticle.position = Vector2(-16, -16); reticle.size = Vector2(32, 32)
+	reticle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER; reticle.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	reticle.add_theme_color_override("font_color", Color.WHITE); reticle.add_theme_color_override("font_outline_color", Color.BLACK); reticle.add_theme_constant_override("outline_size", 2)
 	reticle.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	reticle.visible = false
 	add_child(reticle)

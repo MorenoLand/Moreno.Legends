@@ -83,6 +83,7 @@ func _wobble_move() -> int:
 	if (wobble & 0x40) != 0: offset = -offset
 	_face(heading + offset); return _resolve(_step(0, speed))
 func _rise() -> void:
+	var emitting := step < 3
 	if step == 0: _sound(0xA3); step = 1
 	if step == 1:
 		sy += 16
@@ -96,6 +97,7 @@ func _rise() -> void:
 	elif step == 4:
 		sub = 1; step = 0; start_record = _bios_rand() & 0x1F; speed = -0x48; control = 0; flags = 0; rumble = 0x37
 	_set_scale(sx, sy, sz)
+	if emitting: _dust("burrower")
 func _wander() -> void:
 	var reply := _wobble_move()
 	if clock.record_counter == 0xF or clock.record_counter == 0x25: _sound(0x166)
@@ -121,13 +123,15 @@ func _burst() -> void:
 	elif step == 2:
 		counter += 1
 		if counter == 0x28: _sound(0x168); rumble = (_random() & 0x1F) + 60; top = 2; sub = 0; step = 0; start_record = 0
+	_dust("burrower_burst")
 func _sink() -> void:
 	if step == 0: _sound(0xA4); step = 1
 	sy -= 16; _set_scale(sx, sy, sz)
 	if sy <= 0: sy = 0; top = 4
+	_dust("burrower")
 func _fade() -> void:
 	_wobble_move()
-	if step == 0: counter = 0x10; flags |= 0x10; step = 1
+	if step == 0: _translucent(); counter = 0x10; flags |= 0x10; step = 1
 	else:
 		counter -= 1
 		if counter == 0: visible = false; remove_from_group("lock_targets"); top = 4
@@ -138,6 +142,7 @@ func _dormant() -> void:
 func _grow() -> void:
 	sx += 10; sy = sx; sz = sx; counter += 1; _set_scale(sx, sy, sz)
 	if counter == 0x11: sx = 0x200; sy = 0x200; sz = 0x200; sub = 1; step = 0; start_record = _bios_rand() & 0x1F; control = 0; speed = -0x100; flags = 0; counter = 0; distant = 0; _set_scale(sx, sy, sz)
+	_dust("burrower")
 func _chase_heading(distance: float) -> void:
 	if (flags & 0x40) != 0:
 		if distance >= 640.0: flags &= ~0x40
@@ -172,7 +177,7 @@ func _stagger() -> void:
 func _defeat() -> void:
 	if airborne: vertical = mini(vertical + 0x30, 0x2000); _resolve(_step(vertical, speed)); return
 	flags &= ~0x20; vertical = 0
-	if step == 0: counter = 0; step = 1
+	if step == 0: _death_effect("burrower"); counter = 0; step = 1
 	else:
 		counter += 1
 		if counter == 0x20: counter = 0; top = 4; drop_requested.emit(self, _drops())

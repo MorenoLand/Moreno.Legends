@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+from functools import lru_cache
 
 ROOT = Path(__file__).resolve().parents[1]
 PACK_SCRIPT = '''extends SceneTree
@@ -25,12 +26,17 @@ def run(engine, *arguments):
 
 def group_files(directory):
     entries = {}
-    for path in [directory] if directory.is_file() else sorted(directory.rglob("*")):
+    single = directory.is_file()
+    for path in [directory] if single else sorted(directory.rglob("*")):
         if not path.is_file() or path.name.startswith(".") or path.suffix == ".import":
             continue
         relative = "res://" + path.relative_to(ROOT).as_posix()
+        voice_audio = relative.startswith("res://assets/levels/") and path.parent.name == "audio" or relative.startswith(("res://assets/opening/audio/", "res://assets/audio/common_voices/", "res://assets/audio/voices/"))
+        if not single and voice_audio and path.suffix.lower() == ".ogg" and path not in voice_sources(ROOT)[1]: continue
         import_path = path.with_name(path.name + ".import")
-        if import_path.exists():
+        if path.suffix.lower() == ".ogg":
+            entries[relative] = str(path)
+        elif import_path.exists():
             entries[relative + ".import"] = str(import_path)
             for target in set(re.findall(r'"(res://\.godot/imported/[^"\n]+)"', import_path.read_text(encoding="utf-8"))):
                 imported = ROOT / target.removeprefix("res://")
@@ -40,6 +46,24 @@ def group_files(directory):
         else:
             entries[relative] = str(path)
     return entries
+
+@lru_cache(maxsize=1)
+def voice_sources(root):
+    groups = {}; legacy = set()
+    manifests = [*(root / "assets" / "levels").glob("*/audio/manifest.json"), root / "assets" / "audio" / "common_voices" / "manifest.json", root / "assets" / "opening" / "audio" / "manifest.json"]
+    for path in manifests:
+        if not path.is_file(): continue
+        bank = json.loads(path.read_text(encoding="utf-8"))
+        for entry in [*bank.get("entries", []), *([bank] if bank.get("file") and bank.get("id") is not None else [])]:
+            file = root / entry["file"].removeprefix("res://") if entry["file"].startswith("res://") else path.parent / entry["file"]
+            if not file.is_file(): raise FileNotFoundError(file)
+            if entry.get("asset_group"): groups.setdefault(entry["asset_group"], set()).add(file)
+            else: legacy.add(file)
+    return groups, legacy
+
+def voice_groups():
+    groups, _ = voice_sources(ROOT)
+    return {group: sorted(paths) for group, paths in groups.items()}
 
 def main():
     parser = argparse.ArgumentParser()
@@ -69,7 +93,7 @@ def main():
     run(args.engine, "--editor", "--import")
     core_paths = {path for name in ("menu", "fades") for path in group_files(ROOT / "assets" / name)}
     groups = {"stage-" + path.name: [path] for path in sorted((ROOT / "assets" / "levels").iterdir()) if path.is_dir()}
-    groups.update({"audio-" + path.name: [path] for path in sorted((ROOT / "assets" / "audio").iterdir()) if path.is_dir()})
+    groups.update({"audio-" + path.name: [path] for path in sorted((ROOT / "assets" / "audio").iterdir()) if path.is_dir() and path.name != "voices"})
     library = ROOT / "assets" / "library"
     if library.is_dir():
         groups.update({"library-" + path.parent.name + "-" + path.name: [path] for path in sorted(library.glob("*/*")) if path.is_dir()})
@@ -84,6 +108,7 @@ def main():
     menu_keys = {key for role, key in audio["roles"].items() if role.startswith("menu_")}
     audio_path = lambda value: ROOT / value.removeprefix("res://") if value.startswith("res://") else audio_directory / value
     groups["menu-audio"] = [audio_directory / "manifest.json", audio_path(audio["music"][title_key]["file"]), *[audio_path(audio["effects"][key]["file"]) for key in sorted(menu_keys)]]
+    groups.update(voice_groups())
     config = {}
     for group, directories in groups.items():
         files = {}
@@ -95,6 +120,10 @@ def main():
     config["audio-ST0F"]["files"] = [entry for entry in config["audio-ST0F"]["files"] if entry[0] not in menu_paths]
     shared_paths = {entry[0] for entry in config["shared"]["files"]}
     config["opening"]["files"] = [entry for entry in config["opening"]["files"] if entry[0] not in shared_paths]
+    legacy_paths = {path for file in voice_sources(ROOT)[1] for path in group_files(file)}
+    voice_paths = {entry[0] for group, data in config.items() if group.startswith("voice-") for entry in data["files"]} - legacy_paths
+    for group in config:
+        if not group.startswith("voice-"): config[group]["files"] = [entry for entry in config[group]["files"] if entry[0] not in voice_paths]
     (build / "packs.json").write_text(json.dumps(config), encoding="utf-8")
     script = build / "pack.gd"
     script.write_text(PACK_SCRIPT, encoding="utf-8")

@@ -1,12 +1,14 @@
 from __future__ import annotations
 import hashlib
 import math
+from operator import mul
 import struct
+import os
 import wave
 from array import array
 from collections import defaultdict
 from pathlib import Path
-from disc import SECTION_TYPES, write_output
+from disc import SECTION_TYPES, write_output, may_write
 import argparse
 import ctypes
 import ctypes.util
@@ -23,11 +25,37 @@ from functools import lru_cache
 ROOT = Path(__file__).resolve().parents[1]
 PCM_CACHE = {}
 REVERB_CACHE = {}
+XA_DECODE_CACHE = {}
+XA_SEEDED_TRACKS = set()
+class EmptyXADescriptor(ValueError): pass
 def wave_metadata(path):
 	with wave.open(str(path), "rb") as source:
 		pcm = source.readframes(source.getnframes()); channels = source.getnchannels(); frames = source.getnframes(); rate = source.getframerate(); width = source.getsampwidth()
 	if width != 2: raise ValueError("Expected signed16 native PCM")
 	return {"sample_rate": rate, "channels": channels, "frames": frames, "duration_seconds": frames / rate, "peak": max((abs(value) for value in array("h", pcm)), default=0), "pcm_sha256": hashlib.sha256(pcm).hexdigest()}
+OGG_QUALITY = "5"
+AUDIO_KEYS = ("sample_rate", "channels", "frames", "duration_seconds", "peak", "pcm_sha256")
+PCM_BYTES = {}
+def ffmpeg_executable():
+	ffmpeg = shutil.which("ffmpeg")
+	if not ffmpeg: raise RuntimeError("FFmpeg is required to encode Ogg Vorbis audio")
+	return ffmpeg
+def pcm_metadata(channels, rate, pcm):
+	frames = len(pcm) // (2 * channels); return {"sample_rate": rate, "channels": channels, "frames": frames, "duration_seconds": frames / rate, "peak": max((abs(value) for value in array("h", pcm)), default=0), "pcm_sha256": hashlib.sha256(pcm).hexdigest()}
+def encode_ogg(channels, rate, pcm):
+	return subprocess.run([ffmpeg_executable(), "-hide_banner", "-loglevel", "error", "-f", "s16le", "-ar", str(rate), "-ac", str(channels), "-i", "pipe:0", "-map_metadata", "-1", "-fflags", "+bitexact", "-flags:a", "+bitexact", "-c:a", "libvorbis", "-q:a", OGG_QUALITY, "-f", "ogg", "pipe:1"], input=bytes(pcm), check=True, stdout=subprocess.PIPE).stdout
+def decode_ogg(path):
+	channels, rate, frames = ogg_info(path); pcm = subprocess.run([ffmpeg_executable(), "-hide_banner", "-loglevel", "error", "-i", str(path), "-f", "s16le", "-acodec", "pcm_s16le", "pipe:1"], check=True, stdout=subprocess.PIPE).stdout
+	return channels, rate, pcm[:frames * channels * 2]
+def ogg_info(path):
+	data = Path(path).read_bytes()
+	if data[:4] != b"OggS" or data[28:35] != b"vorbis": raise ValueError("Not an Ogg Vorbis file: " + str(path))
+	position = 0; granule = 0
+	while position + 27 <= len(data):
+		if data[position:position + 4] != b"OggS": raise ValueError("Corrupt Ogg page in " + str(path))
+		segments = data[position + 26]; granule = struct.unpack_from("<q", data, position + 6)[0]; position += 27 + segments + sum(data[position + 27:position + 27 + segments])
+	return data[39], struct.unpack_from("<I", data, 40)[0], granule
+def write_audio(path, channels, rate, pcm): write_output(path, encode_ogg(channels, rate, pcm) if may_write(path) else b"")
 def pcm_signature(encoded, pitch, adsr): return hashlib.sha256(encoded + struct.pack("<II", pitch, adsr)).hexdigest()
 def bank_signature(bank):
 	metadata = bytearray(bank["data"][bank["payload"]:bank["payload"] + bank["programs"] * 328])
@@ -45,36 +73,40 @@ def seed_audio_cache(executable):
 			archive = ROOT / "build/disc-assets" / entry["source"]
 			if archive not in archives: archives[archive] = archive.read_bytes()
 			source = archives[archive]; offset = int(entry["adpcm_file_offset"], 16); encoded = source[offset:offset + int(entry["adpcm_bytes"])]; raw = bytes.fromhex(entry["raw_tone"]); signature = pcm_signature(encoded, int(entry["spu_pitch"]), struct.unpack_from("<I", raw, 14)[0]); filename = str(entry["file"]); path = ROOT / filename.removeprefix("res://") if filename.startswith("res://") else manifest.parent / filename
-			if path.is_file() and signature not in PCM_CACHE:
-				metadata = wave_metadata(path)
-				if metadata["pcm_sha256"] == entry["pcm_sha256"]: PCM_CACHE[signature] = (path, {**metadata, "dsp": entry.get("dsp", {})})
+			if path.is_file() and signature not in PCM_CACHE and audio_matches(path, entry): PCM_CACHE[signature] = (path, {**{key: entry[key] for key in AUDIO_KEYS}, "dsp": entry.get("dsp", {})})
 			wet = entry.get("reverb", {}); filename = str(wet.get("file", "")); path = ROOT / filename.removeprefix("res://") if filename.startswith("res://") else manifest.parent / filename
-			if wet.get("profile") == profile["profile"] and wet.get("gain_baked") == entry.get("gain") and reverb_signature(entry["pcm_sha256"], profile, entry["gain"]) not in REVERB_CACHE and path.is_file():
-				metadata = wave_metadata(path)
-				if metadata["pcm_sha256"] == wet.get("pcm_sha256"): REVERB_CACHE[reverb_signature(entry["pcm_sha256"], profile, entry["gain"])] = (path, dict(wet))
+			if wet.get("profile") == profile["profile"] and wet.get("gain_baked") == entry.get("gain") and reverb_signature(entry["pcm_sha256"], profile, entry["gain"]) not in REVERB_CACHE and path.is_file() and audio_matches(path, wet): REVERB_CACHE[reverb_signature(entry["pcm_sha256"], profile, entry["gain"])] = (path, dict(wet))
+def audio_matches(path, entry):
+	try: return ogg_info(path) == (entry["channels"], entry["sample_rate"], entry["frames"])
+	except (ValueError, OSError, struct.error, KeyError): return False
 def write_wave(path, channels, rate, pcm):
 	buffer = io.BytesIO()
 	with wave.open(buffer, "wb") as output: output.setnchannels(channels); output.setsampwidth(2); output.setframerate(rate); output.writeframes(pcm)
 	write_output(path, buffer.getvalue())
 def referenced_effect(encoded, pitch, raw, destination):
 	signature = pcm_signature(encoded, pitch, struct.unpack_from("<I", raw, 14)[0])
-	if signature not in PCM_CACHE: render_effect(encoded, pitch, raw, destination.with_name("fx_" + signature[:32] + ".wav"))
+	if signature not in PCM_CACHE: render_effect(encoded, pitch, raw, destination.with_name("fx_" + signature[:32] + ".ogg"))
 	path, metadata = PCM_CACHE[signature]; return {**metadata, "file": "res://" + path.relative_to(ROOT).as_posix(), "owner_stage": path.parent.name}
 def referenced_reverb(effect, output, profile):
 	source = ROOT / effect["file"].removeprefix("res://"); signature = reverb_signature(effect["pcm_sha256"], profile, effect["gain"])
-	if signature not in REVERB_CACHE: render_reverb(source, output / ("fx_" + signature[:32] + "_reverb.wav"), profile, effect["gain"])
+	if signature not in REVERB_CACHE: render_reverb(effect, output / ("fx_" + signature[:32] + "_reverb.ogg"), profile, effect["gain"])
 	path, metadata = REVERB_CACHE[signature]; return {**metadata, "file": "res://" + path.relative_to(ROOT).as_posix(), "source_waveform": effect["file"], "owner_stage": path.parent.name}
+def referenced_music(ffmpeg, archive, sequence_section, bank_section, stem, known):
+	bank = bank_data(archive, bank_section); _, score = score_events(archive, sequence_section); signature = score["sequence_sha256"] + ":" + bank_signature(bank); filename = str(known.get("file", "")); path = ROOT / filename.removeprefix("res://") if filename.startswith("res://") else OUTPUT / filename
+	if known.get("bank_sequence_signature") == signature and path.is_file():
+		if known.get("sample_rate") == 44100 and known.get("channels") == 2 and audio_matches(path, known): return {**known, "file": "res://" + path.relative_to(ROOT).as_posix(), "owner_stage": path.parent.name}
+	result = render_music(ffmpeg, archive, sequence_section, bank_section, stem); result.update(file="res://" + (OUTPUT / result["file"]).relative_to(ROOT).as_posix(), owner_stage=OUTPUT.name, bank_sequence_signature=signature); return result
 def canonicalize_audio_resources():
 	root = ROOT / "assets/audio"; documents = {path: json.loads(path.read_text(encoding="utf-8")) for path in root.glob("*/manifest.json")}; canonical = {}; aliases = {}
-	for path in sorted(root.glob("*/*.wav"), key=lambda path: (path.parent.name != "ST0F", str(path))): aliases[path.resolve()] = canonical.setdefault(hashlib.sha256(path.read_bytes()).digest(), path)
+	for path in sorted(root.glob("*/*.ogg"), key=lambda path: (path.parent.name != "ST0F", str(path))): aliases[path.resolve()] = canonical.setdefault(hashlib.sha256(path.read_bytes()).digest(), path)
 	def rewrite(value, directory):
 		if isinstance(value, dict):
 			filename = value.get("file", "")
-			if isinstance(filename, str) and filename.endswith(".wav"):
+			if isinstance(filename, str) and filename.endswith(".ogg"):
 				path = (ROOT / filename.removeprefix("res://") if filename.startswith("res://") else directory / filename).resolve(); target = aliases.get(path)
 				if target is not None: value["file"] = "res://" + target.relative_to(ROOT).as_posix(); value["owner_stage"] = target.parent.name
 			filename = value.get("source_waveform", "")
-			if isinstance(filename, str) and filename.endswith(".wav"):
+			if isinstance(filename, str) and filename.endswith(".ogg"):
 				path = (ROOT / filename.removeprefix("res://") if filename.startswith("res://") else directory / filename).resolve(); target = aliases.get(path)
 				if target is not None: value["source_waveform"] = "res://" + target.relative_to(ROOT).as_posix()
 			for item in value.values(): rewrite(item, directory)
@@ -87,11 +119,11 @@ def canonicalize_audio_resources():
 		if stage in baseline.get("audio_catalog", {}).get("zones", {}): baseline["audio_catalog"]["zones"][stage]["audio_dependencies"] = data["audio_dependencies"]
 	for path, data in documents.items(): write_output(path, json.dumps(data, indent=2) + "\n")
 def prune_audio_duplicates():
-	references = set(); files = list((ROOT / "assets/audio").glob("*/*.wav"))
+	references = set(); files = list((ROOT / "assets/audio").glob("*/*.ogg"))
 	def collect(value, directory):
 		if isinstance(value, dict):
 			for key, item in value.items():
-				if key == "file" and isinstance(item, str) and item.endswith(".wav"): references.add((ROOT / item.removeprefix("res://") if item.startswith("res://") else directory / item).resolve())
+				if key in ("file", "source_waveform") and isinstance(item, str) and item.endswith(".ogg"): references.add((ROOT / item.removeprefix("res://") if item.startswith("res://") else directory / item).resolve())
 				else: collect(item, directory)
 		elif isinstance(value, list):
 			for item in value: collect(item, directory)
@@ -99,8 +131,9 @@ def prune_audio_duplicates():
 	digests = {path: hashlib.sha256(path.read_bytes()).digest() for path in files}; retained = {}; removed = size = 0
 	for path in sorted(files, key=lambda path: (path.resolve() not in references, str(path))): retained.setdefault(digests[path], path)
 	for path in files:
-		if not path.resolve().is_relative_to((ROOT / "assets/audio").resolve()) or not re.fullmatch(r"(?:fx_(?:[0-9a-f]{3}|[0-9a-f]{32})|footstep|music_[0-9a-f]{2})(?:_reverb)?\.wav", path.name) or path.resolve() in references or path == retained[digests[path]]: continue
-		size += path.stat().st_size; path.unlink(); path.with_name(path.name + ".import").unlink(missing_ok=True); removed += 1
+		if not path.resolve().is_relative_to((ROOT / "assets/audio").resolve()) or not re.fullmatch(r"(?:fx_(?:[0-9a-f]{3}|[0-9a-f]{32})|footstep|music_[0-9a-f]{2})(?:_reverb)?\.ogg", path.name) or path.resolve() in references or path == retained[digests[path]]: continue
+		if not may_write(path): continue
+		size += path.stat().st_size; path.unlink(); removed += 1
 	return {"removed_files": removed, "removed_bytes": size}
 def stage_reverb_flags(directory):
 	result = {}
@@ -129,13 +162,13 @@ def stage_reverb_flags(directory):
 def reverb_profile(exe):
 	profile = 1; descriptor = 0x800696A8 + profile * 20; file_offset = descriptor - 0x80010000 + 0x800; mask, mode, left, right, delay, feedback = struct.unpack_from("<IIhhII", exe, file_offset); preset = mode & 255; register_offset = 0x80071914 + preset * 68 + 4 - 0x80010000 + 0x800; registers = list(struct.unpack_from("<32H", exe, register_offset)); base = struct.unpack_from("<I", exe, 0x800718E4 + preset * 4 - 0x80010000 + 0x800)[0] << 3
 	return {"profile": profile, "mode": preset, "depth": [left, right], "delay": delay, "feedback": feedback, "registers": registers, "work_area_start": base, "source": "SLES0x8001D6A4 ->0x8001FF68 profile1; descriptor0x%08X; SDK0x800540F0" % descriptor}
-def render_reverb(source, destination, profile, gain):
-	digest = wave_metadata(source)["pcm_sha256"]; signature = reverb_signature(digest, profile, gain)
+def render_reverb(effect, destination, profile, gain):
+	source = ROOT / effect["file"].removeprefix("res://"); digest = effect["pcm_sha256"]; signature = reverb_signature(digest, profile, gain)
 	if signature in REVERB_CACHE:
 		path, metadata = REVERB_CACHE[signature]; write_output(destination, path.read_bytes()); return {**metadata, "file": destination.name, "source_waveform": source.name}
-	with wave.open(str(source), "rb") as original:
-		if original.getnchannels() != 1 or original.getframerate() != 44100 or original.getsampwidth() != 2: raise ValueError("Native effect PCM must be mono signed16 at44100Hz")
-		samples = array("h", original.readframes(original.getnframes()))
+	channels, rate, pcm = (1, 44100, PCM_BYTES[digest]) if digest in PCM_BYTES else decode_ogg(source)
+	if channels != 1 or rate != 44100: raise ValueError("Native effect PCM must be mono signed16 at44100Hz")
+	samples = array("h", pcm)
 	registers = profile["registers"]; signed = [(value & 32767) - (value & 32768) for value in registers]; memory_size = (0x80000 - profile["work_area_start"]) // 2; memory = array("h", [0]) * memory_size; cursor = 0; wet = [0, 0]; hold = 0; phase = 0; output = array("h"); quiet = 0; peak = 0; tail_start = len(samples)
 	feedback = max(abs(signed[index] / 32768.0) for index in (7, 8, 9)); cycles = max(1, math.ceil(math.log(1.0 / 65536.0) / math.log(feedback))) if feedback > 0 else 1; maximum = len(samples) + memory_size * 2 * (cycles + 2)
 	def clamp(value): return max(-32768, min(32767, value))
@@ -159,13 +192,13 @@ def render_reverb(source, destination, profile, gain):
 		if frame >= tail_start:
 			quiet = quiet + 1 if max(abs(value) for value in values) <= 8 else 0
 			if quiet >= memory_size * 2: break
-	write_wave(destination, 2, 44100, output.tobytes())
+	write_audio(destination, 2, 44100, output.tobytes())
 	metadata = {"file": destination.name, "sample_rate": 44100, "channels": 2, "frames": len(output) // 2, "duration_seconds": len(output) / 88200.0, "tail_frames": len(output) // 2 - len(samples), "volume_db": 0.0, "gain_baked": gain, "peak": peak, "pcm_sha256": hashlib.sha256(output.tobytes()).hexdigest(), "source_waveform": source.name, "profile": profile["profile"], "boundary_filter": "Local SPU reference two-frame input average and linear output reconstruction", "hardware_dsp_parity": "unverified", "tail_threshold_pcm16": 8, "tail_window_frames": memory_size * 2}; REVERB_CACHE[signature] = (destination, metadata); return metadata
 def export_reverb(exe, effects, output, stage_directory):
 	profile = reverb_profile(exe)
 	for key, effect in effects.items():
 		if not bytes.fromhex(effect["raw_tone"])[5]: continue
-		source = output / effect["file"]; destination = source.with_name(source.stem + "_reverb.wav"); effect["reverb"] = render_reverb(source, destination, profile, effect["gain"])
+		effect["reverb"] = referenced_reverb(effect, output, profile)
 	return {"profile": profile, "stages": stage_reverb_flags(stage_directory), "selection_source": "SLES0x8001D7C4 ->0x8001D834 flags;0x8001ED94..0x8001EDD4 tone.byte5 andglobalflags.bit0", "reference": "psxrecomp/runtime/src/spu.c reverb_step/rev_reconstruct", "mix_limits": "Each effect is rendered into a cleared reverb work area; simultaneous voices do not share hardware clipping or history"}
 
 SECTION_TYPES.update({9, 16})
@@ -257,33 +290,24 @@ def spu_envelope(level, phase, divider, adsr):
 		if ((previous ^ level) & level & 32768) if phase == 0 else (level & 32768): level = reset
 		if phase == 1 and level < (((adsr & 15) + 1) << 11): phase = 2
 	return level, phase, divider
-def preserve_effect_pcm(destination):
-	path = destination.with_name(destination.name + ".import")
-	if not path.is_file(): return
-	with path.open("r", encoding="utf-8", newline="") as source: text = source.read()
-	updated, count = re.subn(r"(?m)^compress/mode=[^\r\n]*", "compress/mode=0", text)
-	if not count and "[params]" in text: updated = text.replace("[params]", "[params]\ncompress/mode=0", 1)
-	if updated != text:
-		with path.open("w", encoding="utf-8", newline="") as output: output.write(updated)
 def render_effect(encoded, pitch, tone, destination):
 	if pitch <= 0: raise ValueError("A parked native SPU voice cannot be exported as a finite effect")
 	signature = pcm_signature(encoded, pitch, struct.unpack_from("<I", tone, 14)[0])
 	if signature in PCM_CACHE:
-		path, metadata = PCM_CACHE[signature]; write_output(destination, path.read_bytes()); preserve_effect_pcm(destination); return dict(metadata)
+		path, metadata = PCM_CACHE[signature]; write_output(destination, path.read_bytes()); return dict(metadata)
 	samples = spu_adpcm(encoded); adsr = struct.unpack_from("<I", tone, 14)[0]; position = fraction = level = phase = divider = 0; pcm = bytearray(); peak = 0
 	while position < len(samples):
 		index = (fraction >> 4) & 255; accumulator = 0
 		for back, coefficient in zip((3, 2, 1, 0), (255 - index, 511 - index, 256 + index, index)): accumulator += SPU_GAUSSIAN[coefficient] * (samples[position - back] if position >= back else 0)
 		value = ((accumulator >> 15) + 32768) % 65536 - 32768; value = max(-32768, min(32767, (value * level) >> 15)); pcm.extend(struct.pack("<h", value)); peak = max(peak, abs(value)); level, phase, divider = spu_envelope(level, phase, divider, adsr); fraction += pitch; position += fraction >> 12; fraction &= 4095
-	write_wave(destination, 1, 44100, pcm)
-	preserve_effect_pcm(destination)
+	write_audio(destination, 1, 44100, pcm); PCM_BYTES[hashlib.sha256(pcm).hexdigest()] = bytes(pcm)
 	metadata = {"sample_rate": 44100, "channels": 1, "frames": len(pcm) // 2, "duration_seconds": len(pcm) / 88200, "peak": peak, "pcm_sha256": hashlib.sha256(pcm).hexdigest(), "dsp": {"adpcm": "Reference integer predictor/history/clamp", "interpolation": "Reference four-tap PS1 Gaussian, native pitch counter", "envelope": "Reference PS1 ADSR divider/rate stepping at44100Hz", "gain": "Bank/program/tone gain remains in volume_db", "reverb": "unverified; not rendered", "source": "psxrecomp/runtime/src/spu.c decode_block/calc_vc_delta/adsr_run and runtime/include/spu_gauss.h", "gaussian_table_sha256": hashlib.sha256(struct.pack("<512h", *SPU_GAUSSIAN)).hexdigest()}}; PCM_CACHE[signature] = (destination, metadata); return metadata
 def decode_sample(ffmpeg, encoded, sample_rate, destination, stem):
+	if not may_write(destination): return wave_metadata(destination)
 	vag = WORK / (stem + ".vag"); header = struct.pack(">4s4I12x16s", b"VAGp", 0x20, 0, len(encoded), sample_rate, stem.encode("ascii")[:16]); write_output(vag, header + encoded)
-	subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(vag), "-c:a", "pcm_s16le", str(destination)], check=True)
-	with wave.open(str(destination), "rb") as audio:
-		pcm = audio.readframes(audio.getnframes()); samples = struct.unpack("<" + "h" * (len(pcm) // 2), pcm); peak = max(abs(sample) for sample in samples) if samples else 0
-		return {"sample_rate": audio.getframerate(), "channels": audio.getnchannels(), "frames": audio.getnframes(), "duration_seconds": audio.getnframes() / audio.getframerate(), "peak": peak, "pcm_sha256": hashlib.sha256(pcm).hexdigest()}
+	pcm = subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error", "-i", str(vag), "-c:a", "pcm_s16le", "-f", "s16le", "pipe:1"], check=True, stdout=subprocess.PIPE).stdout
+	write_wave(destination, 1, sample_rate, pcm)
+	return wave_metadata(destination)
 def riff_chunk(name, data): return name + struct.pack("<I", len(data)) + data + (b"\0" if len(data) & 1 else b"")
 def riff_list(name, chunks): return riff_chunk(b"LIST", name + b"".join(chunks))
 def soundfont(bank, ffmpeg, stem):
@@ -340,45 +364,42 @@ def score_events(path, section):
 	else: raise ValueError("Original sequence has no end event")
 	return events, {"sequence_section_offset": hex(section), "sequence_bytes": size, "division": division, "initial_tempo_us": u32(data, 4), "events": len(events), "duration_ns": time_ns, "end_offset": hex(position), "sequence_sha256": hashlib.sha256(data).hexdigest()}
 def render_music(ffmpeg, archive, sequence_section, bank_section, stem, output_dir=None):
-	bank = bank_data(archive, bank_section); events, provenance = score_events(archive, sequence_section); target = (OUTPUT if output_dir is None else Path(output_dir)) / (stem + ".wav"); event_path = WORK / (stem + "_events.json"); bank_signature = hashlib.sha256(bank["data"][bank["payload"]:bank["waveform"] + bank["waveform_size"]]).hexdigest()
+	bank = bank_data(archive, bank_section); events, provenance = score_events(archive, sequence_section); target = (OUTPUT if output_dir is None else Path(output_dir)) / (stem + ".ogg"); event_path = WORK / (stem + "_events.json"); bank_signature = hashlib.sha256(bank["data"][bank["payload"]:bank["waveform"] + bank["waveform_size"]]).hexdigest()
 	if target.is_file() and event_path.is_file():
 		previous = json.loads(event_path.read_text(encoding="utf-8"))
 		if previous.get("sequence_sha256") == provenance["sequence_sha256"] and previous.get("source") == archive.name and (previous.get("bank_sha256") == bank_signature or ("bank_sha256" not in previous and archive.stat().st_mtime_ns <= event_path.stat().st_mtime_ns)):
-			metadata = wave_metadata(target); notes = sum(event["status"] >> 4 == 9 and bool(event["data"][1]) for event in events)
-			if metadata["sample_rate"] == 44100 and metadata["channels"] == 2 and metadata["frames"] == round(events[-1]["time_ns"] * 44100 / 1000000000) and metadata["peak"] > 0:
-				write_output(event_path, json.dumps({"source": archive.name, "bank_sha256": bank_signature, **provenance, "events_data": events}, indent=2) + "\n")
-				return {"file": target.name, "source": archive.relative_to(ROOT / "build/disc-assets").as_posix(), "logical_bank": bank["logical_id"], "bank_section_offset": hex(bank_section), "note_on_events": notes, "looped": True, "renderer": "FluidSynth with original ADPCM samples, tone zones and score events", "render_gain": 0.5, "spu_dsp_parity": "unverified", **metadata, **provenance}
+			metadata = previous.get("render"); notes = sum(event["status"] >> 4 == 9 and bool(event["data"][1]) for event in events)
+			if metadata and audio_matches(target, metadata) and metadata["sample_rate"] == 44100 and metadata["channels"] == 2 and metadata["frames"] == round(events[-1]["time_ns"] * 44100 / 1000000000) and metadata["peak"] > 0:
+				write_output(event_path, json.dumps({"source": archive.name, "bank_sha256": bank_signature, **provenance, "render": metadata, "events_data": events}, indent=2) + "\n")
+				return {"file": target.name, "source": archive.relative_to(ROOT / "build/disc-assets").as_posix(), "logical_bank": bank["logical_id"], "bank_section_offset": hex(bank_section), "note_on_events": notes, "looped": True, "renderer": "FluidSynth with original ADPCM samples, tone zones and score events", "render_gain": 0.5, "spu_dsp_parity": "unverified", **metadata, "loop_begin_frame": 0, "loop_end_frame": metadata["frames"], **provenance}
 	font = soundfont(bank, ffmpeg, stem); library = fluid_library(); void = ctypes.c_void_p; integer = ctypes.c_int; text = ctypes.c_char_p
 	for name, arguments, result in [("new_fluid_settings", [], void), ("fluid_settings_setnum", [void, text, ctypes.c_double], integer), ("fluid_settings_setint", [void, text, integer], integer), ("new_fluid_synth", [void], void), ("fluid_synth_sfload", [void, text, integer], integer), ("fluid_synth_program_select", [void, integer, integer, integer, integer], integer), ("fluid_synth_set_channel_type", [void, integer, integer], integer), ("fluid_synth_noteon", [void, integer, integer, integer], integer), ("fluid_synth_noteoff", [void, integer, integer], integer), ("fluid_synth_cc", [void, integer, integer, integer], integer), ("fluid_synth_pitch_bend", [void, integer, integer], integer), ("fluid_synth_channel_pressure", [void, integer, integer], integer), ("fluid_synth_key_pressure", [void, integer, integer, integer], integer), ("fluid_synth_write_s16", [void, integer, void, integer, integer, void, integer, integer], integer), ("delete_fluid_synth", [void], None), ("delete_fluid_settings", [void], None)]:
 		function = getattr(library, name); function.argtypes = arguments; function.restype = result
 	settings = library.new_fluid_settings(); library.fluid_settings_setnum(settings, b"synth.sample-rate", 44100.0); library.fluid_settings_setnum(settings, b"synth.gain", 0.5); library.fluid_settings_setint(settings, b"synth.reverb.active", 0); library.fluid_settings_setint(settings, b"synth.chorus.active", 0); library.fluid_settings_setint(settings, b"synth.polyphony", 24); synth = library.new_fluid_synth(settings); font_id = library.fluid_synth_sfload(synth, str(font).encode(), 0)
 	if font_id < 0: raise RuntimeError("FluidSynth rejected the original instrument SoundFont")
 	for channel in range(16): library.fluid_synth_set_channel_type(synth, channel, 0); library.fluid_synth_program_select(synth, channel, font_id, 0, 0)
-	target = (OUTPUT if output_dir is None else Path(output_dir)) / (stem + ".wav"); cursor = 0; peak = 0; digest = hashlib.sha256(); notes = 0
-	wave_buffer = io.BytesIO()
-	with wave.open(wave_buffer, "wb") as output:
-		output.setnchannels(2); output.setsampwidth(2); output.setframerate(44100)
-		for event in events:
-			frame = round(event["time_ns"] * 44100 / 1000000000)
-			while cursor < frame:
-				count = min(4096, frame - cursor); buffer = (ctypes.c_int16 * (count * 2))(); result = library.fluid_synth_write_s16(synth, count, buffer, 0, 2, buffer, 1, 2)
-				if result != 0: raise RuntimeError("FluidSynth failed while rendering the original score")
-				pcm = bytes(buffer); output.writeframesraw(pcm); digest.update(pcm); peak = max(peak, max(abs(value) for value in buffer)); cursor += count
-			status = event["status"]; kind = status >> 4; channel = status & 15; values = event["data"]
-			if kind == 9 and values[1]: library.fluid_synth_noteon(synth, channel, values[0], values[1]); notes += 1
-			elif kind == 8 or (kind == 9 and values[1] == 0): library.fluid_synth_noteoff(synth, channel, values[0])
-			elif kind == 11: library.fluid_synth_cc(synth, channel, values[0], values[1])
-			elif kind == 12:
-				if values[0] >= bank["programs"]: raise ValueError("Original score selects an absent source program")
-				library.fluid_synth_program_select(synth, channel, font_id, 0, values[0])
-			elif kind == 14: library.fluid_synth_pitch_bend(synth, channel, values[0] | (values[1] << 7))
-			elif kind == 13: library.fluid_synth_channel_pressure(synth, channel, values[0])
-			elif kind == 10: library.fluid_synth_key_pressure(synth, channel, values[0], values[1])
+	cursor = 0; peak = 0; digest = hashlib.sha256(); notes = 0; rendered = bytearray()
+	for event in events:
+		frame = round(event["time_ns"] * 44100 / 1000000000)
+		while cursor < frame:
+			count = min(4096, frame - cursor); buffer = (ctypes.c_int16 * (count * 2))(); result = library.fluid_synth_write_s16(synth, count, buffer, 0, 2, buffer, 1, 2)
+			if result != 0: raise RuntimeError("FluidSynth failed while rendering the original score")
+			pcm = bytes(buffer); rendered.extend(pcm); digest.update(pcm); peak = max(peak, max(abs(value) for value in buffer)); cursor += count
+		status = event["status"]; kind = status >> 4; channel = status & 15; values = event["data"]
+		if kind == 9 and values[1]: library.fluid_synth_noteon(synth, channel, values[0], values[1]); notes += 1
+		elif kind == 8 or (kind == 9 and values[1] == 0): library.fluid_synth_noteoff(synth, channel, values[0])
+		elif kind == 11: library.fluid_synth_cc(synth, channel, values[0], values[1])
+		elif kind == 12:
+			if values[0] >= bank["programs"]: raise ValueError("Original score selects an absent source program")
+			library.fluid_synth_program_select(synth, channel, font_id, 0, values[0])
+		elif kind == 14: library.fluid_synth_pitch_bend(synth, channel, values[0] | (values[1] << 7))
+		elif kind == 13: library.fluid_synth_channel_pressure(synth, channel, values[0])
+		elif kind == 10: library.fluid_synth_key_pressure(synth, channel, values[0], values[1])
 	library.delete_fluid_synth(synth); library.delete_fluid_settings(settings)
 	if peak == 0 or notes == 0: raise ValueError("Original score rendering produced no audible samples")
-	write_output(target, wave_buffer.getvalue())
-	write_output(event_path, json.dumps({"source": archive.name, "bank_sha256": bank_signature, **provenance, "events_data": events}, indent=2) + "\n")
-	return {"file": target.name, "source": archive.relative_to(ROOT / "build/disc-assets").as_posix(), "logical_bank": bank["logical_id"], "bank_section_offset": hex(bank_section), "sample_rate": 44100, "channels": 2, "frames": cursor, "duration_seconds": cursor / 44100, "note_on_events": notes, "peak": peak, "looped": True, "pcm_sha256": digest.hexdigest(), "renderer": "FluidSynth with original ADPCM samples, tone zones and score events", "render_gain": 0.5, "spu_dsp_parity": "unverified", **provenance}
+	write_audio(target, 2, 44100, rendered)
+	write_output(event_path, json.dumps({"source": archive.name, "bank_sha256": bank_signature, **provenance, "render": {"sample_rate": 44100, "channels": 2, "frames": cursor, "duration_seconds": cursor / 44100, "peak": peak, "pcm_sha256": digest.hexdigest()}, "events_data": events}, indent=2) + "\n")
+	return {"file": target.name, "source": archive.relative_to(ROOT / "build/disc-assets").as_posix(), "logical_bank": bank["logical_id"], "bank_section_offset": hex(bank_section), "sample_rate": 44100, "channels": 2, "frames": cursor, "duration_seconds": cursor / 44100, "note_on_events": notes, "peak": peak, "looped": True, "loop_begin_frame": 0, "loop_end_frame": cursor, "pcm_sha256": digest.hexdigest(), "renderer": "FluidSynth with original ADPCM samples, tone zones and score events", "render_gain": 0.5, "spu_dsp_parity": "unverified", **provenance}
 def native_levels(bank, program, raw, volume_delta):
 	level = int(bank["volume"] * bank["data"][bank["payload"] + program * 8 + 1] * (raw[6] + volume_delta) / 16129); voice = level * level * 16383 // 16129; left = voice * raw[7] >> 7; right = voice * (128 - raw[7]) >> 7; gain = (left + right) / 32768
 	return {"native_level": level, "voice_volume": voice, "gain": gain, "volume_db": 20 * math.log10(gain) if gain > 0 else -80, "pan": (right - left) / (right + left) if right + left else 0.0}
@@ -474,17 +495,17 @@ def export_audio(cue=None):
 	ffmpeg = shutil.which("ffmpeg")
 	if not ffmpeg: raise RuntimeError("FFmpeg is required to decode the original PS1 ADPCM samples")
 	if cue is not None and not Path(cue).is_file(): raise FileNotFoundError(cue)
-	OUTPUT.mkdir(parents=True, exist_ok=True); WORK.mkdir(parents=True, exist_ok=True); exe = (ROOT / "build/disc-assets/SLES_035.56").read_bytes(); common_bank = bank_data(ROOT / "build/disc-assets/COMMON/INIT.BIN", 0x9800); banks = {0: common_bank, 1: bank_data(ROOT / "build/disc-assets/DAT/ST0F.BIN", 0x1C800)}; effects = {}
+	OUTPUT.mkdir(parents=True, exist_ok=True); WORK.mkdir(parents=True, exist_ok=True); exe = (ROOT / "build/disc-assets/SLES_035.56").read_bytes(); common_bank = bank_data(ROOT / "build/disc-assets/COMMON/INIT.BIN", 0x9800); banks = {0: common_bank, 1: bank_data(ROOT / "build/disc-assets/DAT/ST0F.BIN", 0x1C800)}; effects = {}; previous_path = OUTPUT / "manifest.json"; previous = json.loads(previous_path.read_text(encoding="utf-8")) if previous_path.is_file() else {}; known_music = {**previous.get("music", {}), **previous.get("audio_catalog", {}).get("music", {})}; seed_audio_cache(exe)
 	for sound_id in range(0x80, 0x310):
 		address = 0x8006957c + sound_id * 8; offset = address - 0x80010000 + 0x800; descriptor = exe[offset:offset + 8]
 		bank = banks.get(descriptor[1])
 		if descriptor[0] >> 4 != 0 or bank is None or descriptor[2] >= bank["programs"]: continue
 		program = descriptor[2]; tone = descriptor[3] >> 4
 		if tone >= bank["data"][bank["payload"] + program * 8]: continue
-		raw, encoded, provenance = tone_data(bank, program, tone); note_delta = (descriptor[7] & 31) * (-1 if descriptor[7] & 128 else 1); volume_delta = (descriptor[6] & 63) * (-1 if descriptor[6] & 128 else 1); note = raw[10] + note_delta - raw[8]; pitch = native_pitch(exe, note); pitch += ((native_pitch(exe, note + 1) - pitch) * raw[9]) >> 7; rate = round(44100 * pitch / 4096); name = "footstep" if sound_id == 0x91 else f"fx_{sound_id:03x}"; file = name + ".wav"; decoded = render_effect(encoded, pitch, raw, OUTPUT / file); levels = native_levels(bank, program, raw, volume_delta); gain = levels["gain"]
+		raw, encoded, provenance = tone_data(bank, program, tone); note_delta = (descriptor[7] & 31) * (-1 if descriptor[7] & 128 else 1); volume_delta = (descriptor[6] & 63) * (-1 if descriptor[6] & 128 else 1); note = raw[10] + note_delta - raw[8]; pitch = native_pitch(exe, note); pitch += ((native_pitch(exe, note + 1) - pitch) * raw[9]) >> 7; rate = round(44100 * pitch / 4096); name = "footstep" if sound_id == 0x91 else f"fx_{sound_id:03x}"; file = name + ".ogg"; decoded = referenced_effect(encoded, pitch, raw, OUTPUT / file); levels = native_levels(bank, program, raw, volume_delta); gain = levels["gain"]
 		effects[f"0x{sound_id:04X}"] = {"file": file, "source": bank["path"].relative_to(ROOT / "build/disc-assets").as_posix(), "bank_section_offset": hex(bank["offset"]), "physical_bank": bank["physical_slot"], "program": program, "tone": tone, "descriptor_address": hex(address), "descriptor": descriptor.hex(), "spu_pitch": pitch, "native_sample_rate": 44100 * pitch / 4096, **levels, **provenance, **decoded}
 	manifest = {"stage": "ST0F", "roles": {"footstep": "0x0091", "footstep_alternate": "0x0090"}, "effects": effects, "footstep_events": {"source": "GAME.BIN 0x800CC850..0x800CC8CC, event0x40->sound0x90/event0x80->sound0x91; source surface adds splash actors without changing the cue", "run_control": 1, "run_records": [3, 11], "walk_control": 2, "walk_records": [6, 22]}, "bank_layout": {"source": "SLES 0x800186C4/0x80019798/0x800198BC", "program_header_bytes": 8, "tones_per_program": 16, "tone_bytes": 20, "metadata_file_offset": "0x9830", "waveform_file_offset": hex(common_bank["waveform"]), "waveform_section_alignment": 2048}, "music_source": {"00": {"archive": "DAT/ST0F00.BIN", "sequence_section": "0x13800", "bank_section": "0x16800", "sound_id": "0x0019", "logical_bank": 53, "sequence_id": 21}, "01": {"archive": "DAT/ST0F01.BIN", "sequence_section": "0x11000", "bank_section": "0x14000", "sound_id": "0x0030", "logical_bank": 71, "sequence_id": 39}}, "decoder": "Reference integer PS1 ADPCM + Gaussian + ADSR for effects at44100Hz; original SLES pitch tables control source stepping; FFmpeg ADPCM for score instruments", "reverb": export_reverb(exe, effects, OUTPUT, ROOT / "build/disc-assets/DAT")}
-	manifest["stage_music"] = {"ST0F": "music", **{stage: "music_flutter" for stage in ("ST04", "ST05", "ST06", "ST07")}}; manifest["roles"]["music_flutter"] = "0x003B"; manifest["music"] = {"0x003B": render_music(ffmpeg, ROOT / "build/disc-assets/DAT/ST04T.BIN", 0x35800, 0x36000, "music_flutter"), "0x0019": render_music(ffmpeg, ROOT / "build/disc-assets/DAT/ST0F00.BIN", 0x13800, 0x16800, "music_00"), "0x0030": render_music(ffmpeg, ROOT / "build/disc-assets/DAT/ST0F01.BIN", 0x11000, 0x14000, "music_01"), "0x0000": render_music(ffmpeg, ROOT / "build/disc-assets/COMMON/TITLE.BIN", 0x23000, 0x23800, "title_music")}; manifest["roles"].update({"music": "0x0019", "music_alternate": "0x0030", "buster": "0x009A", "kick": "0x0095", "jump": "0x0092", "land": "0x0093", "title_music": "0x0000", "menu_move": "0x0080", "menu_confirm": "0x0081", "menu_cancel": "0x0082"}); manifest["menu_events"] = {"title_music": {"sound_id": "0x0000", "source": "DEMO 0x800AD690 -> SLES 0x80020210, descriptor 0x800696E4=3120000200000000, TITLE compressed type9 sequence0 +0x23000/bank32 +0x23800"}, "menu_move": {"sound_id": "0x0080", "source": "DEMO 0x800AD8E8/0x800AD904, navigation input mask0x50"}, "menu_confirm": {"sound_id": "0x0081", "source": "DEMO 0x800AD750/0x800AD754"}, "menu_cancel": {"sound_id": "0x0082", "source": "DEMO 0x800AD6EC/0x800AD710"}}; manifest["jump_events"] = {"jump": {"sound_id": "0x0092", "source": "GAME 0x800C7810 state; vertical velocity -0x180/-0x2E0 at 0x800C7850/0x800C7860; sound call 0x800C787C, delay-slot ID0x92"}, "land": {"sound_id": "0x0093", "source": "GAME 0x800C81BC -> 0x800C71CC; actor+0x50==0 selects control0x13; sound call 0x800C81E8, delay-slot ID0x93"}}; manifest["kick_event"] = {"weapon_id": 2, "source": "GAME 0x800D03D0 ranged Buster; 0x800D07CC..0x800D07E8 emits sound0x9A; weaponID1/D0194/sound0x95 is kick", "position_source": "player bone7 cache +0x4C8/+0x4CA/+0x4CC"}; write_output(OUTPUT / "manifest.json", json.dumps(manifest, indent=2) + "\n"); return manifest
+	manifest["stage_music"] = {"ST0F": "music", **{stage: "music_flutter" for stage in ("ST04", "ST05", "ST06", "ST07")}}; manifest["roles"]["music_flutter"] = "0x003B"; manifest["music"] = {"0x003B": referenced_music(ffmpeg, ROOT / "build/disc-assets/DAT/ST04T.BIN", 0x35800, 0x36000, "music_flutter", known_music.get("0x003B", {})), "0x0019": referenced_music(ffmpeg, ROOT / "build/disc-assets/DAT/ST0F00.BIN", 0x13800, 0x16800, "music_00", known_music.get("0x0019", {})), "0x0030": referenced_music(ffmpeg, ROOT / "build/disc-assets/DAT/ST0F01.BIN", 0x11000, 0x14000, "music_01", known_music.get("0x0030", {})), "0x0000": referenced_music(ffmpeg, ROOT / "build/disc-assets/COMMON/TITLE.BIN", 0x23000, 0x23800, "title_music", known_music.get("0x0000", {}))}; manifest["roles"].update({"music": "0x0019", "music_alternate": "0x0030", "buster": "0x009A", "kick": "0x0095", "jump": "0x0092", "land": "0x0093", "title_music": "0x0000", "menu_move": "0x0080", "menu_confirm": "0x0081", "menu_cancel": "0x0082"}); manifest["menu_events"] = {"title_music": {"sound_id": "0x0000", "source": "DEMO 0x800AD690 -> SLES 0x80020210, descriptor 0x800696E4=3120000200000000, TITLE compressed type9 sequence0 +0x23000/bank32 +0x23800"}, "menu_move": {"sound_id": "0x0080", "source": "DEMO 0x800AD8E8/0x800AD904, navigation input mask0x50"}, "menu_confirm": {"sound_id": "0x0081", "source": "DEMO 0x800AD750/0x800AD754"}, "menu_cancel": {"sound_id": "0x0082", "source": "DEMO 0x800AD6EC/0x800AD710"}}; manifest["jump_events"] = {"jump": {"sound_id": "0x0092", "source": "GAME 0x800C7810 state; vertical velocity -0x180/-0x2E0 at 0x800C7850/0x800C7860; sound call 0x800C787C, delay-slot ID0x92"}, "land": {"sound_id": "0x0093", "source": "GAME 0x800C81BC -> 0x800C71CC; actor+0x50==0 selects control0x13; sound call 0x800C81E8, delay-slot ID0x93"}}; manifest["kick_event"] = {"weapon_id": 2, "source": "GAME 0x800D03D0 ranged Buster; 0x800D07CC..0x800D07E8 emits sound0x9A; weaponID1/D0194/sound0x95 is kick", "position_source": "player bone7 cache +0x4C8/+0x4CA/+0x4CC"}; write_output(OUTPUT / "manifest.json", json.dumps(manifest, indent=2) + "\n"); return manifest
 def export_zone_audio(source_dir=None):
 	source_dir = ROOT / "build/disc-assets" if source_dir is None else Path(source_dir); dat = source_dir / "DAT"; ffmpeg = shutil.which("ffmpeg")
 	selector_signature = hashlib.sha256("".join(inspect.getsource(function) for function in [music_program, trace_music_initializer, stage_music_rules]).encode()).hexdigest()
@@ -535,7 +556,7 @@ def export_zone_audio(source_dir=None):
 				if program >= bank["programs"] or tone >= bank["data"][bank["payload"] + program * 8]: continue
 				raw, encoded, provenance = tone_data(bank, program, tone); signature = hashlib.sha256(raw + encoded).hexdigest(); candidates.setdefault(signature, (bank, raw, encoded, provenance))
 		if len(candidates) != 1: continue
-		bank, raw, encoded, provenance = next(iter(candidates.values())); archive = bank["path"]; owner = archive.stem[:4] if re.fullmatch(r"ST[0-9A-F]{2}.*", archive.stem) else "ST0F"; output = ROOT / "assets/audio" / owner; output.mkdir(parents=True, exist_ok=True); note_delta = (descriptor[7] & 31) * (-1 if descriptor[7] & 128 else 1); volume_delta = (descriptor[6] & 63) * (-1 if descriptor[6] & 128 else 1); note = raw[10] + note_delta - raw[8]; pitch = native_pitch(executable, note); pitch += ((native_pitch(executable, note + 1) - pitch) * raw[9]) >> 7; filename = "fx_%03x.wav" % sound_id; rendered = referenced_effect(encoded, pitch, raw, output / filename); levels = native_levels(bank, program, raw, volume_delta); gain = levels["gain"]
+		bank, raw, encoded, provenance = next(iter(candidates.values())); archive = bank["path"]; owner = archive.stem[:4] if re.fullmatch(r"ST[0-9A-F]{2}.*", archive.stem) else "ST0F"; output = ROOT / "assets/audio" / owner; output.mkdir(parents=True, exist_ok=True); note_delta = (descriptor[7] & 31) * (-1 if descriptor[7] & 128 else 1); volume_delta = (descriptor[6] & 63) * (-1 if descriptor[6] & 128 else 1); note = raw[10] + note_delta - raw[8]; pitch = native_pitch(executable, note); pitch += ((native_pitch(executable, note + 1) - pitch) * raw[9]) >> 7; filename = "fx_%03x.ogg" % sound_id; rendered = referenced_effect(encoded, pitch, raw, output / filename); levels = native_levels(bank, program, raw, volume_delta); gain = levels["gain"]
 		catalog["effects"]["0x%04X" % sound_id] = {"file": "res://assets/audio/%s/%s" % (owner, filename), "source": archive.relative_to(source_dir).as_posix(), "owner_stage": owner, "logical_effect": True, "physical_bank": bank["physical_slot"], "logical_bank": bank["logical_id"], "bank_section_offset": hex(bank["offset"]), "descriptor_address": hex(address), "descriptor": descriptor.hex(), "program": program, "tone": tone, "spu_pitch": pitch, **levels, **provenance, **rendered}
 	for manifest_path in sorted((ROOT / "assets/levels").glob("ST??/manifest.json")):
 		stage = manifest_path.parent.name; overlay = dat / (stage + "T.BIN")
@@ -552,7 +573,7 @@ def export_zone_audio(source_dir=None):
 					if len(descriptor) != 8 or descriptor[0] >> 4 != 0 or descriptor[1] != slot or descriptor[2] >= bank["programs"]: continue
 					program, tone = descriptor[2], descriptor[3] >> 4
 					if tone >= bank["data"][bank["payload"] + program * 8]: continue
-					raw, encoded, provenance = tone_data(bank, program, tone); note_delta = (descriptor[7] & 31) * (-1 if descriptor[7] & 128 else 1); volume_delta = (descriptor[6] & 63) * (-1 if descriptor[6] & 128 else 1); note = raw[10] + note_delta - raw[8]; pitch = native_pitch(executable, note); pitch += ((native_pitch(executable, note + 1) - pitch) * raw[9]) >> 7; filename = "fx_%03x.wav" % sound_id; rendered = referenced_effect(encoded, pitch, raw, output / filename); levels = native_levels(bank, program, raw, volume_delta); gain = levels["gain"]
+					raw, encoded, provenance = tone_data(bank, program, tone); note_delta = (descriptor[7] & 31) * (-1 if descriptor[7] & 128 else 1); volume_delta = (descriptor[6] & 63) * (-1 if descriptor[6] & 128 else 1); note = raw[10] + note_delta - raw[8]; pitch = native_pitch(executable, note); pitch += ((native_pitch(executable, note + 1) - pitch) * raw[9]) >> 7; filename = "fx_%03x.ogg" % sound_id; rendered = referenced_effect(encoded, pitch, raw, output / filename); levels = native_levels(bank, program, raw, volume_delta); gain = levels["gain"]
 					effects["0x%04X" % sound_id] = {"file": filename, "source": archive.relative_to(source_dir).as_posix(), "physical_bank": slot, "logical_bank": 0, "bank_section_offset": hex(section["offset"]), "descriptor_address": hex(address), "descriptor": descriptor.hex(), "program": program, "tone": tone, "spu_pitch": pitch, **levels, **provenance, **rendered}
 		for effect in effects.values():
 			if bytes.fromhex(effect["raw_tone"])[5]: effect["reverb"] = referenced_reverb(effect, output, reverb_profile(executable))
@@ -569,7 +590,7 @@ def export_shared_audio(source_dir=None):
 	for sound_id in range(0x80, 0x310):
 		address, descriptor = native_descriptor(executable, sound_id); program, tone = descriptor[2], descriptor[3] >> 4
 		if descriptor[0] >> 4 != 0 or descriptor[1] != 0 or program >= bank["programs"] or tone >= bank["data"][bank["payload"] + program * 8]: continue
-		raw, encoded, provenance = tone_data(bank, program, tone); note_delta = (descriptor[7] & 31) * (-1 if descriptor[7] & 128 else 1); volume_delta = (descriptor[6] & 63) * (-1 if descriptor[6] & 128 else 1); note = raw[10] + note_delta - raw[8]; pitch = native_pitch(executable, note); pitch += ((native_pitch(executable, note + 1) - pitch) * raw[9]) >> 7; levels = native_levels(bank, program, raw, volume_delta); gain = levels["gain"]; rendered = referenced_effect(encoded, pitch, raw, OUTPUT / ("fx_%03x.wav" % sound_id))
+		raw, encoded, provenance = tone_data(bank, program, tone); note_delta = (descriptor[7] & 31) * (-1 if descriptor[7] & 128 else 1); volume_delta = (descriptor[6] & 63) * (-1 if descriptor[6] & 128 else 1); note = raw[10] + note_delta - raw[8]; pitch = native_pitch(executable, note); pitch += ((native_pitch(executable, note + 1) - pitch) * raw[9]) >> 7; levels = native_levels(bank, program, raw, volume_delta); gain = levels["gain"]; rendered = referenced_effect(encoded, pitch, raw, OUTPUT / ("fx_%03x.ogg" % sound_id))
 		effects["0x%04X" % sound_id] = {"source": archive.relative_to(source_dir).as_posix(), "bank_section_offset": hex(bank["offset"]), "physical_bank": 0, "logical_bank": 0, "program": program, "tone": tone, "descriptor_address": hex(address), "descriptor": descriptor.hex(), "spu_pitch": pitch, "native_sample_rate": 44100 * pitch / 4096, **levels, **provenance, **rendered}
 	for key, effect in effects.items():
 		if bytes.fromhex(effect["raw_tone"])[5]: effect["reverb"] = referenced_reverb(effect, OUTPUT, reverb_profile(executable))
@@ -578,7 +599,7 @@ def export_shared_audio(source_dir=None):
 def export_game_over_audio():
 	ffmpeg = shutil.which("ffmpeg")
 	if not ffmpeg: raise RuntimeError("FFmpeg is required to decode the original PS1 ADPCM samples")
-	manifest_path = OUTPUT / "manifest.json"; manifest = json.loads(manifest_path.read_text(encoding="utf-8")); entry = render_music(ffmpeg, ROOT / "build/disc-assets/COMMON/G_OVER00.BIN", 0x9000, 0x9800, "game_over_music"); entry["looped"] = False
+	manifest_path = OUTPUT / "manifest.json"; manifest = json.loads(manifest_path.read_text(encoding="utf-8")); entry = render_music(ffmpeg, ROOT / "build/disc-assets/COMMON/G_OVER00.BIN", 0x9000, 0x9800, "game_over_music"); entry["looped"] = False; entry.pop("loop_begin_frame", None); entry.pop("loop_end_frame", None)
 	manifest["music"]["0x000C"] = {**entry, "source_cue": "DEMO0x800ADF54 SLES0x800201B0(0xC) after COMMON/G_OVER00.BIN (file id 4)"}; manifest["roles"]["game_over_music"] = "0x000C"; write_output(manifest_path, json.dumps(manifest, indent=2) + "\n"); return entry
 def export_library(source_dir, output_dir):
 	source_dir = Path(source_dir); output_dir = Path(output_dir); result = []
@@ -601,8 +622,8 @@ def export_library(source_dir, output_dir):
 					try:
 						raw, encoded, metadata = tone_data(bank, program, tone); digest = hashlib.sha256(encoded).hexdigest()
 						if digest not in cache:
-							target = directory / (digest + ".wav"); pcm = array("h", spu_adpcm(encoded))
-							write_wave(target, 1, 44100, pcm.tobytes())
+							target = directory / (digest + ".ogg"); pcm = array("h", spu_adpcm(encoded))
+							write_audio(target, 1, 44100, pcm.tobytes())
 							cache[digest] = target.name
 						item["programs"].append({"program": program, "tone": tone, "file": cache[digest], "sample_rate": 44100, **metadata})
 					except (ValueError, IndexError, struct.error) as error: item["programs"].append({"program": program, "tone": tone, "error": str(error)})
@@ -611,14 +632,34 @@ def export_library(source_dir, output_dir):
 			events, _ = score_events(path, offset); target = directory / ("sequence_%05X.json" % offset); write_output(target, json.dumps({"source": entry["file"], **metadata, "events": events}, indent=2), encoding="utf-8"); entry["sequences"].append({"file": target.name, **metadata})
 		write_output(directory / "manifest.json", json.dumps(entry, indent=2), encoding="utf-8"); result.append(entry)
 	return result
+def cached_xa_library(entry, directory):
+	manifest = directory / "manifest.json"
+	if not manifest.is_file() or may_write(manifest): return None
+	try:
+		data = json.loads(manifest.read_text(encoding="utf-8"))
+		if data.get("source") != entry or not isinstance(data.get("streams"), list): return None
+		for stream in data["streams"]:
+			name = str(stream["file"]); path = directory / name
+			if Path(name).name != name or not path.is_file() or may_write(path): return None
+			if xa_format(int(stream["coding"])) != (int(stream["channels"]), int(stream["sample_rate"]), int(stream["bits"])) or int(stream["sample_frames"]) <= 0 or not 0 <= int(stream["first_sector"]) <= int(stream["last_sector"]) < (int(entry["iso_bytes"]) + 2047) // 2048: return None
+			if int(stream["sample_frames"]) % (18 * 28 * (4 if int(stream["bits"]) == 8 else 8) // int(stream["channels"])): return None
+			payload = path.read_bytes()
+			if stream.get("file_sha256") and hashlib.sha256(payload).hexdigest() != stream["file_sha256"]: return None
+			if ogg_info(path) != (int(stream["channels"]), int(stream["sample_rate"]), int(stream["sample_frames"])): return None
+		return data
+	except (ValueError, TypeError, KeyError, OSError, EOFError, struct.error): return None
 def export_xa_library(cue, output_dir):
 	path, start, frames = cue_layout(Path(cue)); reader = Mode2Track(path, start, frames); result = []
 	try:
 		for entry in disc_files(reader):
 			if not entry["file"].upper().startswith("XA/"): continue
-			directory = Path(output_dir) / Path(entry["file"]).stem; directory.mkdir(parents=True, exist_ok=True); active = {}; counters = {}; streams = []
+			directory = Path(output_dir) / Path(entry["file"]).stem; directory.mkdir(parents=True, exist_ok=True); cached = cached_xa_library(entry, directory)
+			if cached is not None: result.append(cached); continue
+			active = {}; counters = {}; streams = []
 			def finish(key):
-				item = active.pop(key); item.pop("writer").close(); write_output(directory / item["file"], item.pop("buffer").getvalue()); item.pop("history"); item["duration_seconds"] = item["sample_frames"] / item["sample_rate"]; streams.append(item)
+				item = active.pop(key); pcm = bytes(item.pop("pcm")); path = directory / item["file"]; write_audio(path, item["channels"], item["sample_rate"], pcm); item.pop("history")
+				if ogg_info(path) != (item["channels"], item["sample_rate"], item["sample_frames"]): raise ValueError("Existing XA library OGG differs from the selected disc: " + path.relative_to(ROOT).as_posix())
+				item["file_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest(); item["pcm_sha256"] = hashlib.sha256(pcm).hexdigest(); item["duration_seconds"] = item["sample_frames"] / item["sample_rate"]; streams.append(item)
 			try:
 				for offset in range((entry["iso_bytes"] + 2047) // 2048):
 					lba = entry["extent"] + offset; reader.stream.seek((reader.start_frame + lba) * SECTOR_SIZE); raw = reader.stream.read(SECTOR_SIZE)
@@ -626,9 +667,9 @@ def export_xa_library(cue, output_dir):
 					if raw[18] & 14 != 4: continue
 					channels, rate, bits = xa_format(raw[19]); key = (raw[16], raw[17], raw[19])
 					if key not in active:
-						number = counters.get(key, 0); counters[key] = number + 1; filename = "file_%02d_channel_%02d_%03d.wav" % (key[0], key[1], number); buffer = io.BytesIO(); writer = wave.open(buffer, "wb"); writer.setnchannels(channels); writer.setsampwidth(2); writer.setframerate(rate)
-						active[key] = {"file": filename, "file_number": key[0], "channel": key[1], "coding": key[2], "channels": channels, "sample_rate": rate, "bits": bits, "first_sector": offset, "last_sector": offset, "sample_frames": 0, "writer": writer, "buffer": buffer, "history": [(0, 0)] * channels}
-					item = active[key]; pcm = decode_sector(raw, channels, bits, item["history"]); item["writer"].writeframesraw(pcm.tobytes()); item["sample_frames"] += len(pcm) // channels; item["last_sector"] = offset
+						number = counters.get(key, 0); counters[key] = number + 1; filename = "file_%02d_channel_%02d_%03d.ogg" % (key[0], key[1], number)
+						active[key] = {"file": filename, "file_number": key[0], "channel": key[1], "coding": key[2], "channels": channels, "sample_rate": rate, "bits": bits, "first_sector": offset, "last_sector": offset, "sample_frames": 0, "pcm": bytearray(), "history": [(0, 0)] * channels}
+					item = active[key]; pcm = decode_sector(raw, channels, bits, item["history"]); item["pcm"].extend(pcm.tobytes()); item["sample_frames"] += len(pcm) // channels; item["last_sector"] = offset
 					if raw[18] & 0x81: finish(key)
 			finally:
 				for key in list(active): finish(key)
@@ -671,26 +712,60 @@ def archive_record(reader, archive):
 		name, extent, size, flags = matches[0]
 		if index < len(parts) - 1 and not flags & 2: raise ValueError("XA path component is not a directory: " + name)
 	return extent, size
+def xa_cache_identity(reader, extent, entry):
+	track = reader.path.resolve(); stat = track.stat(); return (str(track), stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, reader.start_frame, reader.frames, extent, int(entry["sector_start"]), int(entry["sector_end"]), int(entry["channel"]))
+def xa_voice_key(extent, entry):
+	return hashlib.sha256(json.dumps([entry["archive"].upper(), int(extent), int(entry["sector_start"]), int(entry["sector_end"]), int(entry["channel"])], separators=(",", ":")).encode("utf-8")).hexdigest()
+def seed_xa_decode_cache(reader):
+	paths = [ROOT / "assets/opening/audio/manifest.json", ROOT / "assets/audio/common_voices/manifest.json", *sorted((ROOT / "assets/levels").glob("ST??/audio/manifest.json"))]; seeded = 0
+	keys = ["extent", "sector_end_inclusive", "first_selected_sector", "last_selected_sector", "audio_sectors", "source_coding_info", "sample_rate", "channels", "adpcm_bits", "sample_frames", "duration_seconds", "source_sectors_sha256", "pcm_sha256", "peak_pcm16", "rms_pcm16", "decoder", "resampling"]
+	for manifest_path in paths:
+		if not manifest_path.is_file(): continue
+		manifest = json.loads(manifest_path.read_text(encoding="utf-8")); entries = manifest.get("entries", []) + ([manifest] if "archive" in manifest else [])
+		for entry in entries:
+			if not all(key in entry for key in [*keys, "sector_start", "sector_end", "channel", "file", "file_sha256"]): continue
+			identity = xa_cache_identity(reader, int(entry["extent"]), entry)
+			if identity in XA_DECODE_CACHE: continue
+			path = ROOT / str(entry["file"]).removeprefix("res://") if str(entry["file"]).startswith("res://") else manifest_path.parent / str(entry["file"])
+			if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != entry["file_sha256"]: continue
+			digest = hashlib.sha256(); valid = True
+			for offset in range(int(entry["sector_start"]), int(entry["sector_end"]) + 1):
+				lba = int(entry["extent"]) + offset
+				if not 0 <= lba < reader.frames: valid = False; break
+				reader.stream.seek((reader.start_frame + lba) * SECTOR_SIZE); raw = reader.stream.read(SECTOR_SIZE)
+				if len(raw) != SECTOR_SIZE or raw[:12] != SYNC or raw[15] != 2 or raw[16:20] != raw[20:24]: valid = False; break
+				if (raw[18] & 14) == 4 and raw[17] == int(entry["channel"]): digest.update(raw)
+			if valid and digest.hexdigest() == entry["source_sectors_sha256"]: XA_DECODE_CACHE[identity] = {"path": path, "stamp": (path.stat().st_size, path.stat().st_mtime_ns), "sha256": entry["file_sha256"], "metadata": {key: entry[key] for key in keys}}; seeded += 1
+	XA_SEEDED_TRACKS.add(xa_cache_identity(reader, 0, {"sector_start": 0, "sector_end": 0, "channel": 0})[:7]); return seeded
 def export_entry(reader, extent, entry, output):
-	filename = "xa_%03d.wav" % int(entry["id"]); destination = output / filename; history = None; format_info = None; wave_buffer = None; sector_count = 0; sample_frames = 0; first_sector = None; last_sector = None; digest = hashlib.sha256(); peak = 0; square_sum = 0; wave_output = None
-	try:
-		for offset in range(int(entry["sector_start"]), int(entry["sector_end"]) + 1):
-			lba = extent + offset
-			if not 0 <= lba < reader.frames: raise ValueError("Opening XA sector outside Track01")
-			reader.stream.seek((reader.start_frame + lba) * SECTOR_SIZE); raw = reader.stream.read(SECTOR_SIZE)
-			if len(raw) != SECTOR_SIZE or raw[:12] != SYNC or raw[15] != 2 or raw[16:20] != raw[20:24]: raise ValueError("Invalid Mode2/XA sector atLBA%d" % lba)
-			if (raw[18] & 14) != 4 or raw[17] != int(entry["channel"]): continue
-			if not raw[18] & 32: raise ValueError("XA audio was not stored in Form2")
-			info = xa_format(raw[19])
-			if format_info is None:
-				format_info = info; channels, sample_rate, bits = info; history = [(0, 0)] * channels; wave_buffer = io.BytesIO(); wave_output = wave.open(wave_buffer, "wb"); wave_output.setnchannels(channels); wave_output.setsampwidth(2); wave_output.setframerate(sample_rate); first_sector = offset
-			elif format_info != info: raise ValueError("XA coding changed inside the original descriptor")
-			pcm = decode_sector(raw, channels, bits, history); wave_output.writeframesraw(pcm.tobytes()); digest.update(raw); sector_count += 1; sample_frames += len(pcm) // channels; last_sector = offset; peak = max(peak, max(abs(value) for value in pcm)); square_sum += sum(value * value for value in pcm)
-	finally:
-		if wave_output is not None: wave_output.close()
-	if not sector_count: raise ValueError("Original XA descriptor contains no audio sectors onitschannel")
-	write_output(destination, wave_buffer.getvalue())
-	return {**entry, "file": "res://assets/opening/audio/" + filename, "extent": extent, "sector_end_inclusive": True, "first_selected_sector": first_sector, "last_selected_sector": last_sector, "audio_sectors": sector_count, "source_coding_info": raw[19], "sample_rate": sample_rate, "channels": channels, "adpcm_bits": bits, "sample_frames": sample_frames, "duration_seconds": sample_frames / sample_rate, "source_sectors_sha256": digest.hexdigest(), "wav_sha256": hashlib.sha256(destination.read_bytes()).hexdigest(), "peak_pcm16": peak, "rms_pcm16": (square_sum / (sample_frames * channels)) ** 0.5, "decoder": "XA4/XA8 signed samples, four native predictors, +32 rounding, signed16 clipping, persistent channel histories", "resampling": "Native37800/18900Hz WAV; hardware44100Hz zigzag interpolation is not baked"}
+	identity = xa_cache_identity(reader, extent, entry)
+	if identity[:7] not in XA_SEEDED_TRACKS: seed_xa_decode_cache(reader)
+	key = xa_voice_key(extent, entry); destination = ROOT / "assets/audio/voices" / ("xa_" + key + ".ogg"); history = None; format_info = None; pcm_buffer = bytearray(); sector_count = 0; sample_frames = 0; first_sector = None; last_sector = None; digest = hashlib.sha256(); peak = 0; square_sum = 0; cached = XA_DECODE_CACHE.get(identity)
+	if cached is not None and not cached["path"].is_file(): XA_DECODE_CACHE.pop(identity); cached = None
+	if cached is not None:
+		stamp = (cached["path"].stat().st_size, cached["path"].stat().st_mtime_ns)
+		if stamp == cached["stamp"] or hashlib.sha256(cached["path"].read_bytes()).hexdigest() == cached["sha256"]:
+			cached["stamp"] = stamp
+			return {**entry, **cached["metadata"], "file": "res://" + cached["path"].relative_to(ROOT).as_posix(), "file_sha256": cached["sha256"], "voice_key": key, "asset_group": "voice-" + key}
+		XA_DECODE_CACHE.pop(identity)
+	for offset in range(int(entry["sector_start"]), int(entry["sector_end"]) + 1):
+		lba = extent + offset
+		if not 0 <= lba < reader.frames: raise ValueError("Opening XA sector outside Track01")
+		reader.stream.seek((reader.start_frame + lba) * SECTOR_SIZE); raw = reader.stream.read(SECTOR_SIZE)
+		if len(raw) != SECTOR_SIZE or raw[:12] != SYNC or raw[15] != 2 or raw[16:20] != raw[20:24]: raise ValueError("Invalid Mode2/XA sector atLBA%d" % lba)
+		if (raw[18] & 14) != 4 or raw[17] != int(entry["channel"]): continue
+		if not raw[18] & 32: raise ValueError("XA audio was not stored in Form2")
+		info = xa_format(raw[19])
+		if format_info is None:
+			format_info = info; channels, sample_rate, bits = info; history = [(0, 0)] * channels; first_sector = offset
+		elif format_info != info: raise ValueError("XA coding changed inside the original descriptor")
+		pcm = decode_sector(raw, channels, bits, history); pcm_buffer.extend(pcm.tobytes()); digest.update(raw); sector_count += 1; sample_frames += len(pcm) // channels; last_sector = offset; peak = max(peak, max(abs(value) for value in pcm)); square_sum += sum(value * value for value in pcm)
+	if not sector_count: raise EmptyXADescriptor("Original XA descriptor contains no audio sectors onitschannel")
+	pcm = bytes(pcm_buffer); write_audio(destination, channels, sample_rate, pcm); sha256 = hashlib.sha256(destination.read_bytes()).hexdigest()
+	if ogg_info(destination) != (channels, sample_rate, sample_frames): raise ValueError("Existing canonical XA OGG differs from the selected disc: " + destination.relative_to(ROOT).as_posix())
+	metadata = {"extent": extent, "sector_end_inclusive": True, "first_selected_sector": first_sector, "last_selected_sector": last_sector, "audio_sectors": sector_count, "source_coding_info": raw[19], "sample_rate": sample_rate, "channels": channels, "adpcm_bits": bits, "sample_frames": sample_frames, "duration_seconds": sample_frames / sample_rate, "source_sectors_sha256": digest.hexdigest(), "pcm_sha256": hashlib.sha256(pcm).hexdigest(), "peak_pcm16": peak, "rms_pcm16": (square_sum / (sample_frames * channels)) ** 0.5, "decoder": "XA4/XA8 signed samples, four native predictors, +32 rounding, signed16 clipping, persistent channel histories", "resampling": "Native37800/18900Hz Ogg Vorbis; hardware44100Hz zigzag interpolation is not baked"}
+	XA_DECODE_CACHE[identity] = {"path": destination, "stamp": (destination.stat().st_size, destination.stat().st_mtime_ns), "sha256": sha256, "metadata": metadata}
+	return {**entry, **metadata, "file": "res://" + destination.relative_to(ROOT).as_posix(), "file_sha256": sha256, "voice_key": key, "asset_group": "voice-" + key}
 def export_opening_audio(cue):
 	manifest_path = ROOT / "assets/opening/manifest.json"; source = json.loads(manifest_path.read_text(encoding="utf-8")); xa = source["xa"]; bin_path, start, frames = cue_layout(cue); reader = Mode2Track(bin_path, start, frames); output = ROOT / "assets/opening/audio"; output.mkdir(parents=True, exist_ok=True); entries = []
 	try:
@@ -699,7 +774,7 @@ def export_opening_audio(cue):
 			if int(entry["sector_end"]) >= (size + 2047) // 2048: raise ValueError("XA descriptor exceeds its ISO file")
 			item = export_entry(reader, extent, entry, output); entries.append(item); print(json.dumps({key: item[key] for key in ("id", "audio_sectors", "duration_seconds", "sample_rate", "channels", "peak_pcm16")}))
 	finally: reader.stream.close()
-	manifest = {"source": xa["source"], "descriptor_table": xa["descriptor_table"], "disc_track": bin_path.name, "decoder_reference": "https://psx-spx.consoledev.net/ps1/cdr/cdromformat/#cdrom-xa-audio-adpcm-compression", "entries": entries}; pending = output / "manifest.json.next"; write_output(pending, json.dumps(manifest, indent=2) + "\n", encoding="utf-8"); pending.replace(output / "manifest.json"); return manifest
+	manifest = {"source": xa["source"], "descriptor_table": xa["descriptor_table"], "disc_track": bin_path.name, "decoder_reference": "https://psx-spx.consoledev.net/ps1/cdr/cdromformat/#cdrom-xa-audio-adpcm-compression", "entries": entries}; write_output(output / "manifest.json", json.dumps(manifest, indent=2) + "\n", encoding="utf-8"); return manifest
 def opening_audio_cli():
 	parser = argparse.ArgumentParser(); parser.add_argument("cue", type=Path); args = parser.parse_args(); export_opening_audio(args.cue.resolve())
 def stage_voice_tables(stage):
@@ -715,23 +790,69 @@ def stage_voice_tables(stage):
 def export_stage_voices(cue, stage, ids=None):
 	if stage == "COMMON": overlay, origin, tables = (ROOT / "build/disc-assets/SLES_035.56").read_bytes(), 0x80010000 - 0x800, {0xFF00: 0x80069624}
 	else: (overlay, tables), origin = stage_voice_tables(stage), 0x800E7000 - 0x30
-	executable = (ROOT / "build/disc-assets/SLES_035.56").read_bytes(); archive_ids = struct.unpack_from("<16H", executable, 0x800695F4 - 0x80010000 + 0x800)
+	executable = (ROOT / "build/disc-assets/SLES_035.56").read_bytes(); archive_ids = struct.unpack_from("<24H", executable, 0x800695F4 - 0x80010000 + 0x800)
 	bin_path, start, frames = cue_layout(Path(cue)); reader = Mode2Track(bin_path, start, frames); folder = "assets/audio/common_voices" if stage == "COMMON" else "assets/levels/%s/audio" % stage; output = ROOT / folder; output.mkdir(parents=True, exist_ok=True); manifest_path = output / "manifest.json"
-	manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {"source": ("SLES" if stage == "COMMON" else stage + "T") + " XA descriptor tables", "entries": []}; entries = {int(entry["id"]): entry for entry in manifest["entries"]}
+	manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {"source": ("SLES" if stage == "COMMON" else stage + "T") + " XA descriptor tables", "entries": []}; entries = {int(entry["id"]): entry for entry in manifest.get("entries", [])}
 	try:
 		files = sorted(disc_files(reader), key=lambda entry: entry["extent"])
 		for base, address in tables.items():
 			for index in range(min([0x7F00] + [(other - address) // 8 for other in tables.values() if other > address])):
 				offset = address - origin + index * 8; raw = overlay[offset:offset + 8]
-				if len(raw) < 8 or not any(raw) or raw[0] >= 16 or not archive_ids[raw[0]] or archive_ids[raw[0]] >= len(files): break
+				if len(raw) < 8 or not any(raw) or raw[0] >= len(archive_ids) or not archive_ids[raw[0]] or archive_ids[raw[0]] >= len(files): break
 				archive = files[archive_ids[raw[0]]]; first = (raw[1] << 16) | struct.unpack_from("<H", raw, 2)[0]; last = (raw[5] << 16) | struct.unpack_from("<H", raw, 6)[0]
 				if not archive["file"].upper().startswith("XA/") or first > last or last >= (archive["iso_bytes"] + 2047) // 2048: break
 				if ids is not None and (base | index) not in ids: continue
 				source = {"id": base | index, "descriptor_ram": "0x%08X" % (address + index * 8), "descriptor_bytes": raw.hex(), "archive": archive["file"], "sector_start": first, "sector_end": last, "channel": raw[4] & 31, "flags": raw[4] & 0xE0}
-				item = export_entry(reader, archive["extent"], source, output); item["file"] = "res://%s/%s" % (folder, Path(item["file"]).name); entries[source["id"]] = item
+				try: item = export_entry(reader, archive["extent"], source, output)
+				except EmptyXADescriptor: break
+				entries[source["id"]] = item
 	finally: reader.stream.close()
 	manifest["entries"] = [entries[key] for key in sorted(entries)]; manifest["voice_tables"] = {"0x%04X" % base: "0x%08X" % address for base, address in tables.items()}; manifest["voice_lookup"] = "SLES0x8001B9D0: id&0x8000 -> *(0x80078DD4)+(id&0x7FFF)*8 else *(0x80078DD8)+id*8; archive byte -> u16 file id table SLES0x800695F4"
 	write_output(manifest_path, json.dumps(manifest, indent=2) + "\n", encoding="utf-8"); return manifest
+def verified_ogg(path, target):
+	with wave.open(str(path), "rb") as source: channels, rate, width, frames = source.getnchannels(), source.getframerate(), source.getsampwidth(), source.getnframes(); pcm = source.readframes(frames)
+	if width != 2: raise ValueError("Expected signed16 PCM in " + path.name)
+	write_audio(target, channels, rate, pcm)
+	if ogg_info(target) != (channels, rate, frames): raise ValueError("Ogg stream length differs from " + path.name)
+	decoded = decode_ogg(target)[2]; count = min(len(decoded), len(pcm)) // 2; energies = []
+	for data in (pcm, decoded): samples = array("h", data[:count * 2]); energies.append(math.sqrt(sum(map(mul, samples, samples)) / max(1, count)))
+	if abs(len(decoded) - len(pcm)) > 4096 * channels or energies[0] >= 16 and not 0.8 <= energies[1] / energies[0] <= 1.25 or energies[0] and not energies[1]: raise ValueError("Ogg decode differs from " + path.name)
+	return {"file_sha256": hashlib.sha256(target.read_bytes()).hexdigest(), "pcm_sha256": hashlib.sha256(pcm).hexdigest()}
+def rewrite_audio_manifest(path, converted):
+	import disc
+	raw = path.read_bytes()
+	if b".wav" not in raw and b"wav_sha256" not in raw: return False
+	text = raw.decode("utf-8"); crlf = "\r\n" in text; data = json.loads(text); text = text.replace("\r\n", "\n")
+	layout = next((layout for layout in (({"indent": 2}, "\n"), ({"indent": 2}, ""), ({"separators": (",", ":")}, ""), ({"separators": (",", ":")}, "\n"), ({}, ""), ({}, "\n")) if json.dumps(data, **layout[0]) + layout[1] == text), None)
+	if layout is None: raise ValueError("Unrecognised JSON layout in " + path.relative_to(ROOT).as_posix())
+	def resolve(value): return (ROOT / value.removeprefix("res://") if value.startswith("res://") else path.parent / value).resolve()
+	def swap(value): return value[:-4] + ".ogg" if resolve(value) in converted or resolve(value).with_suffix(".ogg").is_file() else value
+	def visit(node):
+		if isinstance(node, list):
+			for item in node: visit(item)
+		elif isinstance(node, dict):
+			info = converted.get(resolve(node["file"])) if isinstance(node.get("file"), str) and node["file"].endswith(".wav") else None
+			for key, value in list(node.items()):
+				if isinstance(value, str) and value.endswith(".wav"): node[key] = swap(value)
+				else: visit(value)
+			if info is not None:
+				items = list(node.items()); node.clear()
+				for key, value in items: node["file_sha256" if key == "wav_sha256" else key] = info["file_sha256"] if key == "wav_sha256" else value
+				if "file_sha256" in node: node.setdefault("pcm_sha256", info["pcm_sha256"])
+				if node.get("looped") is True and "note_on_events" in node and "frames" in node: node.setdefault("loop_begin_frame", 0); node.setdefault("loop_end_frame", node["frames"])
+	visit(data); text = json.dumps(data, **layout[0]) + layout[1]; relative = path.relative_to(ROOT).as_posix(); disc.OVERWRITE["patterns"].append(disc.glob_regex(relative)); return write_output(path, (text.replace("\n", "\r\n") if crlf else text).encode("utf-8"))
+def convert_audio(workers=None):
+	from concurrent.futures import ThreadPoolExecutor
+	wavs = sorted((ROOT / "assets").rglob("*.wav")); converted = {}; failed = {}
+	def convert(path):
+		try: converted[path.resolve()] = verified_ogg(path, path.with_suffix(".ogg"))
+		except (ValueError, OSError, EOFError, wave.Error, struct.error, subprocess.CalledProcessError) as error: failed[path] = str(error)
+	with ThreadPoolExecutor(workers or os.cpu_count() or 1) as pool: list(pool.map(convert, wavs))
+	manifests = sum(bool(rewrite_audio_manifest(path, converted)) for path in sorted((ROOT / "assets").rglob("*.json")))
+	removed = size = 0
+	for path in wavs:
+		if path.resolve() in converted: size += path.stat().st_size; path.unlink(); removed += 1
+	return {"converted": len(converted), "failed": {path.relative_to(ROOT).as_posix(): error for path, error in failed.items()}, "manifests_rewritten": manifests, "wav_removed": removed, "wav_bytes_removed": size}
 from disc import decompress_section
 from disc import Mode2Track
 from disc import cue_layout
