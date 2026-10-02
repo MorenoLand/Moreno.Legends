@@ -16,6 +16,7 @@ static func attach_collision(actor: Node3D, bounds: Array) -> void:
 	var minimum := Vector3(-float(bounds[1]), -float(bounds[3]), float(bounds[4])) / 256.0; var maximum := Vector3(-float(bounds[0]), -float(bounds[2]), float(bounds[5])) / 256.0
 	if maximum.x <= minimum.x or maximum.y <= minimum.y or maximum.z <= minimum.z: return
 	var body := AnimatableBody3D.new(); body.name = "NativeActorCollision"; body.collision_layer = 1; body.collision_mask = 0; body.sync_to_physics = false
+	if maximum.y - minimum.y > maxf(maximum.x - minimum.x, maximum.z - minimum.z): body.set_meta("native_unstandable", true)
 	var shape := CollisionShape3D.new(); var box := BoxShape3D.new(); box.size = maximum - minimum; shape.shape = box; shape.position = (minimum + maximum) * 0.5; body.add_child(shape); actor.add_child(body)
 static func excluded(actor: Node3D) -> Array[RID]:
 	var result: Array[RID] = []

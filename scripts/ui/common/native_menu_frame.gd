@@ -3,6 +3,10 @@ static func enter(control: Control, layout: Dictionary, context: String = "gamep
 	return await _animate(control, layout, "opening", context)
 static func exit(control: Control, layout: Dictionary, context: String = "gameplay") -> bool:
 	return await _animate(control, layout, "closing", context)
+static func title_origin(font: Font, text: String, rectangle: Rect2) -> Vector2:
+	return Vector2(roundf(rectangle.position.x + rectangle.size.x * 0.5 - 0.5 - (1.0 + font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x) * 0.5), roundf(rectangle.get_center().y - 7.0))
+static func title(control: Control, font: Font, text: String, rectangle: Rect2, color: Color = Color.WHITE) -> void:
+	control.draw_string(font, title_origin(font, text, rectangle) + Vector2(0, font.get_ascent(12)), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, color)
 static func content_visible(control: Control) -> bool:
 	var animation: Dictionary = control.get_meta("native_panel_animation", {})
 	return animation.is_empty() or str(animation["phase"]) == "opening" and bool(animation["complete"])

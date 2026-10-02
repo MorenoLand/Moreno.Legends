@@ -36,10 +36,13 @@ func configure(stage: String) -> void:
 	areas = manifest["areas"]
 	bitmap_mode = str(manifest.get("mode", "tiles")) == "bitmap"
 	atlas = load(path.get_base_dir().path_join(str(manifest["atlas"]))) as Texture2D
-	visible = display_enabled
+	_refresh_visibility()
 func set_display_enabled(value: bool) -> void:
 	display_enabled = value
-	visible = value and atlas != null and not areas.is_empty()
+	_refresh_visibility()
+# The original draws the HUD map only while the stage or area handler has installed its callback at 0x80078EA8 ("hud" per area).
+func _refresh_visibility() -> void:
+	visible = display_enabled and atlas != null and not area.is_empty() and bool(area.get("hud", true))
 func set_area(index: int) -> void:
 	area = {}
 	for entry: Dictionary in areas:
@@ -47,7 +50,7 @@ func set_area(index: int) -> void:
 			area = entry.duplicate(true); bitmap_mode = area.has("bitmap_origin")
 			if bitmap_mode: atlas = load(stage_directory.path_join(str(entry["atlas"]))) as Texture2D
 			break
-	visible = display_enabled and atlas != null and not area.is_empty()
+	_refresh_visibility()
 	queue_redraw()
 func set_player(position: Vector3, yaw: float) -> void:
 	position_in_area = position

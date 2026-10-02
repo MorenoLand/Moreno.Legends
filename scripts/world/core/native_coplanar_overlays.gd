@@ -180,6 +180,8 @@ static func _scan(surfaces: Array, world: Transform3D, face_flags: bool, partial
 	var result: Array[Dictionary] = []
 	var planes := {}
 	for item: Dictionary in surfaces:
+		# Empty surfaces (no vertex array) carry nothing to scan.
+		if not (item["arrays"] as Array)[Mesh.ARRAY_VERTEX] is PackedVector3Array: continue
 		var surface := int(item["surface"]); var arrays: Array = item["arrays"]; var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]; var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX] if arrays[Mesh.ARRAY_INDEX] is PackedInt32Array else PackedInt32Array(); var triangle_count := indices.size() / 3 if not indices.is_empty() else vertices.size() / 3; var source_faces: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV2] if arrays[Mesh.ARRAY_TEX_UV2] is PackedVector2Array else PackedVector2Array(); var source_encoded: bool = face_flags and source_faces.size() == vertices.size()
 		for triangle in range(triangle_count):
 			var i0 := int(indices[triangle * 3]) if not indices.is_empty() else triangle * 3; var i1 := int(indices[triangle * 3 + 1]) if not indices.is_empty() else triangle * 3 + 1; var i2 := int(indices[triangle * 3 + 2]) if not indices.is_empty() else triangle * 3 + 2

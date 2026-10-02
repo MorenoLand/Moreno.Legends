@@ -16,6 +16,7 @@ var transition_rate := 1.0
 var sliding_scenes: Dictionary = {}
 var transition_doors: Dictionary = {}
 var portal_depth_views: Dictionary = {}
+var portal_backings: Dictionary = {}
 var closing_portals: Dictionary = {}
 var portal_camera_sides: Dictionary = {}
 var mesh_nodes: Dictionary = {}
@@ -44,7 +45,7 @@ var external_routes: Array = []
 var parked_exterior_enabled := false
 func can_show_parked_exterior() -> bool: return parked_exterior_enabled
 static func layout_path_for(stage: String, area: int) -> String:
-	var path := "res://assets/locations/room_layout.json" if stage in ["ST04", "ST05", "ST06", "ST07"] else "res://assets/locations/mine_room_layout.json" if stage == "ST0F" else "res://assets/locations/landing_room_layout.json" if stage == "ST08" else "res://assets/locations/town_room_layout.json"
+	var path := "res://assets/locations/room_layout.json" if stage in ["ST04", "ST05", "ST06", "ST07"] else "res://assets/locations/mine_room_layout.json" if stage == "ST0F" else "res://assets/locations/landing_room_layout.json" if stage == "ST08" else "res://assets/locations/ruminoa_room_layout.json" if stage in ["ST19", "ST1A", "ST1B"] else "res://assets/locations/town_room_layout.json"
 	var data: Variant = JSON.parse_string(FileAccess.get_file_as_string(path)) if FileAccess.file_exists(path) else null
 	if data is Dictionary:
 		for room: Dictionary in data.get("rooms", []):
@@ -202,7 +203,7 @@ func _clip_parked_exterior(visible_rooms: Dictionary = {}) -> void:
 		if mesh.mesh == null: continue
 		for surface in mesh.mesh.get_surface_count():
 			var material := mesh.get_active_material(surface) as ShaderMaterial
-			if material == null or material.shader != preload("res://shaders/native_model.gdshader"): continue
+			if material == null or not preload("res://scripts/world/rendering/native_material.gd").is_model_shader(material.shader): continue
 			material.set_shader_parameter("interior_clip_count", mini(count, 16)); material.set_shader_parameter("interior_clip_min", minimum); material.set_shader_parameter("interior_clip_max", maximum)
 func _clip_exterior_rooms() -> void:
 	var active_interior: bool = room_bounds.has(active_room_key) and not bool(room_info[active_room_key].get("exterior", false)); var minimum := PackedVector3Array(); var maximum := PackedVector3Array()
@@ -402,7 +403,7 @@ func open_transition_door(stage: String, area: int, route: Dictionary, rate: flo
 	_refresh_native_floor_apertures(_room_key(stage, area))
 	_refresh_open_meshes(_room_key(stage, area), str(source["node"]))
 	_refresh_camera_layers()
-	if await _open_leaf(portal, true): return true
+	if await _open_leaf(portal, true): _create_doorway_backing(portal, key); return true
 	transition_doors.erase(key)
 	_refresh_native_floor_apertures(_room_key(stage, area))
 	_refresh_open_meshes(_room_key(stage, area), str(source["node"]))
@@ -419,6 +420,7 @@ func close_transition_door(stage: String, area: int, route: Dictionary) -> void:
 		var leaf: Node3D = portal_leaves[key]
 		portal_leaves.erase(key); leaf.queue_free()
 	if portal_depth_views.has(key): portal_depth_views[key].queue_free(); portal_depth_views.erase(key)
+	if portal_backings.has(key): portal_backings[key].queue_free(); portal_backings.erase(key)
 	transition_doors.erase(key)
 	_refresh_native_floor_apertures(_room_key(stage, area))
 	_refresh_open_meshes(_room_key(stage, area), str(portal["source_panel"]["node"]))
@@ -713,6 +715,11 @@ func _create_doorway_depth(portal: Dictionary, leaf: Node3D) -> void:
 		mesh.surface_set_material(mesh.get_surface_count() - 1, material)
 	if mesh.get_surface_count() == 0: return
 	var depth := MeshInstance3D.new(); depth.name = "DoorwayDepth"; depth.mesh = mesh; depth.set_meta("pc_doorway_depth", maximum - minimum); add_child(depth); portal_depth_views[key] = depth
+func _create_doorway_backing(portal: Dictionary, key: String) -> void:
+	if portal.has("destination_panel") or rooms.has(_room_key(str(portal["destination"]["stage"]), int(portal["destination"]["area"]))) or portal_backings.has(key) or not portal_leaves.has(key): return
+	var axis := 0 if str(portal["normal_axis"]) == "x" else 2; var sign := _outward_sign(portal, true); var center: Array = portal["world_center"]; var sweep: AABB = portal_leaves[key].get_meta("sweep_bounds"); var far := (sweep.end[axis] if sign > 0.0 else sweep.position[axis]) - float(center[axis])
+	var quad := QuadMesh.new(); quad.size = Vector2(float(portal["shared_panel_size"][0]) + 0.2, float(portal["shared_panel_size"][1]) + 0.2); var material := StandardMaterial3D.new(); material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; material.albedo_color = Color.BLACK; material.cull_mode = BaseMaterial3D.CULL_DISABLED; material.disable_fog = true; quad.material = material
+	var backing := MeshInstance3D.new(); backing.name = "DoorwayBacking"; backing.mesh = quad; backing.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF; add_child(backing); backing.global_position = Vector3(float(center[0]), float(center[1]), float(center[2])) + (Vector3.RIGHT if axis == 0 else Vector3.BACK) * (far + 0.05 * sign); backing.rotation.y = PI * 0.5 if axis == 0 else 0.0; portal_backings[key] = backing
 func _portal_by_key(key: String) -> Dictionary:
 	for portal: Dictionary in portal_layout:
 		if _portal_key(portal) == key: return portal

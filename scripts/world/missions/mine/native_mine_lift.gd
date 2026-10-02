@@ -77,6 +77,7 @@ func _physics_process(_delta: float) -> void:
 func ride_scene() -> void:
 	riding = true; var player: CharacterBody3D = host.player; var first: Dictionary = ride["first_frame"]; var origin := actor.global_position; var direction := -1.0 if int(lift["direction"]) != 0 else 1.0
 	player.velocity = Vector3.ZERO; player.player_model.rotation.y = -float((int(lift["yaw_raw"]) + int(first["yaw_offset_raw"])) & 4095) * TAU / 4096.0; player._play_animation("idle"); player.global_position = Vector3(origin.x, origin.y - float(first["player_height_raw"]) / 256.0, origin.z)
+	player.set_camera_shot(_shot(origin))
 	var frame := 0; var speed := 0; var elapsed := 0.0; var rate := float(ride["tick_hz"]); var period := int(ride["motor_sound_period_by_tick_mode"]["default"])
 	covered = false
 	while not covered and is_instance_valid(actor):
@@ -89,6 +90,12 @@ func ride_scene() -> void:
 			if frame - 1 < int(ride["motor_sound_frames"]) and (frame - 1) % period == 0: host.audio.play_at(int(ride["motor_sound"]), actor.global_position)
 	if is_instance_valid(actor): actor.global_position = origin
 	riding = false
+func _shot(origin: Vector3) -> Vector3:
+	var forward: Vector3 = -host.player.player_model.global_basis.z; forward.y = 0.0; forward = forward.normalized(); var area := int(lift["area"]); var best := Vector3.INF; var reach := -1.0
+	for direction: Vector3 in [forward, -forward]:
+		var point: Vector3 = host._ladder_shot(origin, direction, "ST0F", area, false, 0.0, true); var distance := Vector2(point.x - origin.x, point.z - origin.z).length()
+		if distance > reach: best = point; reach = distance
+	return best
 func _cover() -> void:
 	await host.transition_overlay.request(int(ride["fade_code"])); covered = true
 func _flag(id: int) -> bool:

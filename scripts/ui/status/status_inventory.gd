@@ -25,12 +25,13 @@ func _add_shop_items() -> void:
 	if not source is Dictionary: return
 	for code_text: String in source["names"]:
 		var code := int(code_text); var item_name := _plain(str(source["names"][code_text]))
-		if code < 0x394 or code >= 0x478 or item_name.is_empty() or item_name == "Nothing": continue
-		var group := "key_items" if code >= 0x3d0 and code < 0x400 else "items" if code >= 0x400 else "body_parts" if code >= 0x3b8 else "buster_parts"
+		var weapon := code >= 0x383 and code < 0x394
+		if code < 0x383 or code >= 0x478 or item_name.is_empty() or item_name == "Nothing": continue
+		var group := "special_weapons" if weapon else "key_items" if code >= 0x3d0 and code < 0x400 else "items" if code >= 0x400 else "body_parts" if code >= 0x3b8 else "buster_parts"; var key := str(code - 0x380) if weapon else code_text
 		var definition := {"name": item_name, "description": _plain(str(source["descriptions"].get(code_text, "")))}
 		if group == "body_parts": definition["slot"] = 0 if code < 0x3bc else 1 if code < 0x3c8 else 2
 		if not definitions.has(group): definitions[group] = {}
-		if not definitions[group].has(code_text): definitions[group][code_text] = definition
+		if not definitions[group].has(key): definitions[group][key] = definition
 static func _plain(text: String) -> String:
 	for entry: Array in [["\ue064", "\u03b1"], ["\ue065", "\u03a9"], ["\ue061", "-"], ["\ue05e", "+"], ["\ue049", "z"], ["\ue050", " "]]: text = text.replace(entry[0], entry[1])
 	var plain := ""

@@ -62,6 +62,13 @@ func _tick(held: bool) -> void:
 	model.rotation.y += clampf(wrapf(atan2(-offset.x, -offset.z) - model.rotation.y, -PI, PI), -step, step)
 func _registered(node: Node3D) -> bool:
 	if not node.is_in_group("lock_targets") or not node.is_visible_in_tree(): return false
+	# Only the active area's actors exist in the original; streamed neighbour rooms must not offer targets through walls.
+	var stream: Node = player.get_parent().get("room_stream") if player.get_parent() != null else null
+	if is_instance_valid(stream) and bool(player.get_parent().get("streaming_rooms")):
+		var active: Node3D = stream.rooms.get(stream.active_room_key) as Node3D
+		if is_instance_valid(active) and not active.is_ancestor_of(node):
+			for room: Node3D in stream.rooms.values():
+				if is_instance_valid(room) and room.is_ancestor_of(node): return false
 	var profile: Dictionary = node.get_meta("native_lock_on", {})
 	if not profile.is_empty():
 		var mask := int(profile["mask"]); var category := (mask & 0xE00000) >> 21

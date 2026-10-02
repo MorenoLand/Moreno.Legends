@@ -2,6 +2,25 @@
 extends RefCounted
 static var lighting_cache: Dictionary = {}
 static var stream_cache: Dictionary = {}
+static var blend_shaders: Dictionary = {}
+static func model_shader(blend: int = 0) -> Shader:
+	var base := preload("res://shaders/native_model.gdshader")
+	if blend <= 0: return base
+	if not blend_shaders.has(blend):
+		var shader := Shader.new(); var alpha := "(pixel.a > 0.75 ? 1.0 : 0.5)" if blend == 1 else "1.0"
+		shader.code = base.code.replace("render_mode unshaded, cull_disabled;", "render_mode unshaded, cull_disabled, depth_draw_never, %s;" % ["blend_mix", "blend_add", "blend_sub"][blend - 1]).replace("ALPHA = pixel.a;", "if (pixel.a < 0.25) { discard; }
+	ALPHA = %s;" % alpha).replace("ALPHA_SCISSOR_THRESHOLD = 0.5;", ""); blend_shaders[blend] = shader
+	return blend_shaders[blend]
+static func translucent(root: Node3D, blend: int) -> void:
+	var nodes: Array[Node] = root.find_children("*", "MeshInstance3D", true, false)
+	if root is MeshInstance3D: nodes.push_front(root)
+	for node: Node in nodes:
+		var mesh := node as MeshInstance3D
+		if mesh.mesh == null: continue
+		for surface in range(mesh.mesh.get_surface_count()):
+			var material := mesh.get_active_material(surface) as ShaderMaterial
+			if material != null: material.shader = model_shader(blend)
+static func is_model_shader(shader: Shader) -> bool: return shader == preload("res://shaders/native_model.gdshader") or blend_shaders.values().has(shader)
 static func area_parameters(path: String, area: int) -> Dictionary:
 	if not lighting_cache.has(path):
 		var data: Variant = JSON.parse_string(FileAccess.get_file_as_string(path)) if FileAccess.file_exists(path) else null
@@ -20,14 +39,14 @@ static func apply(root: Node3D, color_scale: float = 255.0) -> void:
 		for surface in range(mesh.mesh.get_surface_count()):
 			var active := mesh.get_active_material(surface) as ShaderMaterial
 			if active != null:
-				if active.shader == preload("res://shaders/native_model.gdshader"): active.set_shader_parameter("coplanar_overlay_flags", bool(mesh.mesh.get_meta("coplanar_overlays", active.get_shader_parameter("coplanar_overlay_flags"))))
+				if is_model_shader(active.shader): active.set_shader_parameter("coplanar_overlay_flags", bool(mesh.mesh.get_meta("coplanar_overlays", active.get_shader_parameter("coplanar_overlay_flags"))))
 				if mesh.has_meta("native_stream_visibility"): active.set_shader_parameter("hidden_face_range", mesh.get_meta("native_stream_visibility"))
 				continue
 			var source := mesh.get_active_material(surface) as BaseMaterial3D
 			if source == null: continue
 			var material := ShaderMaterial.new()
 			material.resource_name = source.resource_name
-			material.shader = preload("res://shaders/native_model.gdshader")
+			material.shader = model_shader(int(source.get_meta("extras", {}).get("psx_blend", 0)) if source.has_meta("extras") else 0)
 			material.set_shader_parameter("albedo_texture", source.albedo_texture)
 			material.set_shader_parameter("color_scale", color_scale)
 			material.set_shader_parameter("double_sided", source.cull_mode == BaseMaterial3D.CULL_DISABLED)

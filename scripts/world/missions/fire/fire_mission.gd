@@ -81,7 +81,7 @@ func _steam(position_raw: Vector3i, subtype: int) -> void: _effects().spawn_stea
 func _smoke(position_raw: Vector3i) -> Dictionary: return _effects().spawn_smoke(position_raw)
 func _contact(fire: Node3D, damage: int) -> void:
 	if host.player.no_clip or not host.player.hurt_phase.is_empty(): return
-	host.player.take_hit(maxi(1, (damage * 3) >> 2), 0, host.player.global_position - fire.global_position)
+	host.player.take_hit(damage, 0, host.player.global_position - fire.global_position)
 func _fire_out(_fire: Node3D, behaviour: int) -> void:
 	remaining -= 1; extinguished_total += 1; idle = 0
 	var profile: Dictionary = data["areas"][str(area)]

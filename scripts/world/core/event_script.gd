@@ -137,7 +137,7 @@ func _present_entry(stage: String, index: int, source_address: String, source_ac
 			_on_native_page_started(stage, active_program_index, active_page_commands.size())
 			if continuation and dialogue.has_method("finish_native_message"): dialogue.finish_native_message()
 			break
-		var entry: Dictionary = {"index": active_program_index, "text": "\n".join(pages), "native_pages": pages, "native_page_speeds": resolved.get("page_speeds", []), "native_page_wait_updates": resolved.get("page_wait_updates", []), "native_page_choices": resolved.get("page_choices", []), "native_page_commands": active_page_commands, "native_tail_commands": active_tail_commands, "continue_window": bool(resolved.get("needs_choice", false))}
+		var entry: Dictionary = {"index": active_program_index, "text": "\n".join(pages), "native_pages": pages, "native_page_speeds": resolved.get("page_speeds", []), "native_page_wait_updates": resolved.get("page_wait_updates", []), "native_page_choices": resolved.get("page_choices", []), "native_page_commands": active_page_commands, "native_tail_commands": active_tail_commands, "continue_window": bool(resolved.get("needs_choice", false)), "heading_panel": _heading_panel(resolved)}
 		var result: Dictionary = await dialogue.present_message(stage, entry)
 		if not bool(resolved.get("needs_choice", false)): break
 		var selected := int(result.get("choice_index", -1))
@@ -171,7 +171,7 @@ func _resolve_program(stage: String, initial_index: int, window_state: Dictionar
 	if window_state.is_empty(): window_state = {"flags": 0x00010083, "byte23": 2, "choice_index": 0, "text_speed": 2, "origin_x": 32, "origin_y": 176, "window_width": 144, "window_lines": 3}
 	prepare_stage(stage)
 	if not entries.has(stage): return {"supported": false}
-	var pages: Array[String] = []; var page_speeds: Array[Array] = []; var page_wait_updates: Array[int] = []; var page_choices: Array[Dictionary] = []; var page_commands: Array = []; var current_page_commands: Array[Dictionary] = []; var tail_commands: Array[Dictionary] = []; var visited := {}; var simulated_context: Dictionary = native_context.duplicate(true); var message_index := initial_index; var start_offset := initial_offset; var page_text := ""; var page_speed := int(window_state.get("text_speed", 2)); var page_speed_counts: Array[int] = []; var choice_text_offsets := {}
+	var pages: Array[String] = []; var page_speeds: Array[Array] = []; var page_wait_updates: Array[int] = []; var page_choices: Array[Dictionary] = []; var page_commands: Array = []; var current_page_commands: Array[Dictionary] = []; var tail_commands: Array[Dictionary] = []; var visited := {}; var simulated_context: Dictionary = native_context.duplicate(true); var message_index := initial_index; var start_offset := initial_offset; var page_text := ""; var page_speed := int(window_state.get("text_speed", 2)); var page_speed_counts: Array[int] = []; var choice_text_offsets := {}; var nested_windows := {}
 	for _step in range(128):
 		if visited.has(message_index) or not entries[stage].has(message_index): return {"supported": false}
 		visited[message_index] = true; var entry: Dictionary = entries[stage][message_index]; var trace: Dictionary = entry.get("program_trace", {}); var runs: Array = entry.get("text_runs", trace.get("text_runs", entry.get("text_blocks", trace.get("display_text_runs", [])))); var commands: Array = entry.get("native_commands", trace.get("commands", [])); var events: Array[Dictionary] = []; var order := 0
@@ -189,7 +189,7 @@ func _resolve_program(stage: String, initial_index: int, window_state: Dictionar
 			var fallback_text := str(entry.get("text", "")) if _has_displayable_text(entry) else ""; page_text += fallback_text; _append_speed(page_speed_counts, fallback_text, page_speed)
 			if not page_text.strip_edges().is_empty(): pages.append(page_text); page_speeds.append(page_speed_counts.duplicate()); page_wait_updates.append(0); page_choices.append({}); page_commands.append(current_page_commands)
 			else: tail_commands = current_page_commands
-			return {"supported": true, "program_index": message_index, "pages": pages, "page_speeds": page_speeds, "page_wait_updates": page_wait_updates, "page_choices": page_choices, "page_commands": page_commands, "tail_commands": tail_commands}
+			return {"supported": true, "program_index": message_index, "pages": pages, "page_speeds": page_speeds, "page_wait_updates": page_wait_updates, "page_choices": page_choices, "page_commands": page_commands, "tail_commands": tail_commands, "nested_windows": nested_windows}
 		events.sort_custom(func(a: Dictionary, b: Dictionary): return int(a["offset"]) < int(b["offset"]) if int(a["offset"]) != int(b["offset"]) else int(a["order"]) < int(b["order"]))
 		var redirected := false
 		for event: Dictionary in events:
@@ -202,7 +202,7 @@ func _resolve_program(stage: String, initial_index: int, window_state: Dictionar
 			var command: Dictionary = event["command"]; var opcode := _native_opcode(command); var arguments := _native_arguments(command); var target := -1; var command_length := _integer(command.get("native_length", 0), 0)
 			match opcode:
 				0x2B:
-					if not arguments.is_empty() or dialogue == null or bool(dialogue.get("active")): return {"supported": false}
+					if not arguments.is_empty() or dialogue == null or bool(dialogue.get("active")) and initial_offset < 0: return {"supported": false}
 				0x18, 0x24:
 					current_page_commands.append({"opcode": opcode, "arguments": arguments, "source_command": command.duplicate(true)})
 					pages.append(page_text); page_speeds.append(page_speed_counts.duplicate()); page_wait_updates.append(0); page_choices.append({}); page_commands.append(current_page_commands); current_page_commands = []; page_text = ""; page_speed_counts.clear()
@@ -267,7 +267,7 @@ func _resolve_program(stage: String, initial_index: int, window_state: Dictionar
 					for row_index in range(count): choice_rows[row_index]["native_coordinates"] = coordinates[row_index]
 					current_page_commands.append({"opcode": opcode, "arguments": arguments, "source_command": command.duplicate(true)})
 					pages.append(page_text); page_speeds.append(page_speed_counts.duplicate()); page_wait_updates.append(0); page_choices.append({"rows": choice_rows, "native_coordinates": coordinates, "cancel_disabled": opcode == 0x10, "selected_index": int(window_state.get("choice_index", -1)), "window_flags": int(window_state.get("flags", 0)), "window_origin": [int(window_state.get("origin_x", 32)), int(window_state.get("origin_y", 176))], "window_width": int(window_state.get("window_width", 144)), "window_lines": int(window_state.get("window_lines", 3))}); page_commands.append(current_page_commands); current_page_commands = []; page_text = ""; page_speed_counts.clear(); start_offset = -1
-					return {"supported": true, "program_index": message_index, "pages": pages, "page_speeds": page_speeds, "page_wait_updates": page_wait_updates, "page_choices": page_choices, "page_commands": page_commands, "tail_commands": tail_commands, "needs_choice": true, "resume_index": message_index, "resume_offset": int(event["offset"]) + command_length}
+					return {"supported": true, "program_index": message_index, "pages": pages, "page_speeds": page_speeds, "page_wait_updates": page_wait_updates, "page_choices": page_choices, "page_commands": page_commands, "tail_commands": tail_commands, "nested_windows": nested_windows, "needs_choice": true, "resume_index": message_index, "resume_offset": int(event["offset"]) + command_length}
 				0x3E:
 					if arguments.size() != 2 or not simulated_context.has("native_save_word40") or not simulated_context.has("native_save_byte44"): return {"supported": false}
 					var mutation := native_stat_mutation(simulated_context, _signed_be16(arguments[0], arguments[1])); simulated_context.merge(mutation, true); current_page_commands.append({"opcode": opcode, "arguments": arguments, "source_command": command.duplicate(true), "native_context_mutation": mutation})
@@ -280,6 +280,14 @@ func _resolve_program(stage: String, initial_index: int, window_state: Dictionar
 				0x47:
 					if arguments.size() != 4 or arguments[0] >= 8: return {"supported": false}
 					target = int(arguments[3] if int(simulated_context.get("native_save_byte%x" % (0x7C + arguments[0]), 0)) < arguments[1] else arguments[2])
+				0x12:
+					if arguments.size() != 2: return {"supported": false}
+					var nested := _nested_window(stage, arguments[1], simulated_context)
+					if nested.is_empty(): return {"supported": false}
+					nested_windows[arguments[0]] = nested
+				0x41:
+					if arguments.size() != 3 or not simulated_context.has("native_save_byte45"): return {"supported": false}
+					var tier := int(simulated_context["native_save_byte45"]); target = int(arguments[tier]) if tier >= 0 and tier < 3 else 0xFF
 				0x3F:
 					if arguments.size() != 3 or not simulated_context.has("native_save_byte44"): return {"supported": false}
 					var state := int(simulated_context["native_save_byte44"]); target = int(arguments[state]) if state >= 0 and state < 3 else 0xFF
@@ -292,8 +300,10 @@ func _resolve_program(stage: String, initial_index: int, window_state: Dictionar
 						if not simulated_context.has("event_flags") or not simulated_context["event_flags"] is Dictionary: return {"supported": false}
 						var event_id := (int(arguments[0]) << 8) | int(arguments[1]); var simulated_flags: Dictionary = simulated_context["event_flags"]; var event_key: Variant = event_id if simulated_flags.has(event_id) or not simulated_flags.has(str(event_id)) else str(event_id); simulated_flags[event_key] = opcode == 0x26; simulated_context["event_flags"] = simulated_flags
 					current_page_commands.append({"opcode": opcode, "arguments": arguments, "source_command": command.duplicate(true)})
-				0x0A, 0x0B, 0x20, 0x22:
+				0x0A, 0x0B, 0x20, 0x22, 0x2E:
 					pass
+				0x3D:
+					var item_text := str(simulated_context.get("native_item_name", "")); page_text += item_text; _append_speed(page_speed_counts, item_text, page_speed)
 				0x0C, 0x1A, 0x3C:
 					if opcode == 0x3C and arguments.size() != 12: return {"supported": false}
 					current_page_commands.append({"opcode": opcode, "arguments": arguments, "source_command": command.duplicate(true)})
@@ -301,15 +311,23 @@ func _resolve_program(stage: String, initial_index: int, window_state: Dictionar
 					pass
 				_:
 					return {"supported": false}
-			if opcode in [0x0E, 0x11, 0x16, 0x28, 0x2A, 0x3F, 0x42, 0x47] and target < 0: return {"supported": false}
-			if opcode in [0x11, 0x16, 0x28, 0x2A, 0x3F, 0x42, 0x47] and target == 0xFF: continue
-			if opcode in [0x0E, 0x11, 0x16, 0x28, 0x2A, 0x3F, 0x42, 0x47] and target >= 0:
+			if opcode in [0x0E, 0x11, 0x16, 0x28, 0x2A, 0x3F, 0x41, 0x42, 0x47] and target < 0: return {"supported": false}
+			if opcode in [0x11, 0x16, 0x28, 0x2A, 0x3F, 0x41, 0x42, 0x47] and target == 0xFF: continue
+			if opcode in [0x0E, 0x11, 0x16, 0x28, 0x2A, 0x3F, 0x41, 0x42, 0x47] and target >= 0:
 				message_index = target; start_offset = -1; redirected = true; break
 		if redirected: continue
 		if not page_text.strip_edges().is_empty(): pages.append(page_text); page_speeds.append(page_speed_counts.duplicate()); page_wait_updates.append(0); page_choices.append({}); page_commands.append(current_page_commands)
 		elif not current_page_commands.is_empty(): tail_commands = current_page_commands
-		return {"supported": true, "program_index": message_index, "pages": pages, "page_speeds": page_speeds, "page_wait_updates": page_wait_updates, "page_choices": page_choices, "page_commands": page_commands, "tail_commands": tail_commands}
+		return {"supported": true, "program_index": message_index, "pages": pages, "page_speeds": page_speeds, "page_wait_updates": page_wait_updates, "page_choices": page_choices, "page_commands": page_commands, "tail_commands": tail_commands, "nested_windows": nested_windows}
 	return {"supported": false}
+func _nested_window(stage: String, index: int, context: Dictionary) -> Dictionary:
+	var state := {"flags": 0x00010083, "byte23": 2, "choice_index": 0, "text_speed": 2, "origin_x": 32, "origin_y": 176, "window_width": 144, "window_lines": 3}; var outer := native_context; native_context = context
+	var nested := _resolve_program(stage, index, state); native_context = outer
+	if not bool(nested.get("supported", false)) or nested["pages"].is_empty(): return {}
+	var origin := Vector2(float(state["origin_x"]), float(state["origin_y"])); var width := int(state["window_width"]); var lines := maxi(1, int(state["window_lines"]) & 15)
+	return {"text": "\n".join(nested["pages"]), "origin": origin, "frame": Rect2(origin - Vector2(7, 3), Vector2(2 * width + 3, 16 * lines + 7))}
+func _heading_panel(resolved: Dictionary) -> Dictionary:
+	var windows: Dictionary = resolved.get("nested_windows", {}); return windows[windows.keys()[0]] if not windows.is_empty() else {}
 func _append_speed(speeds: Array[int], value: String, speed: int) -> void:
 	for _character in value: speeds.append(maxi(speed, 0))
 func _format_native_number(value: int, descriptor: int, metadata: Dictionary) -> String:

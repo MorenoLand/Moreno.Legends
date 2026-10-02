@@ -781,9 +781,9 @@ def stage_voice_tables(stage):
 	overlay = (ROOT / "build/disc-assets/DAT" / (stage + "T.BIN")).read_bytes(); code = overlay[0x30:]; tables = {}
 	for index in range(8, len(code) - 3, 4):
 		word = struct.unpack_from("<I", code, index)[0]
-		if word >> 16 != 0xAC62 or (word & 0xFFFF) not in (0x8DD4, 0x8DD8): continue
-		window = [struct.unpack_from("<I", code, cursor)[0] for cursor in range(max(0, index - 24), index, 4)]; highs = [value for value in window if value >> 16 == 0x3C02]; lows = [value for value in window if value >> 16 == 0x2442]
-		if not highs or not lows: continue
+		if word >> 26 != 0x2B or (word & 0xFFFF) not in (0x8DD4, 0x8DD8): continue
+		register = (word >> 16) & 31; window = [struct.unpack_from("<I", code, cursor)[0] for cursor in range(max(0, index - 24), index, 4)]; highs = [value for value in window if value >> 16 == 0x3C00 | register]; lows = [value for value in window if value >> 16 == 0x2400 | register << 5 | register]
+		if not register or not highs or not lows: continue
 		high, low = highs[-1], lows[-1]
 		tables[0x8000 if word & 0xFFFF == 0x8DD4 else 0] = ((high & 0xFFFF) << 16) + (low & 0xFFFF) - (0x10000 if low & 0x8000 else 0)
 	return overlay, tables

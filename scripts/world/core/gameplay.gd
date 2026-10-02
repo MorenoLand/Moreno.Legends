@@ -10,6 +10,7 @@ signal game_over_requested
 var room_transfer_pending := false
 var prop_reward_message := ""
 var shop_pending := false
+var development_pending := false
 var shop_stage := ""
 @export_file("*.json") var manifest_path := "res://assets/levels/ST04/manifest.json":
 	set(value):
@@ -30,6 +31,7 @@ var spawn_position := Vector3.ZERO
 var loading := false
 var routes: Array = []
 var automatic_gate_diagnostics: Dictionary = {}
+var automatic_attempt := ""
 var nearest_door: Dictionary = {}
 var nearest_map_interaction: Dictionary = {}
 var map_interaction_cache: Dictionary = {}
@@ -58,6 +60,7 @@ var actor_route: Dictionary = {}
 var actor_models: Dictionary = {}
 var preparation_finished := false
 var playable := false
+const PLAY_TIME_LIMIT := 17999999.0 / 50.0
 var play_time_seconds := 0.0
 var stage_events: Dictionary = {}
 var explored_stages: Dictionary = {}
@@ -221,11 +224,13 @@ func _ready() -> void:
 	player.died.connect(_player_died)
 	player.fired.connect(_on_player_fired)
 	player.special_sound_requested.connect(audio.play_sound)
-	if is_instance_valid(player.hose): player.hose.gauge_changed.connect(_special_gauge)
+	if is_instance_valid(player.hose): player.hose.gauge_changed.connect(_special_gauge.bind(15))
+	for id: int in player.shots: player.shots[id].gauge_changed.connect(_special_gauge.bind(id))
 	playable = await _select_area(initial_area)
 	preparation_finished = true
 	prepared.emit(playable)
 func _commit_story_state() -> void:
+	_sync_outfit_override()
 	var story := int(native_context.get("native_save_byte14", 0)); var pending := int(native_context.get("native_save_byte15", story))
 	if pending == story: return
 	var flags: Dictionary = native_context.get("event_flags", {})
@@ -386,6 +391,7 @@ func _run_native_scene_requests(parent: Node3D, stage: String, area: int) -> voi
 	_update_native_player_pose(); loading = false; area_picker.disabled = false; player.set_physics_process(true)
 func save_state(allow_loading: bool = false) -> Dictionary:
 	if (loading and not allow_loading) or not playable: return {}
+	sync_items(); native_context["native_wallet"] = player.zenny
 	var defeated: Array = []
 	for id in event_flags:
 		if event_flags[id]: defeated.append(int(id))
@@ -403,6 +409,14 @@ func save_state(allow_loading: bool = false) -> Dictionary:
 	events[stage] = defeated
 	var explored := explored_stages.duplicate(true); explored[stage] = cells
 	return {"stage": stage, "area": int(areas[area_picker.selected]["index"]), "location_name": get_location_names()["main"], "player": {"position": [point.x, point.y, point.z], "yaw": player.player_model.rotation.y, "camera_rotation": [camera_rotation.x, camera_rotation.y, camera_rotation.z], "health": player.health, "max_health": player.max_health, "zenny": player.zenny, "inventory": player.inventory.duplicate(true), "equipment": player.equipment.duplicate(true), "equipped_special": player.equipped_special, "special_usable": player.special_usable}, "play_time_seconds": play_time_seconds, "defeated_actors": defeated, "minimap": cells, "stage_events": events, "explored_stages": explored, "parked_location": parked_location.duplicate(true), "native_context": native_context.duplicate(true)}
+func sync_items() -> void:
+	preload("res://scripts/state/item_flags.gd").sync(player, native_context)
+func carry_state() -> Dictionary:
+	sync_items(); native_context["native_wallet"] = player.zenny
+	return {"max_health": player.max_health, "health": player.health, "zenny": player.zenny, "inventory": player.inventory.duplicate(true), "equipment": player.equipment.duplicate(true), "equipped_special": player.equipped_special, "special_usable": player.special_usable, "play_time_seconds": play_time_seconds}
+func apply_carry(carried: Dictionary) -> void:
+	player.max_health = int(carried["max_health"]); player.health = int(carried["health"]); player.zenny = int(carried["zenny"]); player.inventory = carried["inventory"]; player.equipment = carried["equipment"]; player.equipped_special = int(carried["equipped_special"]); player.special_usable = bool(carried["special_usable"]); play_time_seconds = float(carried["play_time_seconds"]); native_context["native_wallet"] = player.zenny
+	player.health_changed.emit(player.health, player.max_health); game_hud.set_health(player.health, player.max_health, true)
 func get_location_names() -> Dictionary:
 	var stage := manifest_path.get_base_dir().get_file()
 	var main_name := stage
@@ -420,9 +434,9 @@ func _special_mode(stage: String) -> int:
 	var entry: Dictionary = parsed.get("stages", {}).get(stage, {}) if parsed is Dictionary else {}
 	# Stages whose area handler picks the mode at runtime (several candidates) default to 1 (unverified).
 	return int(entry["mode"]) if entry.get("mode") != null else 1
-func _special_gauge(charge: int, capacity: int, segment: int, power: int, power_max: int) -> void:
-	var active: bool = player.active_special() == 15
-	if not active and game_hud.special_capacity == 0: return
+func _special_gauge(charge: int, capacity: int, segment: int, power: int, power_max: int, weapon: int) -> void:
+	var active: bool = player.active_special() == weapon
+	if not active and (player.active_special() == 15 or player.shots.has(player.active_special()) or game_hud.special_capacity == 0): return
 	game_hud.special_capacity = capacity if active else 0; game_hud.special_charge = charge; game_hud.special_segment = segment; game_hud.special_power = power; game_hud.special_power_max = power_max; game_hud.queue_redraw()
 func _apply_fog(area: int) -> void:
 	var stage := manifest_path.get_base_dir().get_file(); var fog_stage := stage; var fog_area := area; var exterior: bool = not streaming_rooms or room_stream.is_exterior_room(stage, area)
@@ -447,6 +461,7 @@ func _set_current_area(area: int) -> void:
 	_update_native_player_pose()
 	_apply_fog(area)
 	game_hud.set_area(area)
+	if streaming_rooms: _load_actors()
 	if is_instance_valid(weather): weather.configure(manifest_path.get_base_dir().get_file(), area, player.camera, native_context)
 func _limit_location_popup(picker: OptionButton) -> void:
 	picker.get_popup().max_size = Vector2i(roundi(picker.size.x * picker.get_global_transform_with_canvas().get_scale().x), roundi(get_viewport().get_visible_rect().size.y * 0.5))
@@ -481,7 +496,8 @@ func restore_state(state: Dictionary) -> bool:
 	player.inventory = saved.get("inventory", player.inventory).duplicate(true)
 	player.equipment = saved.get("equipment", player.equipment).duplicate(true)
 	player.equipped_special = int(saved.get("equipped_special", 0)); player.special_usable = bool(saved.get("special_usable", true))
-	play_time_seconds = float(state.get("play_time_seconds", 0.0))
+	play_time_seconds = minf(float(state.get("play_time_seconds", 0.0)), PLAY_TIME_LIMIT)
+	native_context["native_wallet"] = player.zenny; sync_items(); _sync_outfit_override()
 	if not entry_route.is_empty() and not apply_native_arrival(entry_route): return false
 	game_hud.minimap.explored.clear()
 	for cell: Array in state["minimap"]: game_hud.minimap.explored[Vector3i(int(cell[0]), int(cell[1]), int(cell[2]))] = true
@@ -518,7 +534,7 @@ func _load_actors() -> void:
 		actor.queue_free()
 	for entry: Dictionary in actor_manifest.get("npc_instances", []):
 		if int(entry.get("actor_class", -1)) == 0:
-			if int(areas[area_picker.selected]["index"]) not in entry.get("global_area_indices", [entry.get("area_index", -1)]): continue
+			if not (entry.get("global_area_indices", [entry.get("area_index", -1)]) as Array).map(func(value: Variant) -> int: return int(value)).has(int(areas[area_picker.selected]["index"])): continue
 			var npc := preload("res://scripts/world/actors/friendly_actor.gd").new()
 			npc.name = "NPC_%06X" % int(entry["file_offset"])
 			actors.add_child(npc)
@@ -540,7 +556,7 @@ func _load_actors() -> void:
 		if actor_route.get("yaw_offset_gate", false) and int(entry["flags2"]) & 128:
 			actor.native_yaw = (actor.native_yaw + 2048) & 4095; actor.region_yaw = (actor.region_yaw + 2048) & 4095; actor.patrol_yaw = (actor.patrol_yaw + 2048) & 4095; actor.rotation.y = float(actor.native_yaw) * TAU / 4096.0
 func _actor_contact(actor: CharacterBody3D, damage: int, flags: int) -> void:
-	if not player.no_clip: player.take_hit(maxi(1, (damage * 3) >> 2), flags, player.global_position - actor.global_position)
+	if not player.no_clip: player.take_hit(damage, flags, player.global_position - actor.global_position)
 func _actor_died(actor: CharacterBody3D) -> void:
 	event_flags[int(actor.source["instance_id"])] = true
 func _spawn_actor_drops(_actor: CharacterBody3D, entries: Array) -> void:
@@ -602,6 +618,7 @@ func _native_dialogue_command(stage: String, index: int, opcode: int, arguments:
 	if opcode == 0x1A and source.has("xa_id"): play_voice(stage, int(source["xa_id"]) & 0xFFFF)
 	if opcode == 0x0C: voice_hold = true
 	if opcode == 0x26 and arguments.size() == 2 and (int(arguments[0]) << 8 | int(arguments[1])) == 0x6FF and preload("res://scripts/ui/menus/shop_menu.gd").supports(stage): shop_pending = true; shop_stage = stage; _release_shop_message.call_deferred()
+	if opcode == 0x26 and arguments.size() == 2 and (int(arguments[0]) << 8 | int(arguments[1])) == 0x6FD and stage == "ST04" and FileAccess.file_exists("res://assets/development/development.json"): development_pending = true
 	if opcode == 0x3C and str(source.get("effect", "")) == "stage_request": _begin_message_stage_request.call_deferred(source)
 	var mutation: Dictionary = source.get("native_context_mutation", {})
 	if mutation.has("native_wallet"): player.zenny = int(mutation["native_wallet"])
@@ -615,6 +632,11 @@ func _run_shop() -> void:
 	var flags: Dictionary = native_context.get("event_flags", {}); var shop := preload("res://scripts/ui/menus/shop_menu.gd").new(); $HUD.add_child(shop)
 	await shop.run(self, shop_stage, 1 if bool(flags.get(0x6FE, flags.get("1790", false))) else 0)
 	if is_instance_valid(shop): shop.queue_free()
+func _run_development() -> void:
+	development_pending = false
+	var development := preload("res://scripts/ui/menus/development_menu.gd").new(); $HUD.add_child(development)
+	await development.develop(self)
+	if is_instance_valid(development): development.queue_free()
 func _begin_message_stage_request(source: Dictionary) -> void:
 	if message_stage_pending: return
 	message_stage_pending = true
@@ -683,6 +705,7 @@ func _use_map_interaction(interaction: Dictionary) -> void:
 	var success: bool = await event_script.play_bound_message(stage, str(interaction["source_bank_pointer"]), int(interaction["runtime_index"]), str(interaction["source_function"]), null, int(interaction.get("window", 0)))
 	if not is_inside_tree(): return
 	if not success: push_error("Native map interaction did not execute in %s:%d" % [stage, int(interaction["runtime_index"])])
+	if success and preload("res://scripts/ui/menus/slot_machine.gd").applies(stage, int(interaction["runtime_index"])): await preload("res://scripts/ui/menus/slot_machine.gd").play(self, $HUD)
 	loading = false; area_picker.disabled = false; player.set_physics_process(true)
 func native_scene_area(area: int, position_raw: Array, facing_raw: int) -> bool:
 	var index := -1
@@ -700,7 +723,14 @@ func _queue_entry_scenes(parent: Node3D, stage: String, area: int) -> void:
 		var key := "%s:%d" % [stage, int(trigger["scene_id"])]
 		if not trigger.has("entry_area") or float(area) not in (trigger["entry_area"] if trigger["entry_area"] is Array else [float(trigger["entry_area"])]) or entry_scene_latch.has(key) or trigger.has("native_save_byte14") and int(native_context.get("native_save_byte14", 0)) != int(trigger["native_save_byte14"]) or trigger.get("requires_event_flags_set", []).any(func(id: Variant) -> bool: return not _native_event_set(int(id))) or trigger.get("requires_event_flags_clear", []).any(func(id: Variant) -> bool: return _native_event_set(int(id))): continue
 		entry_scene_latch[key] = true; set_scene_presentation(true); var pending: Array = preload("res://scripts/world/actors/native_props.gd").pending_scene_requests(parent); pending.append({"key": "%s:%d:entry:%d" % [stage, area, int(trigger["scene_id"])], "stage": stage, "area": area, "source_function": str(trigger["source_function"]), "argument": int(trigger["scene_id"]), "status": "pending_native_scene"}); parent.set_meta("native_pending_scene_requests", pending)
+func _sync_outfit_override() -> void:
+	var rule: Dictionary = player.weapon_stats.data["outfit_override"]; var flags: Dictionary = native_context.get("event_flags", {}); var stage := manifest_path.get_base_dir().get_file(); var set_flag := func(id: int, value: bool): flags[id] = value; flags.erase(str(id)); native_context["event_flags"] = flags
+	var flag := func(id: int) -> bool: return bool(flags.get(id, flags.get(str(id), false)))
+	if stage in ["ST0B", "ST1B", "ST1B01"] and flag.call(int(rule["request_flag"])) and not flag.call(int(rule["active_flag"])): native_context["native_outfit_override"] = true; set_flag.call(int(rule["active_flag"]), true)
+	elif stage == "ST55" and bool(native_context.get("native_outfit_override", false)) and not flag.call(int(rule["restored_blocker_flag"])) and (flag.call(int(rule["restore_flags"][0])) or flag.call(int(rule["restore_flags"][1]))): native_context["native_outfit_override"] = false; set_flag.call(int(rule["restored_flag"]), true)
+	player.outfit_override = bool(native_context.get("native_outfit_override", false))
 func _native_context_changed(stage: String, area: int) -> void:
+	_sync_outfit_override()
 	if stage == manifest_path.get_base_dir().get_file() and not areas.is_empty() and area == int(areas[area_picker.selected]["index"]) and is_instance_valid(audio):
 		if await audio.set_stage(stage, area, native_context): _drain_native_actor_audio(stage, area)
 	if stage != manifest_path.get_base_dir().get_file() or areas.is_empty(): return
@@ -718,6 +748,11 @@ func _stream_room_activated(stage: String, area: int) -> void:
 	# Each streamed room has its own depth cue; actors spawned from here on must use the active room's area parameters.
 	depth_cue_parameters = preload("res://scripts/world/rendering/native_material.gd").area_parameters("res://assets/levels/%s/lighting.json" % stage, area)
 	preload("res://scripts/world/rendering/native_material.gd").depth_cue(player.player_model, depth_cue_parameters)
+	# Black depth-cue rooms (mine, ruins) draw a black backdrop instead of the sky, matching the far colour the geometry fades to.
+	var black_room: bool = bool(depth_cue_parameters.get("enabled", false)) and depth_cue_parameters.get("far_rgb", [0, 0, 0]) == [0, 0, 0]
+	if is_instance_valid(sky):
+		sky.set_flying(not black_room)
+		if black_room: sky.set_fog(false, depth_cue_parameters)
 	var old_stage := manifest_path.get_base_dir().get_file()
 	if old_stage != stage:
 		stage_events[old_stage] = event_flags.duplicate()
@@ -810,7 +845,8 @@ func _physics_process(_delta: float) -> void:
 			var roof_target := Vector3(roof_origin.x, maxf(roof_origin.y + 0.01, bounds.end.y + 1.0), roof_origin.z)
 			var roof_query := PhysicsRayQueryParameters3D.create(roof_origin, roof_target, 5); roof_query.exclude = [player.get_rid()]; roof_query.hit_back_faces = true
 			roof_status.text = "roof: " + str(not get_world_3d().direct_space_state.intersect_ray(roof_query).is_empty())
-	if playable and not loading: play_time_seconds += _delta
+	if playable and not loading: play_time_seconds = minf(play_time_seconds + _delta, PLAY_TIME_LIMIT)
+	if playable and not loading and Engine.get_physics_frames() % 30 == 0: sync_items()
 	if playable and not loading and is_instance_valid(zone_notice):
 		var zone_key := "%s:%d" % [manifest_path.get_base_dir().get_file(), int(areas[area_picker.selected]["index"])]
 		if zone_key != announced_zone:
@@ -866,9 +902,16 @@ func _update_enemy_warning() -> void:
 	if not is_instance_valid(actors): return
 	var warning := false
 	var viewport_rect := Rect2(Vector2.ZERO, get_viewport().get_visible_rect().size)
+	# Stage actors under Actors plus the native enemies spawned by props/encounters (they register as lock targets).
+	var candidates: Array = []
 	for actor in actors.get_children():
-		if not actor is CharacterBody3D or (actor.collision_layer & 8) == 0: continue
-		var point: Vector3 = actor.collision.global_position
+		if actor is CharacterBody3D and (actor.collision_layer & 8) != 0: candidates.append(actor)
+	if is_instance_valid(player.lock_on):
+		for node in get_tree().get_nodes_in_group("lock_targets"):
+			if node is Node3D and not node in candidates and player.lock_on._registered(node): candidates.append(node)
+	for actor: Node3D in candidates:
+		var body: Variant = actor.get("collision")
+		var point: Vector3 = body.global_position if body is Node3D and is_instance_valid(body) else player.lock_on.lock_point(actor)
 		var offset := Vector2(point.x - player.global_position.x, point.z - player.global_position.z) * 256.0
 		if offset.length_squared() > 0x9c3fff: continue
 		if player.camera.is_position_behind(point) or not viewport_rect.has_point(player.camera.unproject_position(point)): warning = true; break
@@ -978,6 +1021,7 @@ func _talk_to_npc(npc: Node3D) -> void:
 		var success: bool = await event_script.play_native_call(manifest_path.get_base_dir().get_file(), "0x800BDCF8", int(source["native_private_raw"][3]), npc); cancelled = not success
 	if not is_inside_tree(): return
 	if shop_pending: await _run_shop()
+	if development_pending: await _run_development()
 	if not is_inside_tree(): return
 	if is_instance_valid(data_talk_camera): data_talk_camera.begin_return(cancelled)
 	await preload("res://scripts/world/actors/native_interaction.gd").end_facing(facing)
@@ -1002,6 +1046,7 @@ func _run_data_menu(npc: Node3D, stage: String, bank: String, message_call: Stri
 		if selected == 0:
 			player.refill_health()
 			if is_instance_valid(player.hose) and player.hose.has_method("refill_energy"): player.hose.refill_energy()
+			for shot: Node in player.shots.values(): shot.refill_energy()
 			await event_script.play_bound_message(stage, bank, recharge_index, message_call, npc); return false
 		if selected == 1:
 			await _present_data_text(stage, DATA_TIPS[posmod(data_tip_index, DATA_TIPS.size())]); data_tip_index += 1
@@ -1119,16 +1164,18 @@ func _update_automatic_route() -> void:
 		if route.get("native_automatic_walk", null) is Dictionary: current.append(route)
 		elif preload("res://scripts/world/core/native_transition.gd").is_warp(route): warps.append(route)
 	var warp: Dictionary = preload("res://scripts/world/core/native_transition.gd").warp_route(warps, _room_local_position())
-	if not warp.is_empty(): _use_warp(warp); return
-	var route: Dictionary = preload("res://scripts/world/core/native_transition.gd").automatic_route(current, _room_local_position())
-	if route.is_empty(): return
+	var route: Dictionary = warp if not warp.is_empty() else preload("res://scripts/world/core/native_transition.gd").automatic_route(current, _room_local_position())
+	if route.is_empty(): automatic_attempt = ""; return
+	var attempt := "%s:%d:%d" % [manifest_path.get_base_dir().get_file(), area, int(route["record_index"])]
+	if automatic_attempt == attempt: return
+	if not warp.is_empty(): automatic_attempt = attempt; _use_warp(warp); return
 	if _native_event_set(0x730) or _native_event_set(int(route.get("transition_event", -1))):
-		var key := "%s:%d:%d" % [manifest_path.get_base_dir().get_file(), area, int(route["record_index"])]
+		var key := attempt
 		if not automatic_gate_diagnostics.has(key): push_warning("Native gateway %s requires the alternate event730 script state, which is not implemented" % key); automatic_gate_diagnostics[key] = true
 		return
 	var stage := str(route["destination_stage"]); var destination := int(route["destination_area"])
 	if not known_stage_areas.has(stage) or not known_stage_areas[stage].has(destination): return
-	_use_door(route, true)
+	automatic_attempt = attempt; _use_door(route, true)
 func _native_event_set(id: int) -> bool:
 	var flags: Dictionary = native_context.get("event_flags", {})
 	return bool(flags.get(id, flags.get(str(id), false)))
@@ -1306,6 +1353,7 @@ func _use_door(route: Dictionary, automatic: bool = false) -> void:
 		var selected_ok := await _select_area(selected, true)
 		entry_route = {}
 		arrived = selected_ok
+		if lift != null: player.camera_shot = Vector3.INF; player.camera_world_valid = false; await get_tree().process_frame
 	else: push_error("Missing destination area for native door route")
 	if not arrived:
 		if manifest_path.get_base_dir().get_file() != source_stage: await _change_stage(source_stage)
@@ -1332,15 +1380,19 @@ func _climb_ladder(route: Dictionary, link: Dictionary) -> bool:
 	player.player_model.rotation.y = -float(raw[3]) * TAU / 4096.0
 	player.global_position = Vector3(-float(raw[0]), -float(raw[1]) + 6.0, float(raw[2])) / 256.0 + room_stream.offset_for(source_stage, source_area)
 	player.camera_pivot.rotation = Vector3(deg_to_rad(-12.0), player.player_model.rotation.y, 0.0); player.refresh_room_camera()
+	var foot: Vector3 = Vector3(-float(raw[0]), 0.0, float(raw[2])) / 256.0 + room_stream.offset_for(source_stage, source_area); var back: Vector3 = player.player_model.global_basis.z; back.y = 0.0
+	player.set_camera_shot(_ladder_shot(foot, back.normalized(), source_stage, source_area, str(link["lower"]["stage"]) == source_stage and int(link["lower"]["area"]) == source_area, plane, true))
 	var switched := false
 	while not player.interaction_role.is_empty():
-		player.camera_arm_scale = clampf(absf(player.camera_pivot.global_position.y - plane), 0.1, 1.0)
-		if not switched and (player.camera_pivot.global_position.y - plane) * (1.0 if up else -1.0) >= 0.0:
+		if not switched and (player.global_position.y + player.body_height - plane) * (1.0 if up else -1.0) >= 0.0:
+			var heading: Vector3 = Vector3(-float(transform["position"][0]), 0.0, float(transform["position"][2])) + destination_offset - foot; heading.y = 0.0; heading = heading.normalized() if heading.length() > 0.01 else back.normalized()
+			var destination_lower: bool = str(link["lower"]["stage"]) == destination_stage and int(link["lower"]["area"]) == destination_area
+			player.set_camera_shot(_ladder_shot(foot, heading, destination_stage, destination_area, destination_lower, plane, false))
 			switched = await room_stream.select_room(destination_stage, destination_area)
 			if not switched: push_error("Seamless ladder cannot enter the destination room")
-			player.refresh_room_camera(true)
 			await get_tree().physics_frame
 			await get_tree().physics_frame
+			player.set_camera_shot(_ladder_shot(foot, heading, destination_stage, destination_area, destination_lower, plane, true))
 			var landing := _door_arrival(transform, destination_offset)
 			if landing.is_finite(): player.interaction_target_y = landing.y
 		await get_tree().process_frame
@@ -1349,12 +1401,20 @@ func _climb_ladder(route: Dictionary, link: Dictionary) -> bool:
 		var ticks := maxi(1, roundi(step.length() * 16.0))
 		if player.begin_scripted_walk({"control": 2, "ticks": ticks, "tick_rate": 25, "local_step_raw": [0, 0, -step.length() * 4096.0 / ticks]}, atan2(-step.x, -step.z)):
 			var mask: int = player.collision_mask; player.collision_mask = 0; player.set_physics_process(true); await player.scripted_walk_finished; player.set_physics_process(false); player.collision_mask = mask
-	player.camera_arm_scale = 1.0
+	var shot: Vector3 = player.camera_shot
 	apply_native_arrival(route)
+	player.camera_shot = Vector3.INF; player.camera_world_position = shot; player.camera_world_origin = player.camera_pivot.global_position; player.camera_world_basis = player.camera_pivot.global_basis; player.camera_world_valid = true
 	previous_player_position = player.global_position; has_previous_player_position = true
 	player.refresh_room_camera(true)
 	area_picker.disabled = false; loading = false; player.set_physics_process(true)
 	return true
+func _ladder_shot(foot: Vector3, direction: Vector3, stage: String, area: int, lower: bool, plane: float, validate: bool) -> Vector3:
+	var box: AABB = room_stream.bounds_for(stage, area).grow(-0.1); var floor_y: float = room_stream.offset_for(stage, area).y; var ceiling_y: float = plane if lower else box.end.y + 0.1
+	var eye := Vector3(foot.x, clampf(floor_y + (0.7 if lower else 1.0), floor_y + 0.1, ceiling_y - 0.1), foot.z); var point := eye + direction * 1.4
+	if validate:
+		var query := PhysicsRayQueryParameters3D.create(eye, point, 5); query.exclude = [player.get_rid()]; var hit := get_world_3d().direct_space_state.intersect_ray(query)
+		if not hit.is_empty(): point = (hit["position"] as Vector3) - direction * 0.1
+	return Vector3(clampf(point.x, box.position.x, box.end.x), clampf(point.y, floor_y + 0.1, ceiling_y - 0.1), clampf(point.z, box.position.z, box.end.z))
 func _change_stage(stage: String) -> bool:
 	if not await AssetStore.ensure_stage(stage): return false
 	var path := "res://assets/levels/%s/manifest.json" % stage
@@ -1387,7 +1447,7 @@ func apply_native_arrival(route: Dictionary) -> bool:
 	if not point.is_finite(): return false
 	var yaw := -float(int(route["destination_transform"]["yaw_raw"])) * TAU / 4096.0
 	if warp:
-		var shift := point - player.global_position; player.global_position = point; player.camera_world_position += shift; player.camera_world_origin += shift; player.camera.global_position += shift
+		var shift := point - player.global_position; player.global_position = point; player.placement_frames = 3; player.camera_world_position += shift; player.camera_world_origin += shift; player.camera.global_position += shift
 	else: player.reset_at(point); player.player_model.rotation.y = yaw; player.camera_pivot.rotation.y = yaw
 	spawn_position = point; previous_player_position = point; has_previous_player_position = true
 	return true
@@ -1421,9 +1481,16 @@ func _door_arrival(transform: Dictionary, world_offset: Vector3 = Vector3.ZERO) 
 	if transform.get("floor_height", false):
 		var ray := PhysicsRayQueryParameters3D.create(point + Vector3.UP * player.body_height, Vector3(point.x, bounds.position.y - 1.0, point.z), 1); ray.exclude = [player.get_rid()]
 		var hit := get_world_3d().direct_space_state.intersect_ray(ray)
-		if hit.is_empty(): return Vector3.INF
+		if hit.is_empty():
+			var top: float = point.y + player.body_height
+			var above: Vector3 = Vector3(point.x, bounds.end.y + 1.0, point.z)
+			while true:
+				ray = PhysicsRayQueryParameters3D.create(above, Vector3(point.x, top, point.z), 1); ray.exclude = [player.get_rid()]; var next := get_world_3d().direct_space_state.intersect_ray(ray)
+				if next.is_empty(): break
+				hit = next; above = (next["position"] as Vector3) - Vector3.UP * 0.01
+			if hit.is_empty(): return Vector3.INF
 		point.y = float(hit["position"].y) + 0.05
-	var capsule := $Player/Collision.shape as CapsuleShape3D; var collision := $Player/Collision as CollisionShape3D; var yaw := -float(int(transform.get("yaw_raw", 0))) * TAU / 4096.0; var forward := Vector3(-sin(yaw), 0.0, -cos(yaw)); var step := maxf(capsule.radius * 0.25, 0.01); var query := PhysicsShapeQueryParameters3D.new(); query.shape = capsule; query.collision_mask = player.collision_mask | 1; query.exclude = [player.get_rid()]; query.margin = 0.01
+	var capsule := $Player/Collision.shape as CapsuleShape3D; var collision := $Player/Collision as CollisionShape3D; var yaw := -float(int(transform.get("yaw_raw", 0))) * TAU / 4096.0; var forward := Vector3(-sin(yaw), 0.0, -cos(yaw)); var step := maxf(capsule.radius * 0.25, 0.01); var query := PhysicsShapeQueryParameters3D.new(); query.shape = capsule; query.collision_mask = (player.collision_mask | 1) & ~8; query.exclude = [player.get_rid()]; query.margin = 0.01
 	var anchor_ray := PhysicsRayQueryParameters3D.create(point + Vector3.UP * capsule.radius, point - Vector3.UP * capsule.height, 1); anchor_ray.exclude = [player.get_rid()]; var anchor_floor := get_world_3d().direct_space_state.intersect_ray(anchor_ray)
 	if not anchor_floor.is_empty() and (anchor_floor["normal"] as Vector3).y >= 0.65 and _arrival_panel_clearance(point, forward, capsule, capsule.radius + 0.02) <= 0.0:
 		var anchor := point; anchor.y = (anchor_floor["position"] as Vector3).y + 0.05; query.transform = Transform3D(player.global_basis, anchor) * collision.transform
@@ -1444,8 +1511,7 @@ func _door_arrival(transform: Dictionary, world_offset: Vector3 = Vector3.ZERO) 
 		candidate.y = (floor_hit["position"] as Vector3).y + 0.05
 		query.transform = Transform3D(player.global_basis, candidate) * collision.transform
 		if get_world_3d().direct_space_state.intersect_shape(query, 1).is_empty(): return candidate
-	push_error("Native door arrival has no clear capsule position")
-	return Vector3.INF
+	return point
 func _queue_editor_preview() -> void:
 	if not Engine.is_editor_hint() or not is_inside_tree() or editor_preview_queued: return
 	editor_preview_queued = true

@@ -344,7 +344,7 @@ func _flush_segment(segment: String, x: float, baseline: float, colour: int, tin
 	var segment_font: Font = colour_fonts[colour] if colour < colour_fonts.size() and colour_fonts[colour] != null else font
 	draw_string(segment_font, Vector2(x, baseline), segment, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, tint); return x + segment_font.get_string_size(segment, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
 const ICONS := [Vector2(0x80, 0), Vector2(0x90, 0), Vector2(0xa0, 0), Vector2(0xb0, 0), Vector2(0xc0, 0), Vector2(0xd0, 0), Vector2(0xe0, 0), Vector2(0xc0, 0x10), Vector2(0xf0, 0), Vector2(0xb0, 0x10), Vector2(0x70, 0x10)]
-func _icon_index(code: int) -> int:
+static func _icon_index(code: int) -> int:
 	# SLES-independent icon classes of the overlay list draw routine (ST0AT 0x800EE35C), by item index code - 0x380.
 	var index := code - 0x380
 	for entry: Array in [[0x14, 0x24, 0], [0x38, 4, 2], [0x3c, 0xc, 3], [0x48, 8, 1], [0x83, 5, 9], [0x88, 0x34, 6], [0xcd, 3, 10], [0xbc, 2, 8], [0xbe, 3, 7], [0xc3, 0x34, 5]]:

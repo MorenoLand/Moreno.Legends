@@ -121,6 +121,7 @@ func _build_options() -> void:
 	rows.append({"kind": "range", "label": "Camera FOV", "min": 45, "max": 100, "step": 1, "help": "Adjust the field of view.", "get": func(): return int(host.settings.get_value("camera", "fov", 65)), "set": func(value): _fov_changed(float(value))})
 	rows.append({"kind": "choice", "label": "First person", "choices": ["Off", "On"], "help": "Play from a first person view.", "get": func(): return int(bool(host.settings.get_value("camera", "first_person", false))), "set": func(value): _first_person_changed(value == 1)})
 	rows.append({"kind": "choice", "label": "Fullscreen", "choices": ["Off", "On"], "help": "Switch between windowed and fullscreen.", "get": func(): return int(DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN), "set": func(value): DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if value == 1 else DisplayServer.WINDOW_MODE_WINDOWED)})
+	rows.append({"kind": "choice", "label": "Slot machine", "choices": ["Off", "On"], "help": "Playable slot machine (port extra).", "get": func(): return int(bool(host.settings.get_value("extras", "slot_machine", true))), "set": func(value): host.settings.set_value("extras", "slot_machine", value == 1); host.settings.save("user://settings.cfg")})
 	rows.append({"kind": "heading", "label": "Controls"})
 	rows.append({"kind": "range", "label": "Mouse sensitivity", "min": 0.0005, "max": 0.01, "step": 0.0005, "float": true, "scale": 10000.0, "format": "%d", "help": "Adjust the mouse look speed.", "get": func(): return float(host.settings.get_value("controls", "mouse_sensitivity", 0.003)), "set": func(value): host._sensitivity_changed(float(value))})
 	rows.append({"kind": "heading", "label": "Online"})
@@ -214,7 +215,7 @@ func _draw() -> void:
 	FRAME.draw(self, layout, "header", Rect2(34, 25, 252, 23))
 	if active_page == "extra": FRAME.draw(self, layout, "selector", Rect2(34, 54, 252, 114)); FRAME.draw(self, layout, "prompt", Rect2(34, 174, 252, 32))
 	else: FRAME.draw(self, layout, "selector", Rect2(34, 57, 252, 145))
-	if FRAME.content_visible(self): draw_string(font, Vector2(44, 31 + font.get_ascent(12)), "Options" if active_page == "extra" else active_page.capitalize(), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
+	if FRAME.content_visible(self): FRAME.title(self, font, "Options" if active_page == "extra" else active_page.capitalize(), Rect2(34, 25, 252, 23))
 func _location_selected(index: int) -> void:
 	room_picker.clear()
 	if index < 0 or index >= host.locations.size(): return

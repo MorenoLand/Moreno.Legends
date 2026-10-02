@@ -23,9 +23,7 @@ var stream_mesh: MeshInstance3D
 var splash_mesh: MeshInstance3D
 var droplet_mesh: MeshInstance3D
 var splash_frames: Array = []
-var arm_mesh: MeshInstance3D
-var arm_targets: Array = []
-var arm_shown := false
+var arm := preload("res://scripts/player/special_arm.gd").new()
 var rng := RandomNumberGenerator.new()
 func configure(owner: CharacterBody3D) -> bool:
 	player = owner
@@ -38,7 +36,7 @@ func configure(owner: CharacterBody3D) -> bool:
 	var instance := packed.instantiate(); var players: Array[Node] = instance.find_children("*", "AnimationPlayer", true, false)
 	if players.is_empty(): instance.free(); return false
 	if not player.animation_player.has_animation_library(library_name): player.animation_player.add_animation_library(library_name, (players[0] as AnimationPlayer).get_animation_library("").duplicate(true))
-	_configure_arm(instance); instance.free()
+	arm.configure(player, instance, data["arm"]); instance.free()
 	player.animation_roles["hose"] = library_name + "/clip_096"
 	top_level = true
 	stream_mesh = _mesh_node(load("res://assets/player/weapons/hose_stream.png") as Texture2D, true)
@@ -46,36 +44,7 @@ func configure(owner: CharacterBody3D) -> bool:
 	droplet_mesh = _mesh_node(null, true)
 	_emit_gauge()
 	return true
-func _configure_arm(instance: Node) -> void:
-	var arm: Dictionary = data["arm"]; var source := instance.find_child(str(arm["node"]), true, false) as MeshInstance3D; var skeletons: Array[Node] = (player.player_model as Node3D).find_children("*", "Skeleton3D", true, false)
-	if source == null or skeletons.is_empty(): return
-	var skeleton := skeletons[0] as Skeleton3D; var hidden: Array = arm["replaces"]["boneNames"]
-	for node in (player.player_model as Node3D).find_children("*", "MeshInstance3D", true, false):
-		var target := node as MeshInstance3D
-		if target.mesh != null and target.skin != null: arm_targets.append([target, target.mesh, _without_bones(target.mesh, target.skin, skeleton, hidden)])
-	arm_mesh = MeshInstance3D.new(); arm_mesh.name = str(arm["node"]); arm_mesh.mesh = source.mesh; arm_mesh.skin = source.skin; arm_mesh.transform = source.transform; arm_mesh.visible = false; skeleton.add_child(arm_mesh); arm_mesh.skeleton = arm_mesh.get_path_to(skeleton)
-	for surface in range(arm_mesh.mesh.get_surface_count()):
-		var material := ShaderMaterial.new(); material.shader = preload("res://shaders/native_model.gdshader"); material.set_shader_parameter("albedo_texture", (arm_mesh.mesh.surface_get_material(surface) as BaseMaterial3D).albedo_texture); arm_mesh.set_surface_override_material(surface, material)
-func _without_bones(mesh: Mesh, skin: Skin, skeleton: Skeleton3D, names: Array) -> ArrayMesh:
-	var binds := {}; var result := ArrayMesh.new()
-	for bind in range(skin.get_bind_count()):
-		var bone_name := str(skin.get_bind_name(bind)) if not str(skin.get_bind_name(bind)).is_empty() else skeleton.get_bone_name(skin.get_bind_bone(bind))
-		if bone_name in names: binds[bind] = true
-	for surface in range(mesh.get_surface_count()):
-		var arrays := mesh.surface_get_arrays(surface); var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]; var bones: PackedInt32Array = arrays[Mesh.ARRAY_BONES]; var weights: PackedFloat32Array = arrays[Mesh.ARRAY_WEIGHTS]; var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX] if arrays[Mesh.ARRAY_INDEX] != null else PackedInt32Array(range(vertices.size()))
-		var width := bones.size() / maxi(vertices.size(), 1); var removed := PackedByteArray(); removed.resize(vertices.size())
-		for vertex in range(vertices.size()):
-			for slot in range(width): removed[vertex] = 1 if removed[vertex] == 1 or weights[vertex * width + slot] > 0.0 and binds.has(bones[vertex * width + slot]) else 0
-		var kept := PackedInt32Array()
-		for corner in range(0, indices.size(), 3):
-			if removed[indices[corner]] == 0 and removed[indices[corner + 1]] == 0 and removed[indices[corner + 2]] == 0: kept.append_array([indices[corner], indices[corner + 1], indices[corner + 2]])
-		arrays[Mesh.ARRAY_INDEX] = kept; result.add_surface_from_arrays(mesh.surface_get_primitive_type(surface), arrays, [], {}, mesh.surface_get_format(surface) & Mesh.ARRAY_FLAG_USE_8_BONE_WEIGHTS); result.surface_set_material(surface, mesh.surface_get_material(surface))
-	return result
-func _sync_arm() -> void:
-	var shown: bool = player.active_special() == int(data["weapon"]) and player.combat_allowed
-	if arm_mesh == null or shown == arm_shown: return
-	arm_shown = shown; arm_mesh.visible = shown
-	for target: Array in arm_targets: (target[0] as MeshInstance3D).mesh = target[2] if shown else target[1]
+func _sync_arm() -> void: arm.show(player.active_special() == int(data["weapon"]) and player.combat_allowed)
 func _mesh_node(texture: Texture2D, additive: bool) -> MeshInstance3D:
 	var node := MeshInstance3D.new(); node.mesh = ImmediateMesh.new(); node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var material := StandardMaterial3D.new(); material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; material.vertex_color_use_as_albedo = true; material.cull_mode = BaseMaterial3D.CULL_DISABLED; material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST; material.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED

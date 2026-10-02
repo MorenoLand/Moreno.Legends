@@ -159,7 +159,7 @@ func run() -> bool:
 		if node == null: _restore(); return false
 		var clock := node.get_node_or_null("NativeAnimationClock") as NativeAnimation if not record.has("existing_actor") else null
 		if clock != null: clock.automatic = false
-		var metadata: Dictionary = record["model"] if record["model"] is Dictionary else {}; var direct: bool = record.has("existing_actor") or str(record["source_ram"]) in initial.get("spawn_records", []); node.visible = direct; actors[int(record["slot"])] = {"node": node, "clock": clock, "record": record, "active": direct, "borrowed": record.has("existing_actor"), "head_target": 0, "head_speed": 0, "head_enabled": false, "flag_started": false, "fields": {}, "face_tables": {}, "face_dims": metadata.get("face_dims", [0, 0, 0, 0]), "face_surfaces": _face_surfaces(node, metadata.get("source_surfaces", []))}
+		var metadata: Dictionary = record["model"] if record["model"] is Dictionary else {}; var direct: bool = record.has("existing_actor") or str(record["source_ram"]) in initial.get("spawn_records", []); node.visible = direct and not node.has_meta("native_scene_deferred"); actors[int(record["slot"])] = {"node": node, "clock": clock, "record": record, "active": direct, "borrowed": record.has("existing_actor"), "head_target": 0, "head_speed": 0, "head_enabled": false, "flag_started": false, "fields": {}, "face_tables": {}, "face_dims": metadata.get("face_dims", [0, 0, 0, 0]), "face_surfaces": _face_surfaces(node, metadata.get("source_surfaces", []))}
 	for operation: Dictionary in initial.get("init_ops", []):
 		if str(operation["op"]) == "play_xa":
 			await _play_xa(int(operation["descriptor"]))
@@ -385,7 +385,7 @@ func _actor_tick() -> void:
 				if str(reaction["op"]) == "event_clear": _clear_flag(int(reaction["id"]))
 				elif str(reaction["op"]) == "actor_face": _set_face(node, str(actor["face_tables"].get(str(reaction["channel"]), "")), str(reaction["channel"]), int(reaction["sequence"]))
 		if clock != null: clock.native_tick()
-		if node.has_method("native_tick"): node.native_tick(actor["fields"])
+		if node.has_method("native_tick"): actor["fields"]["scene_step"] = step; actor["fields"]["scene_tick"] = segment_tick; node.native_tick(actor["fields"])
 		var render_raw: Array = profile.get("render_offset_by_step", {}).get(str(step), [0, 0, 0]); actor["render_offset"] = _world(render_raw); node.position += actor["render_offset"]
 func _head_tick() -> void:
 	var difference := ((_yaw(host.player.player_model) + head_units - head_target + 2048) & 4095) - 2048

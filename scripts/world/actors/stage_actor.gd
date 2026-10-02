@@ -64,7 +64,7 @@ func configure(entry: Dictionary, metadata: Dictionary, directory: String) -> vo
 	var record := str(entry["source_bytes_hex"]).hex_decode()
 	actor_class = record[4]
 	dispatch = record[6] & 15
-	native_yaw = int(entry["transform"]["yaw_raw"]) & 4095
+	native_yaw = -int(entry["transform"]["yaw_raw"]) & 4095
 	region_yaw = native_yaw
 	patrol_yaw = native_yaw
 	patrol_bins = record[9] - 256 if record[9] > 127 else record[9]
@@ -100,7 +100,7 @@ func configure(entry: Dictionary, metadata: Dictionary, directory: String) -> vo
 			var material := (node as MeshInstance3D).get_active_material(surface) as ShaderMaterial
 			if material != null: native_materials.append(material)
 	var coordinates: Array = entry["transform"]["position"]
-	position = Vector3(float(coordinates[0]), -float(coordinates[1]), float(coordinates[2]))
+	position = Vector3(float(coordinates[0]), float(coordinates[1]), float(coordinates[2]))
 	origin = global_position if actor_class == 5 and dispatch == 2 else Vector3.ZERO
 	rotation.y = float(native_yaw) * TAU / 4096.0
 	var players := model.find_children("*", "AnimationPlayer", true, false)
@@ -479,7 +479,7 @@ func _advance_control() -> void:
 		control_remaining = int(records[control_frame]["duration"])
 		var event := int(records[control_frame]["event"])
 		if actor_class == 5 and (event & 128): sound_requested.emit(0xa5, global_position)
-		elif actor_class == 8 and current_control == 0 and int(records[control_frame]["pose"]) in [15, 31]: sound_requested.emit(0xd3, global_position)
+		elif actor_class == 8 and int(records[control_frame]["pose"]) in ([15, 31] if current_control == 0 else [3, 9] if current_control == 4 else []): sound_requested.emit(0xd3, global_position)
 	control_tick += 1
 	if animation_player != null: animation_player.seek(float(control_tick) / 30.0, true)
 func _update_collision() -> void:

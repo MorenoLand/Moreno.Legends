@@ -264,7 +264,7 @@ func _draw() -> void:
 	if not FRAME.content_visible(self): return
 	if completion_active or loading_display: draw_string(font, Vector2(112, 115 + font.get_ascent(12)), ("Saving..." if save_mode else "Loading...") if loading_display else completion_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
 	if confirming_load: draw_string(font, Vector2(83 if save_mode else 111, 107 + font.get_ascent(12)), confirmation_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
-	draw_string(font, Vector2(29, 10 + font.get_ascent(12)), "Save Game" if save_mode else "Load Game", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
+	FRAME.title(self, font, "Save Game" if save_mode else "Load Game", Rect2(20, 4, 106, 22))
 	if not confirming_load and not loading_display and not completion_active: draw_string(font, Vector2(44, 41 + font.get_ascent(9)), "Please select a save slot:", HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color.WHITE)
 func _rect(value: Array) -> Rect2:
 	return Rect2(float(value[0]), float(value[1]), float(value[2]), float(value[3]))

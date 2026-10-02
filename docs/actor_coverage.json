@@ -1,0 +1,8703 @@
+{
+ "source": "native_actor_lists (SLES 0x8003D3F8 caller scan of each STxxT overlay); exports matched on the 20-byte record",
+ "stages": {
+  "ST00": {
+   "name": "Debug area",
+   "areas": 2,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 2,
+    "actor": 7,
+    "controller_e0": 2,
+    "prop": 5
+   },
+   "exported_records": 0,
+   "unexported_records": 14,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [
+    {
+     "request_call": "0x800e771c",
+     "function": "0x800e7678",
+     "bound": false
+    }
+   ],
+   "bindings": {},
+   "classes": {
+    "20/0/v3": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null,
+     "unresolved_model": true
+    },
+    "20/2/v0": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null,
+     "unresolved_model": true
+    },
+    "20/2/v1": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null,
+     "unresolved_model": true
+    },
+    "20/2/v2": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null,
+     "unresolved_model": true
+    },
+    "20/2/v3": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null,
+     "unresolved_model": true
+    },
+    "20/2/v4": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null,
+     "unresolved_model": true
+    },
+    "20/2/v5": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null,
+     "unresolved_model": true
+    },
+    "60/1/v0": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null,
+     "unresolved_model": true
+    },
+    "60/1/v1": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null,
+     "unresolved_model": true
+    },
+    "60/1/v2": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null,
+     "unresolved_model": true
+    },
+    "60/1/v3": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null,
+     "unresolved_model": true
+    },
+    "60/1/v4": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null,
+     "unresolved_model": true
+    },
+    "E0/26": {
+     "kind": "controller_e0",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    },
+    "E0/4": {
+     "kind": "controller_e0",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST01": {
+   "name": "World map",
+   "areas": 1,
+   "status": "listed",
+   "category": "room_only",
+   "records": {
+    "area_header": 1
+   },
+   "exported_records": 0,
+   "unexported_records": 0,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {}
+  },
+  "ST02": {
+   "name": "Sulphur-Bottom opening",
+   "areas": 3,
+   "status": "listed",
+   "category": "room_only",
+   "records": {
+    "area_header": 3
+   },
+   "exported_records": 0,
+   "unexported_records": 0,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {}
+  },
+  "ST03": {
+   "name": "Flutter opening",
+   "areas": 5,
+   "status": "listed",
+   "category": "room_only",
+   "records": {
+    "area_header": 5
+   },
+   "exported_records": 0,
+   "unexported_records": 0,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {}
+  },
+  "ST04": {
+   "name": "Flutter",
+   "areas": 3,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 3,
+    "actor": 1
+   },
+   "exported_records": 1,
+   "unexported_records": 0,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 11,
+    "spawn_sets": 8,
+    "unported_script_paths": 0,
+    "classes": {
+     "1": 7,
+     "96": 4
+    },
+    "capabilities": {
+     "talk": 11,
+     "lock_on": 11
+    }
+   },
+   "talk_sites": [
+    {
+     "request_call": "0x800e84c4",
+     "function": "0x800e8464",
+     "bound": true
+    },
+    {
+     "request_call": "0x800ea15c",
+     "function": "0x800ea104",
+     "bound": true
+    }
+   ],
+   "bindings": {},
+   "classes": {
+    "20/71/v0": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    }
+   }
+  },
+  "ST05": {
+   "name": "Flutter",
+   "areas": 3,
+   "status": "listed",
+   "category": "room_only",
+   "records": {
+    "area_header": 3
+   },
+   "exported_records": 0,
+   "unexported_records": 0,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {}
+  },
+  "ST06": {
+   "name": "Flutter",
+   "areas": 6,
+   "status": "listed",
+   "category": "room_only",
+   "records": {
+    "area_header": 6
+   },
+   "exported_records": 0,
+   "unexported_records": 0,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {}
+  },
+  "ST07": {
+   "name": "Flutter",
+   "areas": 3,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 3
+   },
+   "exported_records": 0,
+   "unexported_records": 0,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 20,
+    "spawn_sets": 40,
+    "unported_script_paths": 0,
+    "classes": {
+     "109": 20
+    },
+    "capabilities": {}
+   },
+   "talk_sites": [],
+   "bindings": {
+    "callback": "0x800e7574",
+    "constructor": "0x800e74e4",
+    "hitbox": "0x800e8b34",
+    "dispatcher": "0x800e72f4"
+   },
+   "classes": {}
+  },
+  "ST08": {
+   "name": "Yosyonke City",
+   "areas": 2,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 2,
+    "prop": 7
+   },
+   "exported_records": 7,
+   "unexported_records": 0,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 27,
+    "spawn_sets": 15,
+    "unported_script_paths": 0,
+    "classes": {
+     "0": 8,
+     "1": 14,
+     "48": 5
+    },
+    "capabilities": {
+     "talk": 12,
+     "lock_on": 11,
+     "movement": 4,
+     "pose_resolver": 2
+    }
+   },
+   "talk_sites": [
+    {
+     "request_call": "0x800e7d4c",
+     "function": "0x800e7ca8",
+     "bound": true
+    },
+    {
+     "request_call": "0x800e9a1c",
+     "function": "0x800e98f0",
+     "bound": true
+    },
+    {
+     "request_call": "0x800ea828",
+     "function": "0x800ea7c8",
+     "bound": true
+    },
+    {
+     "request_call": "0x800ec58c",
+     "function": "0x800ec460",
+     "bound": true
+    }
+   ],
+   "bindings": {},
+   "classes": {
+    "60/2/v1": {
+     "kind": "prop",
+     "records": 7,
+     "exported": 7,
+     "sources": [
+      "weather"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    }
+   }
+  },
+  "ST09": {
+   "name": "Yosyonke City",
+   "areas": 1,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 1,
+    "prop": 17,
+    "controller_e0": 1
+   },
+   "exported_records": 17,
+   "unexported_records": 1,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 43,
+    "spawn_sets": 70,
+    "unported_script_paths": 1,
+    "classes": {
+     "0": 42,
+     "78": 1
+    },
+    "capabilities": {
+     "talk": 42,
+     "lock_on": 42,
+     "pose_resolver": 1
+    }
+   },
+   "talk_sites": [
+    {
+     "request_call": "0x800e866c",
+     "function": "0x800e85c8",
+     "bound": true
+    },
+    {
+     "request_call": "0x800ea33c",
+     "function": "0x800ea210",
+     "bound": true
+    }
+   ],
+   "bindings": {
+    "callback": "0x800e81ec",
+    "constructor": "0x800e843c",
+    "hitbox": "0x800f2744",
+    "dispatcher": "0x800e7410"
+   },
+   "classes": {
+    "60/0/v0": {
+     "kind": "prop",
+     "records": 2,
+     "exported": 2,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    },
+    "60/1/v0": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    },
+    "60/1/v2": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    },
+    "60/1/v3": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    },
+    "60/1/v4": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    },
+    "60/1/v5": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    },
+    "60/2/v1": {
+     "kind": "prop",
+     "records": 7,
+     "exported": 7,
+     "sources": [
+      "weather"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    },
+    "60/74/v0": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "kickable"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    },
+    "60/74/v1": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "kickable"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    },
+    "60/75/v0": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "kickable"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    },
+    "E0/10": {
+     "kind": "controller_e0",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST0A": {
+   "name": "Yosyonke City",
+   "areas": 5,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 5,
+    "controller_e0": 2
+   },
+   "exported_records": 0,
+   "unexported_records": 2,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 124,
+    "spawn_sets": 232,
+    "unported_script_paths": 1,
+    "classes": {
+     "0": 124
+    },
+    "capabilities": {
+     "talk": 124,
+     "lock_on": 124
+    }
+   },
+   "talk_sites": [
+    {
+     "request_call": "0x800e8da0",
+     "function": "0x800e8cfc",
+     "bound": true
+    }
+   ],
+   "bindings": {
+    "callback": "0x800e8920",
+    "constructor": "0x800e8b70",
+    "hitbox": "0x800efa80",
+    "dispatcher": "0x800e74e8"
+   },
+   "classes": {
+    "E0/4": {
+     "kind": "controller_e0",
+     "records": 2,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      2,
+      4
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST0B": {
+   "name": "Yosyonke City",
+   "areas": 2,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 2,
+    "prop": 7
+   },
+   "exported_records": 7,
+   "unexported_records": 0,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 108,
+    "spawn_sets": 213,
+    "unported_script_paths": 0,
+    "classes": {
+     "0": 82,
+     "1": 21,
+     "25": 5
+    },
+    "capabilities": {
+     "talk": 103,
+     "lock_on": 103
+    }
+   },
+   "talk_sites": [
+    {
+     "request_call": "0x800e85f4",
+     "function": "0x800e8550",
+     "bound": true
+    },
+    {
+     "request_call": "0x800e9fc8",
+     "function": "0x800e9f68",
+     "bound": true
+    }
+   ],
+   "bindings": {
+    "callback": "0x800e8174",
+    "constructor": "0x800e83c4",
+    "hitbox": "0x800ef450",
+    "dispatcher": "0x800e75c8"
+   },
+   "classes": {
+    "60/2/v1": {
+     "kind": "prop",
+     "records": 7,
+     "exported": 7,
+     "sources": [
+      "weather"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    }
+   }
+  },
+  "ST0C": {
+   "name": "Yosyonke City",
+   "areas": 3,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 3
+   },
+   "exported_records": 0,
+   "unexported_records": 0,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 103,
+    "spawn_sets": 166,
+    "unported_script_paths": 0,
+    "classes": {
+     "0": 103
+    },
+    "capabilities": {
+     "talk": 103,
+     "lock_on": 103
+    }
+   },
+   "talk_sites": [
+    {
+     "request_call": "0x800e79ac",
+     "function": "0x800e7908",
+     "bound": true
+    }
+   ],
+   "bindings": {
+    "callback": "0x800e752c",
+    "constructor": "0x800e777c",
+    "hitbox": "0x800eaecc",
+    "dispatcher": "0x800e72b4"
+   },
+   "classes": {}
+  },
+  "ST0D": {
+   "name": "Calinca Tundra",
+   "areas": 2,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 2,
+    "actor": 3,
+    "controller_e0": 1
+   },
+   "exported_records": 2,
+   "unexported_records": 2,
+   "export_files": [
+    "pickups.json",
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 23,
+    "spawn_sets": 44,
+    "unported_script_paths": 0,
+    "classes": {
+     "0": 22,
+     "96": 1
+    },
+    "capabilities": {
+     "talk": 23,
+     "lock_on": 22,
+     "follower": 1,
+     "pose_resolver": 1
+    }
+   },
+   "talk_sites": [
+    {
+     "request_call": "0x800e7924",
+     "function": "0x800e7880",
+     "bound": true
+    },
+    {
+     "request_call": "0x800ec138",
+     "function": "0x800ebf34",
+     "bound": false
+    }
+   ],
+   "bindings": {
+    "callback": "0x800e74a4",
+    "constructor": "0x800e76f4",
+    "hitbox": "0x800f0840",
+    "dispatcher": "0x800e72e4"
+   },
+   "classes": {
+    "20/126/v0": {
+     "kind": "actor",
+     "records": 2,
+     "exported": 2,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": "0x800ed490"
+    },
+    "20/21/v67": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": "0x800eb55c",
+     "unresolved_model": true
+    },
+    "E0/10": {
+     "kind": "controller_e0",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST0E": {
+   "name": "Calinca Tundra",
+   "areas": 3,
+   "status": "listed",
+   "category": "props_only",
+   "records": {
+    "area_header": 3,
+    "controller_e0": 3
+   },
+   "exported_records": 0,
+   "unexported_records": 3,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {
+    "E0/10": {
+     "kind": "controller_e0",
+     "records": 3,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      1,
+      2
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST0F": {
+   "name": "Abandoned Mine",
+   "areas": 14,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 13,
+    "prop": 4,
+    "actor": 5,
+    "door": 1,
+    "controller_e0": 1
+   },
+   "exported_records": 10,
+   "unexported_records": 1,
+   "export_files": [
+    "mine_actors.json",
+    "npcs.json",
+    "pickups.json"
+   ],
+   "scripted": null,
+   "talk_sites": [
+    {
+     "request_call": "0x800f0d54",
+     "function": "0x800f0d0c",
+     "bound": false
+    },
+    {
+     "request_call": "0x800f1420",
+     "function": "0x800f13c0",
+     "bound": false
+    },
+    {
+     "request_call": "0x800f165c",
+     "function": "0x800f1538",
+     "bound": false
+    },
+    {
+     "request_call": "0x800f1d90",
+     "function": "0x800f1cec",
+     "bound": false
+    }
+   ],
+   "bindings": {},
+   "classes": {
+    "20/21/v5": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "npc"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      6
+     ],
+     "class_callback": "0x800eece8"
+    },
+    "20/21/v6": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "npc"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      6
+     ],
+     "class_callback": "0x800eece8"
+    },
+    "20/21/v7": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "npc"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      8
+     ],
+     "class_callback": "0x800eece8"
+    },
+    "20/21/v70": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "npc"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      4
+     ],
+     "class_callback": "0x800eece8"
+    },
+    "20/21/v71": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "npc"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      7
+     ],
+     "class_callback": "0x800eece8"
+    },
+    "60/25/v0": {
+     "kind": "prop",
+     "records": 4,
+     "exported": 4,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1,
+      5,
+      9,
+      10
+     ],
+     "class_callback": null
+    },
+    "A1/2": {
+     "kind": "door",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "doors.json"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      11
+     ],
+     "class_callback": null
+    },
+    "E0/21": {
+     "kind": "controller_e0",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      12
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST10": {
+   "name": "Forbidden Island",
+   "areas": 2,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 2
+   },
+   "exported_records": 0,
+   "unexported_records": 0,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 47,
+    "spawn_sets": 111,
+    "unported_script_paths": 2,
+    "classes": {
+     "1": 19,
+     "29": 8,
+     "55": 20
+    },
+    "capabilities": {
+     "talk": 19,
+     "lock_on": 19
+    }
+   },
+   "talk_sites": [
+    {
+     "request_call": "0x800e7d80",
+     "function": "0x800e7d20",
+     "bound": true
+    }
+   ],
+   "bindings": {
+    "dispatcher": "0x800e76d0"
+   },
+   "classes": {}
+  },
+  "ST11": {
+   "name": "Forbidden Island",
+   "areas": 1,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 1
+   },
+   "exported_records": 0,
+   "unexported_records": 0,
+   "export_files": [
+    "pickups.json",
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 10,
+    "spawn_sets": 14,
+    "unported_script_paths": 0,
+    "classes": {
+     "23": 6,
+     "41": 4
+    },
+    "capabilities": {
+     "enemy": 10
+    }
+   },
+   "talk_sites": [],
+   "bindings": {
+    "dispatcher": "0x800e7654"
+   },
+   "classes": {}
+  },
+  "ST12": {
+   "name": "Manda Ruins",
+   "areas": 10,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 6,
+    "prop": 3,
+    "controller_e0": 11,
+    "actor": 1
+   },
+   "exported_records": 4,
+   "unexported_records": 11,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {
+    "20/21/v0": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      5
+     ],
+     "class_callback": "0x800ec3bc"
+    },
+    "60/19/v0": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null
+    },
+    "60/25/v0": {
+     "kind": "prop",
+     "records": 2,
+     "exported": 2,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      1
+     ],
+     "class_callback": "0x800eca40"
+    },
+    "E0/10": {
+     "kind": "controller_e0",
+     "records": 3,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      1,
+      3
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    },
+    "E0/21": {
+     "kind": "controller_e0",
+     "records": 2,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      4
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    },
+    "E0/27": {
+     "kind": "controller_e0",
+     "records": 6,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      1,
+      4
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST13": {
+   "name": "Manda Ruins",
+   "areas": 14,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 11,
+    "prop": 2,
+    "controller_e0": 8,
+    "actor": 18
+   },
+   "exported_records": 20,
+   "unexported_records": 8,
+   "export_files": [
+    "pickups.json"
+   ],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {
+    "20/21/v25": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      3
+     ],
+     "class_callback": "0x800eaabc"
+    },
+    "20/21/v26": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      3
+     ],
+     "class_callback": "0x800eaabc"
+    },
+    "20/21/v27": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      7
+     ],
+     "class_callback": "0x800eaabc"
+    },
+    "20/21/v28": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      7
+     ],
+     "class_callback": "0x800eaabc"
+    },
+    "20/21/v29": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      7
+     ],
+     "class_callback": "0x800eaabc"
+    },
+    "20/21/v30": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      8
+     ],
+     "class_callback": "0x800eaabc"
+    },
+    "20/21/v31": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      8
+     ],
+     "class_callback": "0x800eaabc"
+    },
+    "20/21/v32": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      10
+     ],
+     "class_callback": "0x800eaabc"
+    },
+    "20/32/v0": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "enemy"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      4
+     ],
+     "class_callback": "0x800ed3c0"
+    },
+    "20/38/v0": {
+     "kind": "actor",
+     "records": 9,
+     "exported": 9,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "enemy"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      2,
+      6
+     ],
+     "class_callback": "0x800f46f8"
+    },
+    "60/25/v0": {
+     "kind": "prop",
+     "records": 2,
+     "exported": 2,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      10
+     ],
+     "class_callback": "0x800eaf1c"
+    },
+    "E0/10": {
+     "kind": "controller_e0",
+     "records": 5,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      1,
+      4,
+      5,
+      9
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    },
+    "E0/27": {
+     "kind": "controller_e0",
+     "records": 3,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      2,
+      4
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST14": {
+   "name": "Manda Ruins",
+   "areas": 8,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 5,
+    "prop": 3,
+    "controller_e0": 4,
+    "actor": 2
+   },
+   "exported_records": 5,
+   "unexported_records": 4,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 1,
+    "spawn_sets": 171,
+    "unported_script_paths": 84,
+    "classes": {
+     "1": 1
+    },
+    "capabilities": {
+     "talk": 1,
+     "lock_on": 1
+    }
+   },
+   "talk_sites": [
+    {
+     "request_call": "0x800e80b8",
+     "function": "0x800e8058",
+     "bound": true
+    }
+   ],
+   "bindings": {
+    "dispatcher": "0x800e78fc"
+   },
+   "classes": {
+    "20/21/v1": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      2
+     ],
+     "class_callback": "0x800edc44"
+    },
+    "20/21/v2": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      2
+     ],
+     "class_callback": "0x800edc44"
+    },
+    "60/24/v0": {
+     "kind": "prop",
+     "records": 2,
+     "exported": 2,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null
+    },
+    "60/25/v0": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    },
+    "E0/10": {
+     "kind": "controller_e0",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    },
+    "E0/19": {
+     "kind": "controller_e0",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    },
+    "E0/27": {
+     "kind": "controller_e0",
+     "records": 2,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      3,
+      4
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST15": {
+   "name": "Nino Island",
+   "areas": 1,
+   "status": "listed",
+   "category": "props_only",
+   "records": {
+    "area_header": 1,
+    "controller_e0": 5,
+    "prop": 1
+   },
+   "exported_records": 1,
+   "unexported_records": 5,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {
+    "60/45/v0": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    },
+    "E0/1": {
+     "kind": "controller_e0",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    },
+    "E0/10": {
+     "kind": "controller_e0",
+     "records": 4,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST16": {
+   "name": "Nino Island",
+   "areas": 1,
+   "status": "listed",
+   "category": "props_only",
+   "records": {
+    "area_header": 1,
+    "controller_e0": 3,
+    "prop": 2
+   },
+   "exported_records": 2,
+   "unexported_records": 3,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {
+    "60/1/v3": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    },
+    "60/45/v1": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    },
+    "E0/1": {
+     "kind": "controller_e0",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    },
+    "E0/10": {
+     "kind": "controller_e0",
+     "records": 2,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST17": {
+   "name": "King Glydon",
+   "areas": 3,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 3,
+    "controller_e0": 1
+   },
+   "exported_records": 0,
+   "unexported_records": 1,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 47,
+    "spawn_sets": 95,
+    "unported_script_paths": 3,
+    "classes": {
+     "0": 4,
+     "1": 14,
+     "47": 15,
+     "48": 14
+    },
+    "capabilities": {
+     "talk": 18,
+     "lock_on": 18
+    }
+   },
+   "talk_sites": [
+    {
+     "request_call": "0x800e7f58",
+     "function": "0x800e7ef8",
+     "bound": true
+    },
+    {
+     "request_call": "0x800ea180",
+     "function": "0x800ea0dc",
+     "bound": true
+    }
+   ],
+   "bindings": {
+    "callback": "0x800e9d00",
+    "constructor": "0x800e9f50",
+    "hitbox": "0x80106f3c",
+    "dispatcher": "0x800e7788"
+   },
+   "classes": {
+    "E0/1": {
+     "kind": "controller_e0",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST18": {
+   "name": "Nino Island",
+   "areas": 6,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 6,
+    "controller_e0": 2,
+    "prop": 2
+   },
+   "exported_records": 2,
+   "unexported_records": 2,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 20,
+    "spawn_sets": 58,
+    "unported_script_paths": 8,
+    "classes": {
+     "0": 5,
+     "45": 6,
+     "56": 2,
+     "94": 7
+    },
+    "capabilities": {
+     "talk": 5,
+     "lock_on": 5
+    }
+   },
+   "talk_sites": [
+    {
+     "request_call": "0x800e8764",
+     "function": "0x800e86c0",
+     "bound": true
+    }
+   ],
+   "bindings": {
+    "callback": "0x800e84c4",
+    "constructor": "0x800e8620",
+    "hitbox": "0x801075d8",
+    "dispatcher": "0x800e760c"
+   },
+   "classes": {
+    "60/1/v0": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    },
+    "60/1/v1": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    },
+    "E0/1": {
+     "kind": "controller_e0",
+     "records": 2,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      1
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST19": {
+   "name": "Nino Island",
+   "areas": 4,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 4,
+    "actor": 7,
+    "prop": 1
+   },
+   "exported_records": 7,
+   "unexported_records": 1,
+   "export_files": [
+    "npcs.json"
+   ],
+   "scripted": null,
+   "talk_sites": [
+    {
+     "request_call": "0x800e82bc",
+     "function": "0x800e8218",
+     "bound": false
+    },
+    {
+     "request_call": "0x800e9c90",
+     "function": "0x800e9c30",
+     "bound": false
+    },
+    {
+     "request_call": "0x800ebfe8",
+     "function": "0x800ebf90",
+     "bound": false
+    }
+   ],
+   "bindings": {
+    "callback": "0x800e7e3c",
+    "constructor": "0x800e808c",
+    "hitbox": "0x800fdbb4"
+   },
+   "classes": {
+    "20/0/v0": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "npc",
+      "static_prop"
+     ],
+     "capabilities": [
+      "lock_on"
+     ],
+     "callbacks": [
+      "0x800e7e3c"
+     ],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    },
+    "20/0/v46": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "npc",
+      "static_prop"
+     ],
+     "capabilities": [
+      "lock_on"
+     ],
+     "callbacks": [
+      "0x800e7e3c"
+     ],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null
+    },
+    "20/0/v51": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "npc",
+      "static_prop"
+     ],
+     "capabilities": [
+      "lock_on"
+     ],
+     "callbacks": [
+      "0x800e7e3c"
+     ],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null
+    },
+    "20/0/v52": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "npc",
+      "static_prop"
+     ],
+     "capabilities": [
+      "lock_on"
+     ],
+     "callbacks": [
+      "0x800e7e3c"
+     ],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null
+    },
+    "20/0/v61": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "npc",
+      "static_prop"
+     ],
+     "capabilities": [
+      "lock_on"
+     ],
+     "callbacks": [
+      "0x800e7e3c"
+     ],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    },
+    "20/0/v62": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "npc",
+      "static_prop"
+     ],
+     "capabilities": [
+      "lock_on"
+     ],
+     "callbacks": [
+      "0x800e7e3c"
+     ],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    },
+    "20/98/v3": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null,
+     "unresolved_model": true
+    },
+    "60/0/v0": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null
+    }
+   }
+  },
+  "ST1A": {
+   "name": "Ruminoa City",
+   "areas": 2,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 2,
+    "actor": 5,
+    "prop": 2
+   },
+   "exported_records": 7,
+   "unexported_records": 0,
+   "export_files": [
+    "npcs.json"
+   ],
+   "scripted": null,
+   "talk_sites": [
+    {
+     "request_call": "0x800e7934",
+     "function": "0x800e7890",
+     "bound": false
+    }
+   ],
+   "bindings": {
+    "callback": "0x800e74b4",
+    "constructor": "0x800e7704",
+    "hitbox": "0x800edfa4"
+   },
+   "classes": {
+    "20/0/v2": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "npc",
+      "static_prop"
+     ],
+     "capabilities": [
+      "lock_on"
+     ],
+     "callbacks": [
+      "0x800e74b4"
+     ],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    },
+    "20/0/v35": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "npc",
+      "static_prop"
+     ],
+     "capabilities": [
+      "lock_on"
+     ],
+     "callbacks": [
+      "0x800e74b4"
+     ],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null
+    },
+    "20/0/v41": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "npc",
+      "static_prop"
+     ],
+     "capabilities": [
+      "lock_on"
+     ],
+     "callbacks": [
+      "0x800e74b4"
+     ],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    },
+    "20/0/v47": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "npc",
+      "static_prop"
+     ],
+     "capabilities": [
+      "lock_on"
+     ],
+     "callbacks": [
+      "0x800e74b4"
+     ],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    },
+    "20/0/v7": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "npc",
+      "static_prop"
+     ],
+     "capabilities": [
+      "lock_on"
+     ],
+     "callbacks": [
+      "0x800e74b4"
+     ],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    },
+    "60/1/v0": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    },
+    "60/1/v1": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    }
+   }
+  },
+  "ST1B": {
+   "name": "Ruminoa City",
+   "areas": 5,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 5,
+    "actor": 3
+   },
+   "exported_records": 3,
+   "unexported_records": 0,
+   "export_files": [
+    "npcs.json",
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 43,
+    "spawn_sets": 201,
+    "unported_script_paths": 76,
+    "classes": {
+     "0": 28,
+     "10": 15
+    },
+    "capabilities": {
+     "talk": 28,
+     "lock_on": 28
+    }
+   },
+   "talk_sites": [
+    {
+     "request_call": "0x800e7d70",
+     "function": "0x800e7ccc",
+     "bound": true
+    }
+   ],
+   "bindings": {
+    "callback": "0x800e78f0",
+    "constructor": "0x800e7b40",
+    "hitbox": "0x800f0274",
+    "dispatcher": "0x800e7494"
+   },
+   "classes": {
+    "20/0/v34": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "npc",
+      "static_prop"
+     ],
+     "capabilities": [
+      "lock_on",
+      "talk"
+     ],
+     "callbacks": [
+      "0x800e78f0"
+     ],
+     "spawn_gated": false,
+     "areas": [
+      3
+     ],
+     "class_callback": null
+    },
+    "20/0/v49": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "npc",
+      "static_prop"
+     ],
+     "capabilities": [
+      "lock_on",
+      "talk"
+     ],
+     "callbacks": [
+      "0x800e78f0"
+     ],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null
+    },
+    "20/0/v66": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "npc",
+      "static_prop"
+     ],
+     "capabilities": [
+      "lock_on",
+      "talk"
+     ],
+     "callbacks": [
+      "0x800e78f0"
+     ],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    }
+   }
+  },
+  "ST1C": {
+   "name": "Forbidden Island / Sulphur-Bottom scenes",
+   "areas": 6,
+   "status": "listed",
+   "category": "room_only",
+   "records": {
+    "area_header": 6
+   },
+   "exported_records": 0,
+   "unexported_records": 0,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {}
+  },
+  "ST1D": {
+   "name": "Forbidden Island",
+   "areas": 3,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 3
+   },
+   "exported_records": 0,
+   "unexported_records": 0,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 3,
+    "spawn_sets": 26,
+    "unported_script_paths": 0,
+    "classes": {
+     "1": 3
+    },
+    "capabilities": {
+     "talk": 1,
+     "lock_on": 1
+    }
+   },
+   "talk_sites": [
+    {
+     "request_call": "0x800e7e34",
+     "function": "0x800e7dd4",
+     "bound": true
+    }
+   ],
+   "bindings": {
+    "dispatcher": "0x800e7728"
+   },
+   "classes": {}
+  },
+  "ST1E": {
+   "name": "Flutter fire",
+   "areas": 3,
+   "status": "listed",
+   "category": "props_only",
+   "records": {
+    "area_header": 3,
+    "object_a0": 3
+   },
+   "exported_records": 0,
+   "unexported_records": 3,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {
+    "A0/18": {
+     "kind": "object_a0",
+     "records": 3,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      1,
+      2
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST1F": {
+   "name": "Glyde's Base",
+   "areas": 2,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 2,
+    "controller_e0": 2
+   },
+   "exported_records": 0,
+   "unexported_records": 2,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 8,
+    "spawn_sets": 43,
+    "unported_script_paths": 22,
+    "classes": {
+     "0": 2,
+     "1": 2,
+     "128": 2,
+     "48": 2
+    },
+    "capabilities": {
+     "talk": 4,
+     "lock_on": 4
+    }
+   },
+   "talk_sites": [
+    {
+     "request_call": "0x800e8554",
+     "function": "0x800e84b0",
+     "bound": true
+    },
+    {
+     "request_call": "0x800e9f28",
+     "function": "0x800e9ec8",
+     "bound": true
+    }
+   ],
+   "bindings": {
+    "callback": "0x800e80d4",
+    "constructor": "0x800e8324",
+    "hitbox": "0x801012bc",
+    "dispatcher": "0x800e7b7c"
+   },
+   "classes": {
+    "E0/10": {
+     "kind": "controller_e0",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    },
+    "E0/5": {
+     "kind": "controller_e0",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST20": {
+   "name": "Kito Village",
+   "areas": 2,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 2,
+    "controller_e0": 2,
+    "prop": 4
+   },
+   "exported_records": 4,
+   "unexported_records": 2,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 72,
+    "spawn_sets": 100,
+    "unported_script_paths": 1,
+    "classes": {
+     "0": 54,
+     "10": 18
+    },
+    "capabilities": {
+     "talk": 54,
+     "lock_on": 54
+    }
+   },
+   "talk_sites": [
+    {
+     "request_call": "0x800e8914",
+     "function": "0x800e8870",
+     "bound": true
+    }
+   ],
+   "bindings": {
+    "callback": "0x800e8494",
+    "constructor": "0x800e86e4",
+    "hitbox": "0x800f207c",
+    "dispatcher": "0x800e7508"
+   },
+   "classes": {
+    "60/0/v0": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    },
+    "60/1/v0": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    },
+    "60/1/v1": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    },
+    "60/1/v2": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null
+    },
+    "E0/1": {
+     "kind": "controller_e0",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    },
+    "E0/26": {
+     "kind": "controller_e0",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST21": {
+   "name": "Calbania Plains",
+   "areas": 1,
+   "status": "listed",
+   "category": "props_only",
+   "records": {
+    "area_header": 1,
+    "controller_e0": 1
+   },
+   "exported_records": 0,
+   "unexported_records": 1,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {
+    "E0/10": {
+     "kind": "controller_e0",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST22": {
+   "name": "Calbania Plains",
+   "areas": 1,
+   "status": "listed",
+   "category": "props_only",
+   "records": {
+    "area_header": 1,
+    "controller_e0": 2
+   },
+   "exported_records": 0,
+   "unexported_records": 2,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {
+    "E0/10": {
+     "kind": "controller_e0",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    },
+    "E0/5": {
+     "kind": "controller_e0",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST23": {
+   "name": "Calbania Plains",
+   "areas": 1,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 1,
+    "controller_e0": 1
+   },
+   "exported_records": 0,
+   "unexported_records": 1,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 19,
+    "spawn_sets": 34,
+    "unported_script_paths": 0,
+    "classes": {
+     "1": 9,
+     "48": 10
+    },
+    "capabilities": {
+     "talk": 9,
+     "lock_on": 9
+    }
+   },
+   "talk_sites": [
+    {
+     "request_call": "0x800e7a3c",
+     "function": "0x800e79dc",
+     "bound": true
+    }
+   ],
+   "bindings": {
+    "dispatcher": "0x800e75b0"
+   },
+   "classes": {
+    "E0/5": {
+     "kind": "controller_e0",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST24": {
+   "name": "Pokte Plains",
+   "areas": 3,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 3
+   },
+   "exported_records": 0,
+   "unexported_records": 0,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 548,
+    "spawn_sets": 674,
+    "unported_script_paths": 1,
+    "classes": {
+     "0": 272,
+     "1": 120,
+     "11": 52,
+     "48": 104
+    },
+    "capabilities": {
+     "talk": 291,
+     "lock_on": 239
+    }
+   },
+   "talk_sites": [
+    {
+     "request_call": "0x800e7dbc",
+     "function": "0x800e7d5c",
+     "bound": true
+    },
+    {
+     "request_call": "0x800e9790",
+     "function": "0x800e9730",
+     "bound": true
+    },
+    {
+     "request_call": "0x800eb318",
+     "function": "0x800eb2bc",
+     "bound": true
+    }
+   ],
+   "bindings": {
+    "callback": "0x800e7944",
+    "constructor": "0x800e7bcc",
+    "hitbox": "0x800f2448",
+    "dispatcher": "0x800e75f4"
+   },
+   "classes": {}
+  },
+  "ST25": {
+   "name": "Pokte Village",
+   "areas": 7,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 7
+   },
+   "exported_records": 0,
+   "unexported_records": 0,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 2616,
+    "spawn_sets": 4112,
+    "unported_script_paths": 1,
+    "classes": {
+     "0": 2616
+    },
+    "capabilities": {
+     "talk": 2142,
+     "lock_on": 2142
+    }
+   },
+   "talk_sites": [
+    {
+     "request_call": "0x800e847c",
+     "function": "0x800e83d8",
+     "bound": true
+    }
+   ],
+   "bindings": {
+    "callback": "0x800e7ffc",
+    "constructor": "0x800e824c",
+    "hitbox": "0x800f9f38",
+    "dispatcher": "0x800e7570"
+   },
+   "classes": {}
+  },
+  "ST26": {
+   "name": "Saul Kada Ruins",
+   "areas": 12,
+   "status": "listed",
+   "category": "props_only",
+   "records": {
+    "area_header": 7,
+    "door": 7,
+    "controller_e0": 6,
+    "prop": 5
+   },
+   "exported_records": 12,
+   "unexported_records": 6,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [
+    {
+     "request_call": "0x800e7da0",
+     "function": "0x800e7d40",
+     "bound": false
+    }
+   ],
+   "bindings": {},
+   "classes": {
+    "60/25/v0": {
+     "kind": "prop",
+     "records": 5,
+     "exported": 5,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      1,
+      5,
+      6
+     ],
+     "class_callback": null
+    },
+    "A1/2": {
+     "kind": "door",
+     "records": 7,
+     "exported": 7,
+     "sources": [
+      "doors.json"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+     ],
+     "class_callback": null
+    },
+    "E0/10": {
+     "kind": "controller_e0",
+     "records": 4,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      1,
+      3,
+      5
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    },
+    "E0/21": {
+     "kind": "controller_e0",
+     "records": 2,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      3
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST27": {
+   "name": "Saul Kada Ruins",
+   "areas": 14,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 9,
+    "controller_e0": 7,
+    "object_a0": 3,
+    "door": 10,
+    "actor": 2
+   },
+   "exported_records": 12,
+   "unexported_records": 10,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {
+    "20/21/v12": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      4
+     ],
+     "class_callback": "0x800e8480"
+    },
+    "20/21/v13": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      4
+     ],
+     "class_callback": "0x800e8480"
+    },
+    "A0/10": {
+     "kind": "object_a0",
+     "records": 3,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      3,
+      6
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    },
+    "A1/2": {
+     "kind": "door",
+     "records": 10,
+     "exported": 10,
+     "sources": [
+      "doors.json"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+     ],
+     "class_callback": null
+    },
+    "E0/10": {
+     "kind": "controller_e0",
+     "records": 3,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      2,
+      3,
+      6
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    },
+    "E0/21": {
+     "kind": "controller_e0",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      2
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    },
+    "E0/22": {
+     "kind": "controller_e0",
+     "records": 3,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      3,
+      6
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST28": {
+   "name": "Saul Kada Ruins",
+   "areas": 11,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 6,
+    "controller_e0": 5,
+    "object_a0": 2,
+    "door": 7,
+    "actor": 3
+   },
+   "exported_records": 10,
+   "unexported_records": 7,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {
+    "20/21/v14": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": "0x800ed588"
+    },
+    "20/21/v15": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": "0x800ed588"
+    },
+    "20/21/v16": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": "0x800ed588"
+    },
+    "A0/10": {
+     "kind": "object_a0",
+     "records": 2,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      3
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    },
+    "A1/2": {
+     "kind": "door",
+     "records": 7,
+     "exported": 7,
+     "sources": [
+      "doors.json"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+     ],
+     "class_callback": null
+    },
+    "E0/21": {
+     "kind": "controller_e0",
+     "records": 2,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      5
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    },
+    "E0/22": {
+     "kind": "controller_e0",
+     "records": 2,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      3
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    },
+    "E0/30": {
+     "kind": "controller_e0",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      3
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST29": {
+   "name": "Kimotoma City",
+   "areas": 2,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 2
+   },
+   "exported_records": 0,
+   "unexported_records": 0,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 64,
+    "spawn_sets": 155,
+    "unported_script_paths": 36,
+    "classes": {
+     "0": 64
+    },
+    "capabilities": {
+     "talk": 64,
+     "lock_on": 64
+    }
+   },
+   "talk_sites": [
+    {
+     "request_call": "0x800e8134",
+     "function": "0x800e8090",
+     "bound": true
+    },
+    {
+     "request_call": "0x800e9b08",
+     "function": "0x800e9aa8",
+     "bound": false
+    }
+   ],
+   "bindings": {
+    "callback": "0x800e7cb4",
+    "constructor": "0x800e7f04",
+    "hitbox": "0x800f709c",
+    "dispatcher": "0x800e7838"
+   },
+   "classes": {}
+  },
+  "ST2A": {
+   "name": "Kimotoma City",
+   "areas": 5,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 5,
+    "actor": 3
+   },
+   "exported_records": 3,
+   "unexported_records": 0,
+   "export_files": [
+    "npcs.json"
+   ],
+   "scripted": null,
+   "talk_sites": [
+    {
+     "request_call": "0x800e84b8",
+     "function": "0x800e8414",
+     "bound": false
+    }
+   ],
+   "bindings": {
+    "callback": "0x800e8038",
+    "constructor": "0x800e8288",
+    "hitbox": "0x800f0990"
+   },
+   "classes": {
+    "20/0/v37": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "npc",
+      "static_prop"
+     ],
+     "capabilities": [
+      "lock_on"
+     ],
+     "callbacks": [
+      "0x800e8038"
+     ],
+     "spawn_gated": false,
+     "areas": [
+      4
+     ],
+     "class_callback": null
+    },
+    "20/0/v57": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "npc",
+      "static_prop"
+     ],
+     "capabilities": [
+      "lock_on"
+     ],
+     "callbacks": [
+      "0x800e8038"
+     ],
+     "spawn_gated": false,
+     "areas": [
+      4
+     ],
+     "class_callback": null
+    },
+    "20/0/v8": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "npc",
+      "static_prop"
+     ],
+     "capabilities": [
+      "lock_on"
+     ],
+     "callbacks": [
+      "0x800e8038"
+     ],
+     "spawn_gated": false,
+     "areas": [
+      4
+     ],
+     "class_callback": null
+    }
+   }
+  },
+  "ST2B": {
+   "name": "Kimotoma City",
+   "areas": 4,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 4,
+    "prop": 2
+   },
+   "exported_records": 2,
+   "unexported_records": 0,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 2,
+    "spawn_sets": 26,
+    "unported_script_paths": 3,
+    "classes": {
+     "0": 1,
+     "8": 1
+    },
+    "capabilities": {}
+   },
+   "talk_sites": [
+    {
+     "request_call": "0x800ed5c0",
+     "function": "0x800ed4d4",
+     "bound": false
+    }
+   ],
+   "bindings": {
+    "callback": "0x800e7b6c",
+    "constructor": "0x800e7c48",
+    "hitbox": "0x800f3d00",
+    "dispatcher": "0x800e7504"
+   },
+   "classes": {
+    "60/1/v0": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null
+    },
+    "60/1/v1": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null
+    }
+   }
+  },
+  "ST2C": {
+   "name": "Kimotoma City",
+   "areas": 1,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 1
+   },
+   "exported_records": 0,
+   "unexported_records": 0,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 2,
+    "spawn_sets": 5,
+    "unported_script_paths": 0,
+    "classes": {
+     "0": 2
+    },
+    "capabilities": {
+     "talk": 2,
+     "lock_on": 2
+    }
+   },
+   "talk_sites": [
+    {
+     "request_call": "0x800e78d4",
+     "function": "0x800e7830",
+     "bound": true
+    }
+   ],
+   "bindings": {
+    "callback": "0x800e7454",
+    "constructor": "0x800e76a4",
+    "hitbox": "0x800ea878",
+    "dispatcher": "0x800e7358"
+   },
+   "classes": {}
+  },
+  "ST2D": {
+   "name": "Calinca Ruins",
+   "areas": 13,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 10,
+    "actor": 6,
+    "controller_e0": 9,
+    "prop": 40,
+    "door": 1
+   },
+   "exported_records": 47,
+   "unexported_records": 9,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {
+    "20/21/v3": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      7
+     ],
+     "class_callback": "0x800ece0c"
+    },
+    "20/21/v53": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": "0x800ece0c"
+    },
+    "20/21/v54": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      4
+     ],
+     "class_callback": "0x800ece0c"
+    },
+    "20/21/v55": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      6
+     ],
+     "class_callback": "0x800ece0c"
+    },
+    "20/82/v0": {
+     "kind": "actor",
+     "records": 2,
+     "exported": 2,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      7,
+      9
+     ],
+     "class_callback": "0x800f42b0"
+    },
+    "60/25/v0": {
+     "kind": "prop",
+     "records": 2,
+     "exported": 2,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      8
+     ],
+     "class_callback": null
+    },
+    "60/31/v0": {
+     "kind": "prop",
+     "records": 24,
+     "exported": 24,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      2,
+      6
+     ],
+     "class_callback": null
+    },
+    "60/31/v1": {
+     "kind": "prop",
+     "records": 9,
+     "exported": 9,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      6
+     ],
+     "class_callback": null
+    },
+    "60/42/v0": {
+     "kind": "prop",
+     "records": 4,
+     "exported": 4,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      4
+     ],
+     "class_callback": null
+    },
+    "60/48/v0": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null
+    },
+    "A1/2": {
+     "kind": "door",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "doors.json"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    },
+    "E0/25": {
+     "kind": "controller_e0",
+     "records": 9,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST2E": {
+   "name": "Calinca Ruins",
+   "areas": 15,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 12,
+    "controller_e0": 12,
+    "prop": 29,
+    "actor": 3
+   },
+   "exported_records": 32,
+   "unexported_records": 12,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {
+    "20/21/v4": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      9
+     ],
+     "class_callback": "0x800ee960"
+    },
+    "20/21/v56": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      7
+     ],
+     "class_callback": "0x800ee960"
+    },
+    "20/21/v57": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      11
+     ],
+     "class_callback": "0x800ee960"
+    },
+    "60/25/v0": {
+     "kind": "prop",
+     "records": 2,
+     "exported": 2,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      10
+     ],
+     "class_callback": null
+    },
+    "60/31/v0": {
+     "kind": "prop",
+     "records": 16,
+     "exported": 16,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      2,
+      4
+     ],
+     "class_callback": null
+    },
+    "60/31/v1": {
+     "kind": "prop",
+     "records": 4,
+     "exported": 4,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      2,
+      3,
+      7,
+      11
+     ],
+     "class_callback": null
+    },
+    "60/31/v2": {
+     "kind": "prop",
+     "records": 4,
+     "exported": 4,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      6,
+      8
+     ],
+     "class_callback": null
+    },
+    "60/42/v0": {
+     "kind": "prop",
+     "records": 3,
+     "exported": 3,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      7
+     ],
+     "class_callback": null
+    },
+    "E0/25": {
+     "kind": "controller_e0",
+     "records": 12,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST2F": {
+   "name": "Calinca Ruins",
+   "areas": 12,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 9,
+    "prop": 34,
+    "controller_e0": 15,
+    "door": 2,
+    "actor": 2
+   },
+   "exported_records": 38,
+   "unexported_records": 15,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 38,
+    "spawn_sets": 962,
+    "unported_script_paths": 945,
+    "classes": {
+     "1": 17,
+     "77": 21
+    },
+    "capabilities": {
+     "talk": 17,
+     "lock_on": 17
+    }
+   },
+   "talk_sites": [
+    {
+     "request_call": "0x800e8398",
+     "function": "0x800e8338",
+     "bound": true
+    }
+   ],
+   "bindings": {
+    "dispatcher": "0x800e76d8"
+   },
+   "classes": {
+    "20/21/v58": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      2
+     ],
+     "class_callback": "0x800ec104"
+    },
+    "20/21/v59": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      4
+     ],
+     "class_callback": "0x800ec104"
+    },
+    "60/25/v0": {
+     "kind": "prop",
+     "records": 3,
+     "exported": 3,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      5,
+      6
+     ],
+     "class_callback": null
+    },
+    "60/31/v0": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null
+    },
+    "60/31/v1": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null
+    },
+    "60/31/v2": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null
+    },
+    "60/31/v3": {
+     "kind": "prop",
+     "records": 28,
+     "exported": 28,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      7
+     ],
+     "class_callback": null
+    },
+    "A1/2": {
+     "kind": "door",
+     "records": 2,
+     "exported": 2,
+     "sources": [
+      "doors.json"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1,
+      8
+     ],
+     "class_callback": null
+    },
+    "E0/21": {
+     "kind": "controller_e0",
+     "records": 7,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1,
+      2,
+      3,
+      5,
+      6,
+      7,
+      8
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    },
+    "E0/25": {
+     "kind": "controller_e0",
+     "records": 8,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      7,
+      8
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST30": {
+   "name": "Glyde's Base",
+   "areas": 5,
+   "status": "listed",
+   "category": "room_only",
+   "records": {
+    "area_header": 5
+   },
+   "exported_records": 0,
+   "unexported_records": 0,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {}
+  },
+  "ST31": {
+   "name": "Glyde's Base",
+   "areas": 2,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 2,
+    "actor": 3
+   },
+   "exported_records": 3,
+   "unexported_records": 0,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {
+    "20/45/v0": {
+     "kind": "actor",
+     "records": 3,
+     "exported": 3,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    }
+   }
+  },
+  "ST32": {
+   "name": "Pokte Mayor's Home",
+   "areas": 1,
+   "status": "listed",
+   "category": "room_only",
+   "records": {
+    "area_header": 1
+   },
+   "exported_records": 0,
+   "unexported_records": 0,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [
+    {
+     "request_call": "0x800e7a18",
+     "function": "0x800e7874",
+     "bound": false
+    }
+   ],
+   "bindings": {},
+   "classes": {}
+  },
+  "ST33": {
+   "name": "Saul Kada Ruins",
+   "areas": 6,
+   "status": "listed",
+   "category": "props_only",
+   "records": {
+    "area_header": 1,
+    "controller_e0": 1
+   },
+   "exported_records": 0,
+   "unexported_records": 1,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {
+    "E0/21": {
+     "kind": "controller_e0",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST34": {
+   "name": "Saul Kada Ruins",
+   "areas": 11,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 6,
+    "door": 6,
+    "object_a0": 1,
+    "controller_e0": 5,
+    "actor": 2
+   },
+   "exported_records": 8,
+   "unexported_records": 6,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {
+    "20/21/v17": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      3
+     ],
+     "class_callback": "0x800ea390"
+    },
+    "20/21/v18": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      3
+     ],
+     "class_callback": "0x800ea390"
+    },
+    "A0/10": {
+     "kind": "object_a0",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    },
+    "A1/2": {
+     "kind": "door",
+     "records": 6,
+     "exported": 6,
+     "sources": [
+      "doors.json"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+     ],
+     "class_callback": null
+    },
+    "E0/10": {
+     "kind": "controller_e0",
+     "records": 4,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1,
+      2,
+      3,
+      4
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    },
+    "E0/22": {
+     "kind": "controller_e0",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST35": {
+   "name": "Nino Ruins",
+   "areas": 10,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 6,
+    "controller_e0": 5,
+    "prop": 3
+   },
+   "exported_records": 3,
+   "unexported_records": 5,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 1,
+    "spawn_sets": 11,
+    "unported_script_paths": 2,
+    "classes": {
+     "1": 1
+    },
+    "capabilities": {
+     "talk": 1,
+     "lock_on": 1
+    }
+   },
+   "talk_sites": [
+    {
+     "request_call": "0x800e7cc8",
+     "function": "0x800e7c68",
+     "bound": true
+    }
+   ],
+   "bindings": {
+    "dispatcher": "0x800e74dc"
+   },
+   "classes": {
+    "60/25/v0": {
+     "kind": "prop",
+     "records": 3,
+     "exported": 3,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1,
+      2,
+      3
+     ],
+     "class_callback": null
+    },
+    "E0/21": {
+     "kind": "controller_e0",
+     "records": 2,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      4,
+      5
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    },
+    "E0/27": {
+     "kind": "controller_e0",
+     "records": 3,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      2,
+      4
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST36": {
+   "name": "Nino Ruins",
+   "areas": 18,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 14,
+    "prop": 6,
+    "controller_e0": 16,
+    "actor": 4
+   },
+   "exported_records": 10,
+   "unexported_records": 16,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {
+    "20/21/v38": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      3
+     ],
+     "class_callback": "0x800ea3f0"
+    },
+    "20/21/v39": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      5
+     ],
+     "class_callback": "0x800ea3f0"
+    },
+    "20/21/v40": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      6
+     ],
+     "class_callback": "0x800ea3f0"
+    },
+    "20/21/v41": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      12
+     ],
+     "class_callback": "0x800ea3f0"
+    },
+    "60/25/v0": {
+     "kind": "prop",
+     "records": 4,
+     "exported": 4,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      7,
+      9,
+      13
+     ],
+     "class_callback": "0x800ea850"
+    },
+    "60/69/v1": {
+     "kind": "prop",
+     "records": 2,
+     "exported": 2,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      8,
+      11
+     ],
+     "class_callback": null
+    },
+    "E0/10": {
+     "kind": "controller_e0",
+     "records": 10,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      8,
+      10,
+      11,
+      12
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    },
+    "E0/27": {
+     "kind": "controller_e0",
+     "records": 6,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      2,
+      3,
+      4,
+      10
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST37": {
+   "name": "Nino Ruins",
+   "areas": 20,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 16,
+    "prop": 6,
+    "controller_e0": 16,
+    "actor": 2
+   },
+   "exported_records": 8,
+   "unexported_records": 16,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {
+    "20/21/v42": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      11
+     ],
+     "class_callback": "0x800e88cc"
+    },
+    "20/21/v43": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      13
+     ],
+     "class_callback": "0x800e88cc"
+    },
+    "60/25/v0": {
+     "kind": "prop",
+     "records": 4,
+     "exported": 4,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      3,
+      10,
+      15
+     ],
+     "class_callback": "0x800e8d2c"
+    },
+    "60/69/v1": {
+     "kind": "prop",
+     "records": 2,
+     "exported": 2,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      12
+     ],
+     "class_callback": null
+    },
+    "E0/10": {
+     "kind": "controller_e0",
+     "records": 12,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1,
+      2,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      11,
+      12,
+      13,
+      14
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    },
+    "E0/27": {
+     "kind": "controller_e0",
+     "records": 4,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      2,
+      5,
+      9
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST38": {
+   "name": "Nino Ruins",
+   "areas": 17,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 13,
+    "prop": 4,
+    "controller_e0": 16,
+    "actor": 5
+   },
+   "exported_records": 9,
+   "unexported_records": 16,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 363,
+    "spawn_sets": 517,
+    "unported_script_paths": 0,
+    "classes": {
+     "121": 11,
+     "66": 352
+    },
+    "capabilities": {}
+   },
+   "talk_sites": [],
+   "bindings": {
+    "dispatcher": "0x800e73e0"
+   },
+   "classes": {
+    "20/21/v44": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      2
+     ],
+     "class_callback": "0x800ea55c"
+    },
+    "20/21/v45": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      7
+     ],
+     "class_callback": "0x800ea55c"
+    },
+    "20/21/v46": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      9
+     ],
+     "class_callback": "0x800ea55c"
+    },
+    "20/21/v47": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      11
+     ],
+     "class_callback": "0x800ea55c"
+    },
+    "20/21/v48": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      11
+     ],
+     "class_callback": "0x800ea55c"
+    },
+    "60/25/v0": {
+     "kind": "prop",
+     "records": 3,
+     "exported": 3,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      4,
+      12
+     ],
+     "class_callback": null
+    },
+    "60/69/v1": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      6
+     ],
+     "class_callback": null
+    },
+    "E0/10": {
+     "kind": "controller_e0",
+     "records": 10,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1,
+      2,
+      3,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    },
+    "E0/27": {
+     "kind": "controller_e0",
+     "records": 6,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      2,
+      5,
+      8,
+      11
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST39": {
+   "name": "Flutter new-game scene",
+   "areas": 2,
+   "status": "listed",
+   "category": "room_only",
+   "records": {
+    "area_header": 2
+   },
+   "exported_records": 0,
+   "unexported_records": 0,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {}
+  },
+  "ST3A": {
+   "name": "Sulphur-Bottom / Forbidden Island scenes",
+   "areas": 4,
+   "status": "listed",
+   "category": "room_only",
+   "records": {
+    "area_header": 4
+   },
+   "exported_records": 0,
+   "unexported_records": 0,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {}
+  },
+  "ST3B": {
+   "name": "Kimotoma City",
+   "areas": 2,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 2
+   },
+   "exported_records": 0,
+   "unexported_records": 0,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 10,
+    "spawn_sets": 42,
+    "unported_script_paths": 0,
+    "classes": {
+     "0": 5,
+     "11": 2,
+     "73": 2,
+     "8": 1
+    },
+    "capabilities": {
+     "talk": 6,
+     "lock_on": 4
+    }
+   },
+   "talk_sites": [
+    {
+     "request_call": "0x800e92a4",
+     "function": "0x800e9200",
+     "bound": true
+    },
+    {
+     "request_call": "0x800ecb44",
+     "function": "0x800ecae8",
+     "bound": true
+    },
+    {
+     "request_call": "0x800f2ecc",
+     "function": "0x800f2de0",
+     "bound": false
+    }
+   ],
+   "bindings": {
+    "callback": "0x800e8e24",
+    "constructor": "0x800e9074",
+    "hitbox": "0x800fe518",
+    "dispatcher": "0x800e7644"
+   },
+   "classes": {}
+  },
+  "ST3C": {
+   "name": "Kimotoma City",
+   "areas": 5,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 5,
+    "prop": 2
+   },
+   "exported_records": 2,
+   "unexported_records": 0,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 67,
+    "spawn_sets": 176,
+    "unported_script_paths": 19,
+    "classes": {
+     "0": 26,
+     "1": 9,
+     "25": 8,
+     "48": 8,
+     "80": 16
+    },
+    "capabilities": {
+     "talk": 35,
+     "lock_on": 35
+    }
+   },
+   "talk_sites": [
+    {
+     "request_call": "0x800e8eac",
+     "function": "0x800e8e08",
+     "bound": true
+    },
+    {
+     "request_call": "0x800ea880",
+     "function": "0x800ea820",
+     "bound": true
+    }
+   ],
+   "bindings": {
+    "callback": "0x800e8a2c",
+    "constructor": "0x800e8c7c",
+    "hitbox": "0x800fea68",
+    "dispatcher": "0x800e83b0"
+   },
+   "classes": {
+    "60/1/v0": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null
+    },
+    "60/1/v1": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null
+    }
+   }
+  },
+  "ST3D": {
+   "name": "Sulphur-Bottom",
+   "areas": 4,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 4
+   },
+   "exported_records": 0,
+   "unexported_records": 0,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 57,
+    "spawn_sets": 99,
+    "unported_script_paths": 0,
+    "classes": {
+     "0": 57
+    },
+    "capabilities": {
+     "talk": 57,
+     "lock_on": 57
+    }
+   },
+   "talk_sites": [
+    {
+     "request_call": "0x800e7c40",
+     "function": "0x800e7b9c",
+     "bound": true
+    }
+   ],
+   "bindings": {
+    "callback": "0x800e77c0",
+    "constructor": "0x800e7a10",
+    "hitbox": "0x800eb0ac",
+    "dispatcher": "0x800e73b0"
+   },
+   "classes": {}
+  },
+  "ST3E": {
+   "name": "Sulphur-Bottom",
+   "areas": 7,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 7
+   },
+   "exported_records": 0,
+   "unexported_records": 0,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 76,
+    "spawn_sets": 355,
+    "unported_script_paths": 125,
+    "classes": {
+     "0": 76
+    },
+    "capabilities": {
+     "talk": 76,
+     "lock_on": 76
+    }
+   },
+   "talk_sites": [
+    {
+     "request_call": "0x800e7e1c",
+     "function": "0x800e7d78",
+     "bound": true
+    }
+   ],
+   "bindings": {
+    "callback": "0x800e799c",
+    "constructor": "0x800e7bec",
+    "hitbox": "0x800ed608",
+    "dispatcher": "0x800e75b0"
+   },
+   "classes": {}
+  },
+  "ST3F": {
+   "name": "Sulphur-Bottom",
+   "areas": 2,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 2
+   },
+   "exported_records": 0,
+   "unexported_records": 0,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 78,
+    "spawn_sets": 112,
+    "unported_script_paths": 0,
+    "classes": {
+     "0": 44,
+     "1": 17,
+     "48": 17
+    },
+    "capabilities": {
+     "talk": 61,
+     "lock_on": 61
+    }
+   },
+   "talk_sites": [
+    {
+     "request_call": "0x800e7c7c",
+     "function": "0x800e7bd8",
+     "bound": true
+    },
+    {
+     "request_call": "0x800e9650",
+     "function": "0x800e95f0",
+     "bound": true
+    }
+   ],
+   "bindings": {
+    "callback": "0x800e77fc",
+    "constructor": "0x800e7a4c",
+    "hitbox": "0x800ef93c",
+    "dispatcher": "0x800e7530"
+   },
+   "classes": {}
+  },
+  "ST40": {
+   "name": "Elysium",
+   "areas": 14,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 14,
+    "prop": 3,
+    "actor": 3
+   },
+   "exported_records": 6,
+   "unexported_records": 0,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 63,
+    "spawn_sets": 756,
+    "unported_script_paths": 756,
+    "classes": {
+     "0": 21,
+     "1": 21,
+     "25": 21
+    },
+    "capabilities": {
+     "talk": 42,
+     "lock_on": 42
+    }
+   },
+   "talk_sites": [
+    {
+     "request_call": "0x800e8964",
+     "function": "0x800e88c0",
+     "bound": true
+    },
+    {
+     "request_call": "0x800ea338",
+     "function": "0x800ea2d8",
+     "bound": true
+    }
+   ],
+   "bindings": {
+    "callback": "0x800e84e4",
+    "constructor": "0x800e8734",
+    "hitbox": "0x800fd558",
+    "dispatcher": "0x800e7c70"
+   },
+   "classes": {
+    "20/21/v68": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      10
+     ],
+     "class_callback": "0x800f0abc"
+    },
+    "20/21/v69": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      13
+     ],
+     "class_callback": "0x800f0abc"
+    },
+    "20/21/v72": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": "0x800f0abc"
+    },
+    "60/25/v0": {
+     "kind": "prop",
+     "records": 2,
+     "exported": 2,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1,
+      2
+     ],
+     "class_callback": null
+    },
+    "60/25/v1": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    }
+   }
+  },
+  "ST41": {
+   "name": "Defense Area",
+   "areas": 17,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 15,
+    "prop": 11,
+    "controller_e0": 18,
+    "actor": 20,
+    "door": 2
+   },
+   "exported_records": 33,
+   "unexported_records": 18,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {
+    "20/21/v60": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": "0x800ec9b8"
+    },
+    "20/21/v61": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": "0x800ec9b8"
+    },
+    "20/21/v62": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      9
+     ],
+     "class_callback": "0x800ec9b8"
+    },
+    "20/97/v0": {
+     "kind": "actor",
+     "records": 17,
+     "exported": 17,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      3,
+      5,
+      11
+     ],
+     "class_callback": "0x800ef2bc"
+    },
+    "60/25/v0": {
+     "kind": "prop",
+     "records": 2,
+     "exported": 2,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      14
+     ],
+     "class_callback": "0x800ece18"
+    },
+    "60/31/v0": {
+     "kind": "prop",
+     "records": 4,
+     "exported": 4,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null
+    },
+    "60/49/v0": {
+     "kind": "prop",
+     "records": 2,
+     "exported": 2,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      9
+     ],
+     "class_callback": null
+    },
+    "60/88/v0": {
+     "kind": "prop",
+     "records": 3,
+     "exported": 3,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      14
+     ],
+     "class_callback": null
+    },
+    "A1/2": {
+     "kind": "door",
+     "records": 2,
+     "exported": 2,
+     "sources": [
+      "doors.json"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      3,
+      5
+     ],
+     "class_callback": null
+    },
+    "E0/21": {
+     "kind": "controller_e0",
+     "records": 15,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    },
+    "E0/37": {
+     "kind": "controller_e0",
+     "records": 3,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      2,
+      6,
+      7
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST42": {
+   "name": "Defense Area",
+   "areas": 18,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 16,
+    "prop": 14,
+    "controller_e0": 18,
+    "actor": 14,
+    "door": 1
+   },
+   "exported_records": 29,
+   "unexported_records": 18,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {
+    "20/21/v3": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      5
+     ],
+     "class_callback": "0x800eca14"
+    },
+    "20/21/v63": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      5
+     ],
+     "class_callback": "0x800eca14"
+    },
+    "20/21/v64": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      11
+     ],
+     "class_callback": "0x800eca14"
+    },
+    "20/21/v65": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      8
+     ],
+     "class_callback": "0x800eca14"
+    },
+    "20/21/v66": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      15
+     ],
+     "class_callback": "0x800eca14"
+    },
+    "20/97/v0": {
+     "kind": "actor",
+     "records": 9,
+     "exported": 9,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1,
+      10
+     ],
+     "class_callback": "0x800f0c94"
+    },
+    "60/25/v0": {
+     "kind": "prop",
+     "records": 2,
+     "exported": 2,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      13
+     ],
+     "class_callback": "0x800ee7f0"
+    },
+    "60/31/v0": {
+     "kind": "prop",
+     "records": 4,
+     "exported": 4,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      8
+     ],
+     "class_callback": null
+    },
+    "60/49/v0": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      11
+     ],
+     "class_callback": null
+    },
+    "60/88/v0": {
+     "kind": "prop",
+     "records": 7,
+     "exported": 7,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      2,
+      6,
+      13
+     ],
+     "class_callback": null
+    },
+    "A1/2": {
+     "kind": "door",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "doors.json"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null
+    },
+    "E0/21": {
+     "kind": "controller_e0",
+     "records": 16,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    },
+    "E0/37": {
+     "kind": "controller_e0",
+     "records": 2,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      6,
+      13
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST43": {
+   "name": "Mother Zone",
+   "areas": 10,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 5,
+    "prop": 2,
+    "door": 1,
+    "controller_e0": 1,
+    "actor": 1
+   },
+   "exported_records": 4,
+   "unexported_records": 1,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {
+    "20/21/v73": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      3
+     ],
+     "class_callback": "0x800e76d0"
+    },
+    "60/25/v0": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      4
+     ],
+     "class_callback": null
+    },
+    "60/25/v1": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    },
+    "A1/2": {
+     "kind": "door",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "doors.json"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    },
+    "E0/21": {
+     "kind": "controller_e0",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      2
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST44": {
+   "name": "Mother Zone",
+   "areas": 10,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 5,
+    "prop": 2,
+    "door": 1,
+    "controller_e0": 1,
+    "actor": 1
+   },
+   "exported_records": 4,
+   "unexported_records": 1,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {
+    "20/21/v74": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      3
+     ],
+     "class_callback": "0x800e7600"
+    },
+    "60/25/v0": {
+     "kind": "prop",
+     "records": 2,
+     "exported": 2,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      4
+     ],
+     "class_callback": null
+    },
+    "A1/2": {
+     "kind": "door",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "doors.json"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null
+    },
+    "E0/21": {
+     "kind": "controller_e0",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      2
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST45": {
+   "name": "Mother Zone",
+   "areas": 11,
+   "status": "listed",
+   "category": "props_only",
+   "records": {
+    "area_header": 6,
+    "prop": 2,
+    "controller_e0": 2,
+    "door": 1
+   },
+   "exported_records": 3,
+   "unexported_records": 2,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {
+    "60/25/v0": {
+     "kind": "prop",
+     "records": 2,
+     "exported": 2,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      5
+     ],
+     "class_callback": null
+    },
+    "A1/2": {
+     "kind": "door",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "doors.json"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      2
+     ],
+     "class_callback": null
+    },
+    "E0/10": {
+     "kind": "controller_e0",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    },
+    "E0/21": {
+     "kind": "controller_e0",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST46": {
+   "name": "Nino Island / Flutter scenes",
+   "areas": 4,
+   "status": "listed",
+   "category": "room_only",
+   "records": {
+    "area_header": 4
+   },
+   "exported_records": 0,
+   "unexported_records": 0,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {}
+  },
+  "ST47": {
+   "name": "Yosyonke City",
+   "areas": 3,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 3
+   },
+   "exported_records": 0,
+   "unexported_records": 0,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 93,
+    "spawn_sets": 159,
+    "unported_script_paths": 0,
+    "classes": {
+     "0": 93
+    },
+    "capabilities": {
+     "talk": 93,
+     "lock_on": 93
+    }
+   },
+   "talk_sites": [
+    {
+     "request_call": "0x800e8a80",
+     "function": "0x800e89dc",
+     "bound": true
+    }
+   ],
+   "bindings": {
+    "callback": "0x800e8600",
+    "constructor": "0x800e8850",
+    "hitbox": "0x800ed068",
+    "dispatcher": "0x800e7348"
+   },
+   "classes": {}
+  },
+  "ST48": {
+   "name": "Saul Kada Desert",
+   "areas": 2,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 2,
+    "object_a0": 2,
+    "controller_e0": 6
+   },
+   "exported_records": 0,
+   "unexported_records": 8,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 27,
+    "spawn_sets": 47,
+    "unported_script_paths": 0,
+    "classes": {
+     "1": 1,
+     "48": 2,
+     "6": 24
+    },
+    "capabilities": {
+     "talk": 1,
+     "lock_on": 1
+    }
+   },
+   "talk_sites": [
+    {
+     "request_call": "0x800e7b78",
+     "function": "0x800e7b18",
+     "bound": true
+    }
+   ],
+   "bindings": {
+    "dispatcher": "0x800e7668"
+   },
+   "classes": {
+    "A0/10": {
+     "kind": "object_a0",
+     "records": 2,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      1
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    },
+    "E0/1": {
+     "kind": "controller_e0",
+     "records": 2,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      1
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    },
+    "E0/26": {
+     "kind": "controller_e0",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    },
+    "E0/35": {
+     "kind": "controller_e0",
+     "records": 3,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST49": {
+   "name": "Flutter / Dropship scenes",
+   "areas": 4,
+   "status": "listed",
+   "category": "room_only",
+   "records": {
+    "area_header": 4
+   },
+   "exported_records": 0,
+   "unexported_records": 0,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {}
+  },
+  "ST4A": {
+   "name": "Tutorial",
+   "areas": 8,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 7,
+    "controller_e0": 14,
+    "actor": 1
+   },
+   "exported_records": 1,
+   "unexported_records": 14,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [
+    {
+     "request_call": "0x800e7cd0",
+     "function": "0x800e7c2c",
+     "bound": false
+    }
+   ],
+   "bindings": {},
+   "classes": {
+    "20/21/v11": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      4
+     ],
+     "class_callback": "0x800ebc88"
+    },
+    "E0/10": {
+     "kind": "controller_e0",
+     "records": 14,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST4B": {
+   "name": "Sulphur-Bottom",
+   "areas": 6,
+   "status": "listed",
+   "category": "room_only",
+   "records": {
+    "area_header": 6,
+    "door": 1
+   },
+   "exported_records": 1,
+   "unexported_records": 0,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {
+    "A1/2": {
+     "kind": "door",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "doors.json"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      2
+     ],
+     "class_callback": null
+    }
+   }
+  },
+  "ST4C": {
+   "name": "Mother Zone",
+   "areas": 10,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 5,
+    "prop": 1,
+    "door": 10,
+    "controller_e0": 1
+   },
+   "exported_records": 11,
+   "unexported_records": 1,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 105,
+    "spawn_sets": 357,
+    "unported_script_paths": 105,
+    "classes": {
+     "1": 21,
+     "64": 84
+    },
+    "capabilities": {
+     "talk": 21,
+     "lock_on": 21
+    }
+   },
+   "talk_sites": [
+    {
+     "request_call": "0x800e7b1c",
+     "function": "0x800e7abc",
+     "bound": true
+    }
+   ],
+   "bindings": {
+    "dispatcher": "0x800e751c"
+   },
+   "classes": {
+    "60/25/v0": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    },
+    "A1/2": {
+     "kind": "door",
+     "records": 10,
+     "exported": 10,
+     "sources": [
+      "doors.json"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1,
+      3,
+      4
+     ],
+     "class_callback": null
+    },
+    "E0/26": {
+     "kind": "controller_e0",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      4
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST4D": {
+   "name": "Guild Ruins",
+   "areas": 10,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 9,
+    "prop": 1,
+    "actor": 2
+   },
+   "exported_records": 3,
+   "unexported_records": 0,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {
+    "20/21/v33": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      4
+     ],
+     "class_callback": "0x800ec140"
+    },
+    "20/21/v34": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      7
+     ],
+     "class_callback": "0x800ec140"
+    },
+    "60/25/v0": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": "0x800edf1c"
+    }
+   }
+  },
+  "ST4E": {
+   "name": "Pokte Caverns",
+   "areas": 12,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 10,
+    "prop": 2,
+    "controller_e0": 9,
+    "actor": 5
+   },
+   "exported_records": 7,
+   "unexported_records": 9,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {
+    "20/21/v20": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      3
+     ],
+     "class_callback": "0x800ebfd0"
+    },
+    "20/21/v21": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      6
+     ],
+     "class_callback": "0x800ebfd0"
+    },
+    "20/21/v22": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      7
+     ],
+     "class_callback": "0x800ebfd0"
+    },
+    "20/21/v23": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      5
+     ],
+     "class_callback": "0x800ebfd0"
+    },
+    "20/21/v24": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      7
+     ],
+     "class_callback": "0x800ebfd0"
+    },
+    "60/25/v0": {
+     "kind": "prop",
+     "records": 2,
+     "exported": 2,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      9
+     ],
+     "class_callback": null
+    },
+    "E0/10": {
+     "kind": "controller_e0",
+     "records": 9,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST4F": {
+   "name": "Kito Caverns",
+   "areas": 15,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 14,
+    "prop": 3,
+    "actor": 4,
+    "door": 1
+   },
+   "exported_records": 8,
+   "unexported_records": 0,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 21,
+    "spawn_sets": 630,
+    "unported_script_paths": 378,
+    "classes": {
+     "111": 21
+    },
+    "capabilities": {
+     "talk": 21
+    }
+   },
+   "talk_sites": [
+    {
+     "request_call": "0x800f2df8",
+     "function": "0x800f2d54",
+     "bound": true
+    }
+   ],
+   "bindings": {
+    "dispatcher": "0x800e742c"
+   },
+   "classes": {
+    "20/21/v49": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      8
+     ],
+     "class_callback": "0x800e980c"
+    },
+    "20/21/v50": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      13
+     ],
+     "class_callback": "0x800e980c"
+    },
+    "20/21/v51": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      13
+     ],
+     "class_callback": "0x800e980c"
+    },
+    "20/21/v52": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      13
+     ],
+     "class_callback": "0x800e980c"
+    },
+    "60/25/v0": {
+     "kind": "prop",
+     "records": 3,
+     "exported": 3,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      5,
+      13
+     ],
+     "class_callback": null
+    },
+    "A1/2": {
+     "kind": "door",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "doors.json"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      12
+     ],
+     "class_callback": null
+    }
+   }
+  },
+  "ST50": {
+   "name": "Kimotoma Caverns",
+   "areas": 12,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 11,
+    "prop": 1,
+    "controller_e0": 9,
+    "actor": 3,
+    "door": 1
+   },
+   "exported_records": 5,
+   "unexported_records": 9,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 21,
+    "spawn_sets": 525,
+    "unported_script_paths": 273,
+    "classes": {
+     "111": 21
+    },
+    "capabilities": {
+     "talk": 21
+    }
+   },
+   "talk_sites": [
+    {
+     "request_call": "0x800f016c",
+     "function": "0x800f00c8",
+     "bound": true
+    }
+   ],
+   "bindings": {
+    "dispatcher": "0x800e7488"
+   },
+   "classes": {
+    "20/21/v35": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      4
+     ],
+     "class_callback": "0x800ea498"
+    },
+    "20/21/v36": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      6
+     ],
+     "class_callback": "0x800ea498"
+    },
+    "20/21/v37": {
+     "kind": "actor",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [
+      "talk"
+     ],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      8
+     ],
+     "class_callback": "0x800ea498"
+    },
+    "60/25/v0": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": "0x800ec274"
+    },
+    "A1/2": {
+     "kind": "door",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "doors.json"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      10
+     ],
+     "class_callback": null
+    },
+    "E0/10": {
+     "kind": "controller_e0",
+     "records": 9,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST51": {
+   "name": "Pokte Caverns",
+   "areas": 5,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 3,
+    "prop": 1,
+    "door": 1
+   },
+   "exported_records": 2,
+   "unexported_records": 0,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 42,
+    "spawn_sets": 189,
+    "unported_script_paths": 63,
+    "classes": {
+     "111": 21,
+     "7": 21
+    },
+    "capabilities": {
+     "talk": 21
+    }
+   },
+   "talk_sites": [
+    {
+     "request_call": "0x800ea494",
+     "function": "0x800ea3f0",
+     "bound": true
+    }
+   ],
+   "bindings": {
+    "dispatcher": "0x800e72c8"
+   },
+   "classes": {
+    "60/25/v0": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    },
+    "A1/2": {
+     "kind": "door",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "doors.json"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      2
+     ],
+     "class_callback": null
+    }
+   }
+  },
+  "ST52": {
+   "name": "Sera / Master scenes",
+   "areas": 5,
+   "status": "listed",
+   "category": "room_only",
+   "records": {
+    "area_header": 5,
+    "door": 1
+   },
+   "exported_records": 1,
+   "unexported_records": 0,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {
+    "A1/2": {
+     "kind": "door",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "doors.json"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null
+    }
+   }
+  },
+  "ST53": {
+   "name": "Calinca Tundra scenes",
+   "areas": 3,
+   "status": "listed",
+   "category": "room_only",
+   "records": {
+    "area_header": 3
+   },
+   "exported_records": 0,
+   "unexported_records": 0,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {}
+  },
+  "ST54": {
+   "name": "Rocket launch ending",
+   "areas": 3,
+   "status": "listed",
+   "category": "room_only",
+   "records": {
+    "area_header": 3
+   },
+   "exported_records": 0,
+   "unexported_records": 0,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {}
+  },
+  "ST55": {
+   "name": "License Test Ruins",
+   "areas": 8,
+   "status": "listed",
+   "category": "props_only",
+   "records": {
+    "area_header": 7,
+    "controller_e0": 7
+   },
+   "exported_records": 0,
+   "unexported_records": 7,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {
+    "E0/10": {
+     "kind": "controller_e0",
+     "records": 7,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST56": {
+   "name": "Master's Room",
+   "areas": 1,
+   "status": "listed",
+   "category": "props_only",
+   "records": {
+    "area_header": 1,
+    "prop": 1
+   },
+   "exported_records": 1,
+   "unexported_records": 0,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [
+    {
+     "request_call": "0x800e773c",
+     "function": "0x800e76dc",
+     "bound": false
+    }
+   ],
+   "bindings": {},
+   "classes": {
+    "60/25/v0": {
+     "kind": "prop",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    }
+   }
+  },
+  "ST57": {
+   "name": "Game credits",
+   "areas": 1,
+   "status": "listed",
+   "category": "room_only",
+   "records": {
+    "area_header": 1
+   },
+   "exported_records": 0,
+   "unexported_records": 0,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {}
+  },
+  "ST58": {
+   "name": "Mother Zone",
+   "areas": 10,
+   "status": "listed",
+   "category": "gameplay",
+   "records": {
+    "area_header": 5,
+    "prop": 30,
+    "controller_e0": 1,
+    "door": 1
+   },
+   "exported_records": 3,
+   "unexported_records": 29,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 21,
+    "spawn_sets": 189,
+    "unported_script_paths": 126,
+    "classes": {
+     "77": 21
+    },
+    "capabilities": {}
+   },
+   "talk_sites": [],
+   "bindings": {
+    "dispatcher": "0x800e73b0"
+   },
+   "classes": {
+    "60/25/v0": {
+     "kind": "prop",
+     "records": 2,
+     "exported": 2,
+     "sources": [
+      "static_prop"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0,
+      4
+     ],
+     "class_callback": null
+    },
+    "60/31/v3": {
+     "kind": "prop",
+     "records": 28,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null,
+     "unresolved_model": true
+    },
+    "A1/2": {
+     "kind": "door",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "doors.json"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      3
+     ],
+     "class_callback": null
+    },
+    "E0/21": {
+     "kind": "controller_e0",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      1
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST59": {
+   "name": "Manda Circuit",
+   "areas": 1,
+   "status": "listed",
+   "category": "room_only",
+   "records": {
+    "area_header": 1,
+    "door": 1
+   },
+   "exported_records": 1,
+   "unexported_records": 0,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {
+    "A1/2": {
+     "kind": "door",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "doors.json"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    }
+   }
+  },
+  "ST5A": {
+   "name": "Calinca Circuit",
+   "areas": 1,
+   "status": "listed",
+   "category": "props_only",
+   "records": {
+    "area_header": 1,
+    "prop": 7,
+    "door": 1
+   },
+   "exported_records": 8,
+   "unexported_records": 0,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {
+    "60/2/v1": {
+     "kind": "prop",
+     "records": 7,
+     "exported": 7,
+     "sources": [
+      "weather"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    },
+    "A1/2": {
+     "kind": "door",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "doors.json"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    }
+   }
+  },
+  "ST5B": {
+   "name": "Saul Kada Circuit",
+   "areas": 1,
+   "status": "listed",
+   "category": "props_only",
+   "records": {
+    "area_header": 1,
+    "object_a0": 1,
+    "controller_e0": 6,
+    "door": 1
+   },
+   "exported_records": 1,
+   "unexported_records": 7,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {
+    "A0/10": {
+     "kind": "object_a0",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    },
+    "A1/2": {
+     "kind": "door",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "doors.json"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    },
+    "E0/1": {
+     "kind": "controller_e0",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    },
+    "E0/26": {
+     "kind": "controller_e0",
+     "records": 1,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    },
+    "E0/35": {
+     "kind": "controller_e0",
+     "records": 4,
+     "exported": 0,
+     "sources": [],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null,
+     "unresolved_model": false
+    }
+   }
+  },
+  "ST5C": {
+   "name": "Mother Zone",
+   "areas": 1,
+   "status": "listed",
+   "category": "room_only",
+   "records": {
+    "area_header": 1,
+    "door": 1
+   },
+   "exported_records": 1,
+   "unexported_records": 0,
+   "export_files": [],
+   "scripted": null,
+   "talk_sites": [],
+   "bindings": {},
+   "classes": {
+    "A1/2": {
+     "kind": "door",
+     "records": 1,
+     "exported": 1,
+     "sources": [
+      "doors.json"
+     ],
+     "capabilities": [],
+     "callbacks": [],
+     "spawn_gated": false,
+     "areas": [
+      0
+     ],
+     "class_callback": null
+    }
+   }
+  }
+ },
+ "class_totals": {
+  "E0/10": {
+   "records": 106,
+   "exported": 0,
+   "stages": [
+    "ST09",
+    "ST0D",
+    "ST0E",
+    "ST12",
+    "ST13",
+    "ST14",
+    "ST15",
+    "ST16",
+    "ST1F",
+    "ST21",
+    "ST22",
+    "ST26",
+    "ST27",
+    "ST34",
+    "ST36",
+    "ST37",
+    "ST38",
+    "ST45",
+    "ST4A",
+    "ST4E",
+    "ST50",
+    "ST55"
+   ]
+  },
+  "E0/21": {
+   "records": 53,
+   "exported": 0,
+   "stages": [
+    "ST0F",
+    "ST12",
+    "ST26",
+    "ST27",
+    "ST28",
+    "ST2F",
+    "ST33",
+    "ST35",
+    "ST41",
+    "ST42",
+    "ST43",
+    "ST44",
+    "ST45",
+    "ST58"
+   ]
+  },
+  "E0/27": {
+   "records": 30,
+   "exported": 0,
+   "stages": [
+    "ST12",
+    "ST13",
+    "ST14",
+    "ST35",
+    "ST36",
+    "ST37",
+    "ST38"
+   ]
+  },
+  "E0/25": {
+   "records": 29,
+   "exported": 0,
+   "stages": [
+    "ST2D",
+    "ST2E",
+    "ST2F"
+   ]
+  },
+  "60/31/v3": {
+   "records": 56,
+   "exported": 28,
+   "stages": [
+    "ST2F",
+    "ST58"
+   ]
+  },
+  "E0/1": {
+   "records": 9,
+   "exported": 0,
+   "stages": [
+    "ST15",
+    "ST16",
+    "ST17",
+    "ST18",
+    "ST20",
+    "ST48",
+    "ST5B"
+   ]
+  },
+  "A0/10": {
+   "records": 9,
+   "exported": 0,
+   "stages": [
+    "ST27",
+    "ST28",
+    "ST34",
+    "ST48",
+    "ST5B"
+   ]
+  },
+  "E0/35": {
+   "records": 7,
+   "exported": 0,
+   "stages": [
+    "ST48",
+    "ST5B"
+   ]
+  },
+  "E0/22": {
+   "records": 6,
+   "exported": 0,
+   "stages": [
+    "ST27",
+    "ST28",
+    "ST34"
+   ]
+  },
+  "E0/26": {
+   "records": 5,
+   "exported": 0,
+   "stages": [
+    "ST00",
+    "ST20",
+    "ST48",
+    "ST4C",
+    "ST5B"
+   ]
+  },
+  "E0/37": {
+   "records": 5,
+   "exported": 0,
+   "stages": [
+    "ST41",
+    "ST42"
+   ]
+  },
+  "E0/4": {
+   "records": 3,
+   "exported": 0,
+   "stages": [
+    "ST00",
+    "ST0A"
+   ]
+  },
+  "A0/18": {
+   "records": 3,
+   "exported": 0,
+   "stages": [
+    "ST1E"
+   ]
+  },
+  "E0/5": {
+   "records": 3,
+   "exported": 0,
+   "stages": [
+    "ST1F",
+    "ST22",
+    "ST23"
+   ]
+  },
+  "20/2/v0": {
+   "records": 1,
+   "exported": 0,
+   "stages": [
+    "ST00"
+   ]
+  },
+  "20/2/v1": {
+   "records": 1,
+   "exported": 0,
+   "stages": [
+    "ST00"
+   ]
+  },
+  "20/2/v2": {
+   "records": 1,
+   "exported": 0,
+   "stages": [
+    "ST00"
+   ]
+  },
+  "20/2/v3": {
+   "records": 1,
+   "exported": 0,
+   "stages": [
+    "ST00"
+   ]
+  },
+  "20/2/v4": {
+   "records": 1,
+   "exported": 0,
+   "stages": [
+    "ST00"
+   ]
+  },
+  "20/2/v5": {
+   "records": 1,
+   "exported": 0,
+   "stages": [
+    "ST00"
+   ]
+  },
+  "60/1/v0": {
+   "records": 7,
+   "exported": 6,
+   "stages": [
+    "ST00",
+    "ST09",
+    "ST18",
+    "ST1A",
+    "ST20",
+    "ST2B",
+    "ST3C"
+   ]
+  },
+  "60/1/v1": {
+   "records": 6,
+   "exported": 5,
+   "stages": [
+    "ST00",
+    "ST18",
+    "ST1A",
+    "ST20",
+    "ST2B",
+    "ST3C"
+   ]
+  },
+  "60/1/v2": {
+   "records": 3,
+   "exported": 2,
+   "stages": [
+    "ST00",
+    "ST09",
+    "ST20"
+   ]
+  },
+  "60/1/v3": {
+   "records": 3,
+   "exported": 2,
+   "stages": [
+    "ST00",
+    "ST09",
+    "ST16"
+   ]
+  },
+  "60/1/v4": {
+   "records": 2,
+   "exported": 1,
+   "stages": [
+    "ST00",
+    "ST09"
+   ]
+  },
+  "20/0/v3": {
+   "records": 1,
+   "exported": 0,
+   "stages": [
+    "ST00"
+   ]
+  },
+  "20/21/v67": {
+   "records": 1,
+   "exported": 0,
+   "stages": [
+    "ST0D"
+   ]
+  },
+  "E0/19": {
+   "records": 1,
+   "exported": 0,
+   "stages": [
+    "ST14"
+   ]
+  },
+  "20/98/v3": {
+   "records": 1,
+   "exported": 0,
+   "stages": [
+    "ST19"
+   ]
+  },
+  "E0/30": {
+   "records": 1,
+   "exported": 0,
+   "stages": [
+    "ST28"
+   ]
+  },
+  "20/71/v0": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST04"
+   ]
+  },
+  "60/2/v1": {
+   "records": 28,
+   "exported": 28,
+   "stages": [
+    "ST08",
+    "ST09",
+    "ST0B",
+    "ST5A"
+   ]
+  },
+  "60/1/v5": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST09"
+   ]
+  },
+  "60/0/v0": {
+   "records": 4,
+   "exported": 4,
+   "stages": [
+    "ST09",
+    "ST19",
+    "ST20"
+   ]
+  },
+  "60/74/v0": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST09"
+   ]
+  },
+  "60/74/v1": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST09"
+   ]
+  },
+  "60/75/v0": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST09"
+   ]
+  },
+  "20/126/v0": {
+   "records": 2,
+   "exported": 2,
+   "stages": [
+    "ST0D"
+   ]
+  },
+  "60/25/v0": {
+   "records": 58,
+   "exported": 58,
+   "stages": [
+    "ST0F",
+    "ST12",
+    "ST13",
+    "ST14",
+    "ST26",
+    "ST2D",
+    "ST2E",
+    "ST2F",
+    "ST35",
+    "ST36",
+    "ST37",
+    "ST38",
+    "ST40",
+    "ST41",
+    "ST42",
+    "ST43",
+    "ST44",
+    "ST45",
+    "ST4C",
+    "ST4D",
+    "ST4E",
+    "ST4F",
+    "ST50",
+    "ST51",
+    "ST56",
+    "ST58"
+   ]
+  },
+  "20/21/v70": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST0F"
+   ]
+  },
+  "20/21/v5": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST0F"
+   ]
+  },
+  "20/21/v6": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST0F"
+   ]
+  },
+  "20/21/v71": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST0F"
+   ]
+  },
+  "20/21/v7": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST0F"
+   ]
+  },
+  "A1/2": {
+   "records": 60,
+   "exported": 60,
+   "stages": [
+    "ST0F",
+    "ST26",
+    "ST27",
+    "ST28",
+    "ST2D",
+    "ST2F",
+    "ST34",
+    "ST41",
+    "ST42",
+    "ST43",
+    "ST44",
+    "ST45",
+    "ST4B",
+    "ST4C",
+    "ST4F",
+    "ST50",
+    "ST51",
+    "ST52",
+    "ST58",
+    "ST59",
+    "ST5A",
+    "ST5B",
+    "ST5C"
+   ]
+  },
+  "60/19/v0": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST12"
+   ]
+  },
+  "20/21/v0": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST12"
+   ]
+  },
+  "20/38/v0": {
+   "records": 9,
+   "exported": 9,
+   "stages": [
+    "ST13"
+   ]
+  },
+  "20/21/v25": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST13"
+   ]
+  },
+  "20/21/v26": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST13"
+   ]
+  },
+  "20/32/v0": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST13"
+   ]
+  },
+  "20/21/v28": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST13"
+   ]
+  },
+  "20/21/v27": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST13"
+   ]
+  },
+  "20/21/v29": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST13"
+   ]
+  },
+  "20/21/v30": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST13"
+   ]
+  },
+  "20/21/v31": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST13"
+   ]
+  },
+  "20/21/v32": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST13"
+   ]
+  },
+  "60/24/v0": {
+   "records": 2,
+   "exported": 2,
+   "stages": [
+    "ST14"
+   ]
+  },
+  "20/21/v1": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST14"
+   ]
+  },
+  "20/21/v2": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST14"
+   ]
+  },
+  "60/45/v0": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST15"
+   ]
+  },
+  "60/45/v1": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST16"
+   ]
+  },
+  "20/0/v62": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST19"
+   ]
+  },
+  "20/0/v61": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST19"
+   ]
+  },
+  "20/0/v0": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST19"
+   ]
+  },
+  "20/0/v46": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST19"
+   ]
+  },
+  "20/0/v52": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST19"
+   ]
+  },
+  "20/0/v51": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST19"
+   ]
+  },
+  "20/0/v2": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST1A"
+   ]
+  },
+  "20/0/v47": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST1A"
+   ]
+  },
+  "20/0/v41": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST1A"
+   ]
+  },
+  "20/0/v7": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST1A"
+   ]
+  },
+  "20/0/v35": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST1A"
+   ]
+  },
+  "20/0/v66": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST1B"
+   ]
+  },
+  "20/0/v49": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST1B"
+   ]
+  },
+  "20/0/v34": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST1B"
+   ]
+  },
+  "20/21/v12": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST27"
+   ]
+  },
+  "20/21/v13": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST27"
+   ]
+  },
+  "20/21/v14": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST28"
+   ]
+  },
+  "20/21/v15": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST28"
+   ]
+  },
+  "20/21/v16": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST28"
+   ]
+  },
+  "20/0/v37": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST2A"
+   ]
+  },
+  "20/0/v8": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST2A"
+   ]
+  },
+  "20/0/v57": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST2A"
+   ]
+  },
+  "20/21/v53": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST2D"
+   ]
+  },
+  "60/31/v1": {
+   "records": 14,
+   "exported": 14,
+   "stages": [
+    "ST2D",
+    "ST2E",
+    "ST2F"
+   ]
+  },
+  "60/48/v0": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST2D"
+   ]
+  },
+  "60/31/v0": {
+   "records": 49,
+   "exported": 49,
+   "stages": [
+    "ST2D",
+    "ST2E",
+    "ST2F",
+    "ST41",
+    "ST42"
+   ]
+  },
+  "20/21/v54": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST2D"
+   ]
+  },
+  "60/42/v0": {
+   "records": 7,
+   "exported": 7,
+   "stages": [
+    "ST2D",
+    "ST2E"
+   ]
+  },
+  "20/21/v55": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST2D"
+   ]
+  },
+  "20/21/v3": {
+   "records": 2,
+   "exported": 2,
+   "stages": [
+    "ST2D",
+    "ST42"
+   ]
+  },
+  "20/82/v0": {
+   "records": 2,
+   "exported": 2,
+   "stages": [
+    "ST2D"
+   ]
+  },
+  "60/31/v2": {
+   "records": 5,
+   "exported": 5,
+   "stages": [
+    "ST2E",
+    "ST2F"
+   ]
+  },
+  "20/21/v56": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST2E"
+   ]
+  },
+  "20/21/v4": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST2E"
+   ]
+  },
+  "20/21/v57": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST2E"
+   ]
+  },
+  "20/21/v58": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST2F"
+   ]
+  },
+  "20/21/v59": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST2F"
+   ]
+  },
+  "20/45/v0": {
+   "records": 3,
+   "exported": 3,
+   "stages": [
+    "ST31"
+   ]
+  },
+  "20/21/v17": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST34"
+   ]
+  },
+  "20/21/v18": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST34"
+   ]
+  },
+  "20/21/v38": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST36"
+   ]
+  },
+  "20/21/v39": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST36"
+   ]
+  },
+  "20/21/v40": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST36"
+   ]
+  },
+  "60/69/v1": {
+   "records": 5,
+   "exported": 5,
+   "stages": [
+    "ST36",
+    "ST37",
+    "ST38"
+   ]
+  },
+  "20/21/v41": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST36"
+   ]
+  },
+  "20/21/v42": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST37"
+   ]
+  },
+  "20/21/v43": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST37"
+   ]
+  },
+  "20/21/v44": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST38"
+   ]
+  },
+  "20/21/v45": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST38"
+   ]
+  },
+  "20/21/v46": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST38"
+   ]
+  },
+  "20/21/v47": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST38"
+   ]
+  },
+  "20/21/v48": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST38"
+   ]
+  },
+  "60/25/v1": {
+   "records": 2,
+   "exported": 2,
+   "stages": [
+    "ST40",
+    "ST43"
+   ]
+  },
+  "20/21/v72": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST40"
+   ]
+  },
+  "20/21/v68": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST40"
+   ]
+  },
+  "20/21/v69": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST40"
+   ]
+  },
+  "60/88/v0": {
+   "records": 10,
+   "exported": 10,
+   "stages": [
+    "ST41",
+    "ST42"
+   ]
+  },
+  "20/21/v60": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST41"
+   ]
+  },
+  "20/21/v61": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST41"
+   ]
+  },
+  "20/97/v0": {
+   "records": 26,
+   "exported": 26,
+   "stages": [
+    "ST41",
+    "ST42"
+   ]
+  },
+  "60/49/v0": {
+   "records": 3,
+   "exported": 3,
+   "stages": [
+    "ST41",
+    "ST42"
+   ]
+  },
+  "20/21/v62": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST41"
+   ]
+  },
+  "20/21/v63": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST42"
+   ]
+  },
+  "20/21/v65": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST42"
+   ]
+  },
+  "20/21/v64": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST42"
+   ]
+  },
+  "20/21/v66": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST42"
+   ]
+  },
+  "20/21/v73": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST43"
+   ]
+  },
+  "20/21/v74": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST44"
+   ]
+  },
+  "20/21/v11": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST4A"
+   ]
+  },
+  "20/21/v33": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST4D"
+   ]
+  },
+  "20/21/v34": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST4D"
+   ]
+  },
+  "20/21/v20": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST4E"
+   ]
+  },
+  "20/21/v23": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST4E"
+   ]
+  },
+  "20/21/v21": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST4E"
+   ]
+  },
+  "20/21/v24": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST4E"
+   ]
+  },
+  "20/21/v22": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST4E"
+   ]
+  },
+  "20/21/v49": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST4F"
+   ]
+  },
+  "20/21/v50": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST4F"
+   ]
+  },
+  "20/21/v51": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST4F"
+   ]
+  },
+  "20/21/v52": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST4F"
+   ]
+  },
+  "20/21/v35": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST50"
+   ]
+  },
+  "20/21/v36": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST50"
+   ]
+  },
+  "20/21/v37": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST50"
+   ]
+  }
+ }
+}

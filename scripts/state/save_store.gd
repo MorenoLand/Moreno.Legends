@@ -40,6 +40,7 @@ func read(id: String) -> Dictionary:
 	if code != OK or not data is Dictionary or data.get("version") != 1 or not data.get("name") is String or not _integer(data.get("saved_at")) or int(data["saved_at"]) <= 0 or not valid_state(data.get("state")):
 		error = "This save is incomplete or unsupported."
 		return {}
+	data["state"] = _canonical(data["state"])
 	return data
 func write(state: Dictionary, id: String = "") -> String:
 	error = ""
@@ -142,6 +143,24 @@ func valid_state(value: Variant) -> bool:
 					for part in entry:
 						if not _integer(part): return false
 	return true
+func _canonical(state: Dictionary) -> Dictionary:
+	var result := {}
+	for field in state: result[field] = state[field] if field == "play_time_seconds" else _typed(state[field])
+	var player: Dictionary = state["player"]
+	for field in ["position", "yaw", "camera_rotation"]: result["player"][field] = player[field]
+	if result.has("native_context"):
+		var flags := {}
+		for flag in state["native_context"]["event_flags"]: flags[int(flag)] = state["native_context"]["event_flags"][flag]
+		result["native_context"]["event_flags"] = flags
+	return result
+func _typed(value: Variant) -> Variant:
+	if value is float and is_finite(value) and value == floorf(value) and absf(value) < 9.0e15: return int(value)
+	if value is Array: return value.map(_typed)
+	if value is Dictionary:
+		var result := {}
+		for key in value: result[key] = _typed(value[key])
+		return result
+	return value
 func _number(value: Variant) -> bool:
 	return (value is int or value is float) and is_finite(float(value))
 func _integer(value: Variant) -> bool:

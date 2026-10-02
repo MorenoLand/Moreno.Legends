@@ -70,6 +70,13 @@ var buster_auto_lock := false
 var special_auto_lock := false
 var vibration_enabled := true
 var pending_shot := false
+var weapon_stats := preload("res://scripts/player/weapon_stats.gd").new()
+var buster_key := ""
+var buster_levels := [0, 0, 0, 0]
+var buster_shots: Array[Node3D] = []
+var underwater := false
+var outfit_override := false
+var outfit_key := ""
 var native_clips: Dictionary = {}
 var interaction_roles: Dictionary = {}
 var interaction_role := ""
@@ -79,7 +86,7 @@ var interaction_loop := false
 var interaction_vertical_speed := 0.0
 var interaction_movement_ticks := 0
 var interaction_target_y := NAN
-var camera_arm_scale := 1.0
+var camera_shot := Vector3.INF
 var scripted_walk: Dictionary = {}
 var special_actions: Dictionary = {}
 var equipped_special := 0
@@ -87,6 +94,8 @@ var equipped_special := 0
 var special_usable := true
 var special_mode := 1
 var hose: Node3D
+const SHOT_BULLETS := {5: "res://scripts/world/combat/rocket.gd", 6: "res://scripts/world/combat/rocket.gd", 14: "res://scripts/world/combat/spread_bullet.gd"}
+var shots: Dictionary = {}
 var carried_actor: CharacterBody3D
 var special_action := ""
 var special_action_time := 0.0
@@ -103,6 +112,7 @@ enum JumpPhase { GROUNDED, TAKEOFF, RISING, RELEASED, FALLING, LANDING }
 var jump_phase := JumpPhase.GROUNDED
 var jump_moving := false
 var jump_velocity := 0
+var placement_frames := 0
 var jump_ticks := 0
 var jump_accumulator := 0.0
 var ledge_phase := ""
@@ -111,6 +121,8 @@ var ledge_accumulator := 0.0
 var ledge_forward := Vector3.ZERO
 var ledge_probe := Vector3.ZERO
 var ledge_vertical := 0
+var ledge_shift := Vector3.ZERO
+var ledge_shift_peak := 0.0
 var look_head_units := 0
 var look_root_units := 0
 var look_accumulator := 0.0
@@ -152,6 +164,10 @@ func _ready() -> void:
 	_configure_first_person_arm()
 	hose = preload("res://scripts/player/special_hose.gd").new(); hose.name = "SpecialHose"; add_child(hose)
 	if not hose.configure(self): hose.queue_free(); hose = null
+	for id: int in SHOT_BULLETS:
+		var shot := preload("res://scripts/player/special_shot.gd").new(); shot.name = "SpecialShot%02X" % id; add_child(shot)
+		if shot.configure(self, id): shot.bullet_script = load(SHOT_BULLETS[id]); shots[id] = shot
+		else: shot.queue_free()
 	lock_on = preload("res://scripts/player/lock_on.gd").new(); lock_on.name = "LockOn"; add_child(lock_on); lock_on.configure(self)
 	if metadata is Dictionary:
 		for clip: Dictionary in metadata.get("clips", []):
@@ -172,6 +188,7 @@ func _process(delta: float) -> void:
 	if camera.current and first_person:
 		camera.global_transform = Transform3D(camera_pivot.global_basis, global_position + Vector3.UP * (body_height * 0.9 + float(camera_shake_raw >> 8) / 256.0))
 		camera_world_position = camera.global_position; camera_world_origin = camera_pivot.global_position; camera_world_basis = camera.global_basis; camera_world_valid = true; camera_distance = 0.0
+	elif camera.current and camera_shot.is_finite(): set_camera_shot(camera_shot)
 	elif camera.current and camera_pivot is SpringArm3D:
 		var allowed := maxf((camera_pivot as SpringArm3D).get_hit_length(), 0.0)
 		var basis := camera_pivot.global_basis
@@ -254,6 +271,8 @@ func _physics_process(delta: float) -> void:
 	hurt_immunity = maxf(hurt_immunity - delta, 0.0)
 	_update_hurt(delta)
 	aiming = combat_allowed and buster_allowed and not is_instance_valid(carried_actor) and hurt_phase.is_empty() and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and Input.is_action_pressed("aim")
+	_sync_buster()
+	_sync_outfit()
 	var firing := combat_allowed and buster_allowed and active_special() != 15 and not is_instance_valid(carried_actor) and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and Input.is_action_pressed("fire")
 	if not hurt_phase.is_empty(): firing = false
 	if firing and Input.is_action_just_pressed("fire"): pending_shot = true
@@ -291,11 +310,13 @@ func _physics_process(delta: float) -> void:
 	var before_slide := global_transform; var intended := Vector3(velocity.x, 0.0, velocity.z) * delta
 	move_and_slide()
 	if not free_flight and not no_clip and _try_grab_ledge(before_slide.origin, intended): _update_camera(delta); return
-	if grounded and jump_phase == JumpPhase.GROUNDED and not free_flight and not no_clip: apply_floor_snap()
+	if (grounded or placement_frames > 0) and jump_phase == JumpPhase.GROUNDED and not free_flight and not no_clip: apply_floor_snap()
+	placement_frames = maxi(placement_frames - 1, 0)
 	if not free_flight and not no_clip:
 		var drift := global_position - before_slide.origin; drift.y = 0.0
 		if drift.length() > intended.length() + 0.08:
 			global_position = Vector3(before_slide.origin.x + intended.x, global_position.y, before_slide.origin.z + intended.z); velocity.x = intended.x / delta if delta > 0.0 else 0.0; velocity.z = intended.z / delta if delta > 0.0 else 0.0
+	if not free_flight and not no_clip and is_on_floor(): _leave_actor_top()
 	if not free_flight and is_on_floor() and jump_phase in [JumpPhase.RISING, JumpPhase.RELEASED, JumpPhase.FALLING]:
 		jump_velocity = 0
 		_set_jump_phase(JumpPhase.LANDING)
@@ -314,7 +335,7 @@ func _physics_process(delta: float) -> void:
 		var length := animation_player.get_animation(upper_body.animation).length
 		var repeat_time := fire_interval
 		if firing and (gun_pose_time >= repeat_time or is_equal_approx(gun_pose_time, repeat_time)): pending_shot = true
-		if pending_shot and is_zero_approx(shot_timer):
+		if pending_shot and is_zero_approx(shot_timer) and buster_ready():
 			gun_pose_time = 1.0 / 30.0
 			motion_tree.set("parameters/ArmSeek/seek_request", gun_pose_time)
 			_fire()
@@ -356,13 +377,27 @@ func _try_grab_ledge(previous: Vector3, intended: Vector3) -> bool:
 	if not animation_player.has_animation("clip_029") or not animation_player.has_animation("clip_030") or not animation_player.has_animation("clip_031"): return false
 	global_position.y = float(height - 180) / 256.0; ledge_forward = Vector3(-float(trig[angle][0]), 0.0, float(trig[angle][1])) / 4096.0; ledge_probe = first_point
 	velocity = Vector3.ZERO; jump_velocity = 0; jump_accumulator = 0.0; pending_shot = false; gun_pose_active = false; ledge_phase = "grab"; ledge_ticks = 0; ledge_accumulator = 0.0
-	_play_ledge_clip("clip_029"); special_sound_requested.emit(0x94); return true
+	_face_ledge_wall(); _play_ledge_clip("clip_029"); special_sound_requested.emit(0x94); return true
+func _face_ledge_wall() -> void:
+	var wall := get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(global_position + Vector3.UP * 0.35, global_position + Vector3.UP * 0.35 + ledge_forward * 0.6, 1, [get_rid()]))
+	if wall.is_empty(): return
+	var normal := wall["normal"] as Vector3; normal.y = 0.0
+	if normal.length_squared() < 0.0001: return
+	ledge_forward = -normal.normalized(); player_model.rotation.y = atan2(-ledge_forward.x, -ledge_forward.z)
+	var animation: Animation = animation_player.get_animation("clip_030"); var root := Vector3.ZERO
+	for track in animation.get_track_count():
+		if animation.track_get_type(track) == Animation.TYPE_POSITION_3D and str(animation.track_get_path(track)).ends_with(":Bone_00"): root = animation.track_get_key_value(track, 0); break
+	var reach := (player_model.basis * Vector3(root.x, 0.0, root.z)).dot(ledge_forward)
+	ledge_shift_peak = maxf(($Collision.shape as CapsuleShape3D).radius + reach - ((wall["position"] as Vector3) - global_position).dot(ledge_forward), 0.0); _set_ledge_shift(ledge_shift_peak)
+func _set_ledge_shift(amount: float) -> void:
+	var shift := -ledge_forward * amount if amount > 0.0 else Vector3.ZERO
+	player_model.position += shift - ledge_shift; ledge_shift = shift
 func _play_ledge_clip(clip: String) -> void:
 	locomotion.animation = clip; motion_role = ""; motion_tree.set("parameters/MotionSeek/seek_request", 0.0); motion_tree.set("parameters/UpperBody/blend_amount", 0.0)
 	animation_player.get_animation(clip).loop_mode = Animation.LOOP_LINEAR if bool(native_clips.get(clip, {}).get("loops", false)) else Animation.LOOP_NONE; motion_tree.set("parameters/MotionSpeed/scale", 25.0 / 30.0)
 	if upper_modifier != null: upper_modifier.active = false
 func _release_ledge() -> void:
-	ledge_phase = ""; ledge_ticks = 0; ledge_accumulator = 0.0; velocity = Vector3.ZERO; jump_velocity = 0; jump_accumulator = 0.0; _set_jump_phase(JumpPhase.FALLING)
+	_set_ledge_shift(0.0); ledge_phase = ""; ledge_ticks = 0; ledge_accumulator = 0.0; velocity = Vector3.ZERO; jump_velocity = 0; jump_accumulator = 0.0; _set_jump_phase(JumpPhase.FALLING)
 	motion_tree.set("parameters/MotionSpeed/scale", 1.0)
 	if upper_modifier != null: upper_modifier.active = true
 func _update_ledge(delta: float) -> void:
@@ -387,12 +422,13 @@ func _update_ledge(delta: float) -> void:
 				if int(record["event"]) == 1: event_tick = elapsed; break
 				elapsed += int(record["durationTicks"])
 			var advance := ledge_ticks > event_tick
+			if advance: _set_ledge_shift(ledge_shift_peak * (1.0 - clampf(float(ledge_ticks - event_tick) / maxf(float(int(native_clips.get("clip_031", {}).get("durationTicks", 20)) - event_tick), 1.0), 0.0, 1.0)))
 			if ledge_ticks == event_tick + 1: ledge_vertical = 432
 			elif advance: ledge_vertical -= 48
 			velocity = (ledge_forward * (80.0 / 4096.0 if advance else 0.0) + Vector3.UP * (float(ledge_vertical) / 4096.0)) / get_physics_process_delta_time()
 			move_and_slide()
 			if is_on_floor():
-				ledge_phase = ""; jump_velocity = 0; _set_jump_phase(JumpPhase.LANDING); landed.emit()
+				_set_ledge_shift(0.0); ledge_phase = ""; jump_velocity = 0; _set_jump_phase(JumpPhase.LANDING); landed.emit()
 				motion_tree.set("parameters/MotionSpeed/scale", 1.0)
 				if upper_modifier != null: upper_modifier.active = true
 			elif ledge_ticks >= int(native_clips.get("clip_031", {}).get("durationTicks", 20)): _release_ledge()
@@ -422,9 +458,14 @@ func end_lift(actor: CharacterBody3D) -> void:
 	if motion_tree != null: motion_tree.set("parameters/UpperBody/blend_amount", 0.0)
 	_play_animation("idle")
 func active_special() -> int:
-	if special_mode == 2: equipped_special = 15
-	return equipped_special if special_mode != 0 and special_usable else 0
+	return (15 if special_mode == 2 else equipped_special) if special_mode != 0 and special_usable else 0
+func special_level(weapon: int, stat: int) -> int:
+	if weapon == weapon_stats.BUSTER: return int(buster_levels[stat]) if stat < 4 else 0
+	var context: Variant = get_parent().get("native_context")
+	return int(context.get("native_special_levels", {}).get(str(weapon), [0, 0, 0, 0, 0])[stat]) if context is Dictionary else 0
+func aim_heading(muzzle: Vector3) -> Vector3: return _aim_point() - muzzle if first_person or aiming or is_instance_valid(locked_target) else -camera.global_basis.z
 func use_special() -> bool:
+	if shots.has(active_special()): return combat_allowed and hurt_phase.is_empty() and interaction_role.is_empty() and special_action.is_empty() and not is_instance_valid(carried_actor) and shots[active_special()].begin()
 	if active_special() == 15: return is_instance_valid(hose) and combat_allowed and hurt_phase.is_empty() and interaction_role.is_empty() and special_action.is_empty() and not is_instance_valid(carried_actor) and hose.begin()
 	if not combat_allowed or not hurt_phase.is_empty() or not interaction_role.is_empty() or not special_action.is_empty() or special_actions.is_empty() or active_special() != 0 or not is_on_floor(): return false
 	if is_instance_valid(carried_actor): return _start_special_action("lift_throw", float(special_actions["throw"]["start_pose"]) / 30.0)
@@ -482,6 +523,7 @@ func _update_special_action(delta: float) -> void:
 	if special_action == "kick":
 		if special_action_time >= float(special_actions["kick"]["emit_pose"]) / 30.0 and previous_time < float(special_actions["kick"]["hit_ticks"]) / 30.0: _kick_contact()
 	elif special_action == "hose": hose.action_tick(previous_time)
+	elif special_action == "shot": shots[active_special()].action_tick(previous_time)
 	elif special_action == "lift_throw" and not special_hit_started and special_action_time >= float(special_actions["throw"]["release_pose"]) / 30.0:
 		special_hit_started = true
 		if is_instance_valid(carried_actor): carried_actor.release_lift(-player_model.global_basis.z, int(special_actions["throw"]["vertical_raw"]), int(special_actions["throw"]["forward_raw"])); carried_actor = null
@@ -554,7 +596,7 @@ func _update_jump(delta: float, grounded: bool, direction: Vector3) -> void:
 				velocity.z = direction.z * 512.0 * 30.0 / 4096.0
 				_launch_jump()
 			else: _set_jump_phase(JumpPhase.TAKEOFF)
-	elif not grounded and jump_phase == JumpPhase.GROUNDED:
+	elif not grounded and jump_phase == JumpPhase.GROUNDED and placement_frames <= 0:
 		jump_moving = direction.length_squared() > 0.001
 		_set_jump_phase(JumpPhase.FALLING)
 	jump_accumulator += delta * 30.0
@@ -613,24 +655,55 @@ func _toggle_lock_target() -> void:
 		facing.y = 0.0
 		rotation.y = atan2(-facing.x, -facing.z)
 
+func worn(slot: String) -> int: return int(weapon_stats.data["outfit_override"][slot]) if outfit_override else weapon_stats.body_part(equipment["body_parts"], slot)
+func _sync_buster() -> void:
+	var key := str(outfit_override) + ",".join(equipment["buster_parts"])
+	if key == buster_key: return
+	buster_key = key
+	buster_levels = weapon_stats.data["outfit_override"]["buster"].duplicate() if outfit_override else weapon_stats.buster_levels(equipment["buster_parts"])
+	fire_interval = float(weapon_stats.fire_pose(weapon_stats.BUSTER) + weapon_stats.value(weapon_stats.BUSTER, weapon_stats.RAPID, buster_levels[weapon_stats.RAPID])) / 30.0
+func _sync_outfit() -> void:
+	if not combat_allowed or not buster_allowed: return
+	var key: String = weapon_stats.outfit(worn("helmet"), worn("shoes"))
+	if key == outfit_key: return
+	if outfit_key.is_empty(): outfit_key = weapon_stats.outfits["base"]
+	if key == outfit_key: return
+	outfit_key = key
+	var mesh: Mesh = weapon_stats.outfit_mesh(key)
+	for node in player_model.find_children("*", "MeshInstance3D", true, false):
+		if node.name == &"MegaManMesh": (node as MeshInstance3D).mesh = mesh
+	_apply_native_materials()
+	if is_instance_valid(hose): hose.arm.refresh()
+	for shot: Node in shots.values(): shot.arm.refresh()
+func buster_ready() -> bool:
+	buster_shots = buster_shots.filter(func(shot): return is_instance_valid(shot) and not shot.is_queued_for_deletion())
+	return buster_shots.size() < weapon_stats.value(weapon_stats.BUSTER, weapon_stats.ENERGY, buster_levels[weapon_stats.ENERGY])
+func buster_damage() -> int:
+	var context: Variant = get_parent().get("native_context")
+	var damage: int = weapon_stats.value(weapon_stats.BUSTER, weapon_stats.ATTACK, buster_levels[weapon_stats.ATTACK])
+	return damage >> 1 if context is Dictionary and int(context.get("native_save_byte16", 0)) == int(weapon_stats.data["attack_halved_when_save_byte16"]) else damage
 func _fire() -> void:
 	if not combat_allowed or not buster_allowed or not is_zero_approx(shot_timer): return
+	_sync_buster()
 	shot_timer = fire_interval
 	shot_pose = maxf(animation_player.get_animation(upper_body.animation).length - gun_pose_time, 0.2) if motion_tree != null else 0.2
-	var aim := _aim_point()
 	var muzzle := global_position + Vector3.UP * body_height * 0.7 + Basis(Vector3.UP, player_model.rotation.y) * Vector3(body_height * 0.22, 0, -body_height * 0.22)
 	if muzzle_node != null: muzzle = muzzle_node.global_position
 	var view_muzzle := first_person and camera.current and first_person_muzzle_node != null
 	if view_muzzle:
 		_update_first_person_arm(true)
 		muzzle = first_person_arm_skeleton.global_transform * first_person_arm_skeleton.get_bone_global_pose(first_person_muzzle_bone) * first_person_muzzle_node.position
-	var heading := aim - muzzle if first_person or aiming or is_instance_valid(locked_target) else -camera.global_basis.z
+	var heading := aim_heading(muzzle)
 	var chest := global_position + Vector3.UP * body_height * 0.7
 	var obstruction := get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(chest, muzzle, 1))
 	if view_muzzle and obstruction.is_empty(): obstruction = get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(camera.global_position, muzzle, 1))
 	var projectile := projectile_scene.instantiate() as Node3D
 	get_parent().add_child(projectile)
+	projectile.damage = buster_damage()
+	projectile.lifetime = float(int(weapon_stats.data["underwater_range"]) if underwater else weapon_stats.value(weapon_stats.BUSTER, weapon_stats.RANGE, buster_levels[weapon_stats.RANGE])) / 30.0
+	projectile.attack_level = buster_levels[weapon_stats.ATTACK]
 	projectile.launch(muzzle, heading)
+	buster_shots.append(projectile)
 	fired.emit(projectile)
 	if not obstruction.is_empty():
 		projectile.hit_surface.emit(obstruction["position"], obstruction["normal"])
@@ -668,7 +741,7 @@ func _update_camera(delta: float) -> void:
 	if camera_yaw_constraint.is_valid(): camera_pivot.rotation.y = lerp_angle(camera_pivot.rotation.y, camera_yaw_constraint.call(global_position, camera_pivot.rotation.y), 1.0 - exp(-delta * 10.0))
 	if not camera_pivot is SpringArm3D: return
 	var arm := camera_pivot as SpringArm3D
-	arm.spring_length = lerpf(arm.spring_length, body_height * (1.8 if aiming else 3.4) * camera_arm_scale, minf(delta * 10, 1))
+	arm.spring_length = lerpf(arm.spring_length, body_height * (1.8 if aiming else 3.4), minf(delta * 10, 1))
 	var offset := arm.basis.x * (body_height * 0.3 if aiming else 0.0)
 	var current := Vector3(arm.position.x, 0, arm.position.z)
 	offset = current.lerp(offset, minf(delta * 10, 1))
@@ -682,6 +755,18 @@ func _update_camera(delta: float) -> void:
 	var fractions := get_world_3d().direct_space_state.cast_motion(query)
 	if not fractions.is_empty(): offset *= fractions[0]
 	arm.position = Vector3(offset.x, body_height * 0.78 + float(camera_shake_raw >> 8) / 256.0, offset.z)
+func _leave_actor_top() -> void:
+	var contact := KinematicCollision3D.new()
+	if not test_move(global_transform, Vector3.DOWN * 0.05, contact): return
+	for index in contact.get_collision_count():
+		var body := contact.get_collider(index) as Node3D
+		if body == null or not body.has_meta("native_unstandable"): continue
+		var shape := body.get_child(0) as CollisionShape3D; var frame := body.global_basis.orthonormalized(); var half := (shape.shape as BoxShape3D).size * 0.5 * body.global_basis.get_scale()
+		if global_position.y < shape.global_position.y + half.y - 0.05: continue
+		var offset := frame.inverse() * (global_position - shape.global_position); var exit := Vector3.ZERO; var reach := ($Collision.shape as CapsuleShape3D).radius + safe_margin
+		if half.x - absf(offset.x) < half.z - absf(offset.z): exit.x = (-1.0 if offset.x < 0.0 else 1.0) * (half.x - absf(offset.x) + reach)
+		else: exit.z = (-1.0 if offset.z < 0.0 else 1.0) * (half.z - absf(offset.z) + reach)
+		global_position += frame * exit; var carried := velocity; velocity = Vector3.DOWN * 0.001; move_and_slide(); velocity = Vector3(carried.x, minf(carried.y, 0.0), carried.z); return
 func _slope_velocity() -> float:
 	var normal := get_floor_normal()
 	return -(normal.x * velocity.x + normal.z * velocity.z) / normal.y if normal.y > 0.1 and normal.y < 0.9999 else velocity.y
@@ -858,6 +943,13 @@ func _update_first_person_arm(force: bool = false) -> void:
 	var barrel := first_person_arm_skeleton.transform.basis * -first_person_arm_skeleton.get_bone_global_pose(first_person_arm_skeleton.find_bone("Bone_06")).basis.y
 	first_person_arm.basis = Basis(Quaternion(barrel.normalized(), Vector3.FORWARD))
 	first_person_arm.position = Vector3(-body_height * 0.18, -body_height * 0.2, -body_height * 0.12) - first_person_arm.basis * shoulder
+func set_camera_shot(point: Vector3) -> void:
+	camera_shot = point
+	if not point.is_finite():
+		return
+	camera.global_position = point; camera_world_position = point; camera_world_origin = camera_pivot.global_position; camera_world_basis = camera_pivot.global_basis; camera_world_valid = true
+	if (camera_pivot.global_position - point).length_squared() > 0.000001 and absf((camera_pivot.global_position - point).normalized().y) < 0.999: camera.look_at(camera_pivot.global_position, Vector3.UP)
+	camera_distance = (camera_world_position - camera_pivot.global_position).dot(camera_pivot.global_basis.z)
 func refresh_room_camera(preserve_world: bool = false) -> void:
 	if not preserve_world: camera_world_valid = false; camera_distance = -1.0
 	_update_camera(0.0)
@@ -930,6 +1022,7 @@ func _apply_native_materials() -> void:
 	for node in player_model.find_children("*", "MeshInstance3D", true, false):
 		var mesh := node as MeshInstance3D
 		for surface in range(mesh.mesh.get_surface_count()):
+			mesh.set_surface_override_material(surface, null)
 			var source := mesh.get_active_material(surface) as BaseMaterial3D
 			if source == null: continue
 			var material := ShaderMaterial.new()
@@ -937,7 +1030,7 @@ func _apply_native_materials() -> void:
 			material.set_shader_parameter("albedo_texture", source.albedo_texture)
 			mesh.set_surface_override_material(surface, material)
 func reset_at(point: Vector3) -> void:
-	cancel_scripted_walk()
+	cancel_scripted_walk(); _set_ledge_shift(0.0)
 	ledge_phase = ""; ledge_ticks = 0; ledge_accumulator = 0.0
 	if motion_tree != null: motion_tree.set("parameters/MotionSpeed/scale", 1.0)
 	interaction_role = ""
@@ -946,7 +1039,10 @@ func reset_at(point: Vector3) -> void:
 	special_action = ""
 	_set_carry_filter(false)
 	if upper_modifier != null: upper_modifier.active = true
-	global_position = point
+	global_position = point; placement_frames = 3
+	if is_inside_tree():
+		var ray := PhysicsRayQueryParameters3D.create(point + Vector3.UP * 0.1, point + Vector3.DOWN * 0.6, 1); ray.exclude = [get_rid()]; var floor_hit := get_world_3d().direct_space_state.intersect_ray(ray)
+		if not floor_hit.is_empty() and (floor_hit["normal"] as Vector3).y >= cos(floor_max_angle): global_position.y = (floor_hit["position"] as Vector3).y + 0.01
 	camera_distance = -1.0
 	camera_world_valid = false
 	velocity = Vector3.ZERO
@@ -980,12 +1076,12 @@ func take_hit(amount: int = 16, flags: int = 0, incoming: Vector3 = Vector3.ZERO
 	special_action = ""
 	_set_carry_filter(false)
 	if upper_modifier != null: upper_modifier.active = true
+	var multiplier := 4 - (worn("armor") >> 1)
+	amount = maxi((amount * multiplier) >> 2, 1)
 	hurt_damage += amount
 	hurt_hits += 1
-	var lethal := health - amount < 0
-	health = maxi(health - amount, 0 if health > 0 else -1)
-	health_changed.emit(maxi(health, 0), max_health)
-	var strong := hurt_damage >= 28 or hurt_hits >= 4 or (flags & 0x80000) != 0 or not is_on_floor() or lethal
+	var lethal := _lose_health(amount)
+	var strong := hurt_damage > int(weapon_stats.data["body_parts"]["knockdown_base"]) + int(weapon_stats.data["body_parts"]["knockdown_step"]) * multiplier or hurt_hits >= 4 or (flags & 0x80000) != 0 or not is_on_floor() or lethal
 	var back := incoming.dot(Basis(Vector3.UP, player_model.rotation.y) * Vector3.FORWARD) > 0
 	hurt_phase = "launch" if strong else "weak"
 	hurt_clip = "clip_%03d" % ((38 if back else 34) if strong else (33 if back else 32))
@@ -994,6 +1090,11 @@ func take_hit(amount: int = 16, flags: int = 0, incoming: Vector3 = Vector3.ZERO
 	pending_shot = false
 	special_sound_requested.emit(0x97 if strong else 0x96)
 	_play_hurt_clip()
+func _lose_health(amount: int) -> bool:
+	var lethal := health - amount < 0
+	health = maxi(health - amount, 0 if health > 0 else -1)
+	health_changed.emit(maxi(health, 0), max_health)
+	return lethal
 func _play_hurt_clip() -> void:
 	if animation_player == null or not animation_player.has_animation(hurt_clip): return
 	if motion_tree != null:
@@ -1019,6 +1120,7 @@ func _update_hurt(delta: float) -> void:
 		hurt_ticks = 0.0
 		_play_hurt_clip()
 		special_sound_requested.emit(0x99)
+		if worn("helmet") == 0: _lose_health(int(weapon_stats.data["body_parts"]["helmetless_landing_damage"]))
 	elif hurt_phase == "land" and hurt_ticks >= length and health < 0:
 		hurt_phase = "dead"
 		died.emit()

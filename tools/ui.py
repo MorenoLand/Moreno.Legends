@@ -235,6 +235,10 @@ def native_load_game_geometry():
 		call(0x800490D8)
 	return {"viewport": [320, 240], "source": "COMMON/DEMO.BIN message bank RAM0x800B116C/file0x419C; original SLES0x80048474/0x800490D8/0x80049F00 executed unchanged", "header_text": "Load Game", "prompt_text": "Please select a MEMORY CARD slot:", "selector_text": ["MEMORY CARD slot 1", "MEMORY CARD slot 2", "Cancel"], "frame_renderer": "SLES0x8004A4C4", "frame_colors": [list(emulator.mem_read(0x78C18 + index * 4, 3)) for index in range(3)], "fixture": {"update_count": 12, "input": 0, "selector": 0}, "windows": windows, "panel_animation": {"source_open": "SLES0x80048474", "source_close": "SLES0x80048764(slot,0)", "source_update": "SLES0x800490D8->0x80049D24; captured style1 updater0x8004A060", "source_clock": "Window updater executes once per native scene tick; GAME1136C(0) divider2/PAL25Hz, DEMO1136C(2) divider1/PAL50Hz", "tick_rates": {"gameplay": 25, "title": 50}, "opening": opening, "closing": closing}}
 
+def buster_part_stats():
+	"""Per-part Buster stat records of the original Equipment screen: SUBSCN table 0x801E23D4 (8-byte records, index = item code - 0x394); the stats are the sum over the equipped parts clamped to 7 (SUBSCN 0x801DE3B4)."""
+	data = (ROOT / "build/disc-assets/COMMON/SUBSCN.BIN").read_bytes(); table = 0x2A830 + 0x801E23D4 - 0x801D6800; first = 0x394; count = 32
+	return {"source": "COMMON/SUBSCN.BIN overlay 0x801E23D4; recompute SUBSCN 0x801DE3B4 sums three equipped part records into player state +0x204..+0x208 and clamps each to 7", "first_code": first, "maximum": 7, "columns": ["attack", "energy", "range", "rapid", "special"], "stats": {str(first + index): list(data[table + index * 8:table + index * 8 + 5]) for index in range(count)}}
 def export_status_menu():
 	game = ROOT / "build/disc-assets/COMMON/GAME.BIN"; vram, _ = textures(game); title_vram, _ = textures(ROOT / "build/disc-assets/COMMON/TITLE.BIN"); palette_offset = (508 * 1024 + 304) * 2; vram[palette_offset:palette_offset + 32] = title_vram[palette_offset:palette_offset + 32]; atlases = {}
 	for role, clut in [("normal", 0x7FD0), ("selected", 0x7F13)]:
@@ -246,7 +250,7 @@ def export_status_menu():
 	for name, file, columns, rows in [("green", "options_frame_atlas.png", [(0, 16), (16, 24), (48, 64)], [(16, 32), (32, 33), (48, 64)]), ("help", "options_help_frame_atlas.png", [(64, 80), (80, 88), (96, 112)], [(16, 32), (32, 40), (48, 64)]), ("plain", "options_help_frame_atlas.png", [(112, 120), (120, 128), (128, 136)], [(16, 24), (24, 32), (32, 40)])]:
 		frames[name] = {"texture": file, "margin": [8, 8] if name == "plain" else [16, 16], "patches": [[x0, y0, x1 - x0, y1 - y0] for y0, y1 in rows for x0, x1 in columns], "source": "SLES 0x80050DB0; green/help patch UVs and 16px corner geometry verified against original options_layout GPU packets" if name != "plain" else "SUBSCN page7 plain bevel artwork at UV112,16,24,24; native status caller not captured"}
 	sprites = {"footer": {"texture": "options_help_frame_atlas.png", "uv": [16, 0, 112, 16], "rect": [104, 214, 112, 16], "contains_text": True}, "health_art": {"atlas": "normal", "uv": [128, 32, 64, 72], "source": "GAME page13 inner mechanical artwork only; excludes icon row16 and digit row112; outer frame and dynamic bars are separate", "native_draw_geometry_verified": False}}
-	data = {"viewport": [320, 240], "placement_source": "User-provided original STATUS/Map/Items/Equipment screenshots, normalized to the original 320x240 viewport; not an executed native packet layout", "atlases": atlases, "frames": frames, "sprites": sprites, "pages": pages, "equipment_definitions": {"special_weapons": {"0": {"name": "Lifter", "description": "Lift and throw objects.", "runtime_handler": "lifter"}}, "items": {}, "key_items": {}, "body_parts": {}, "buster_parts": {}}}; write_output(MENU_OUTPUT / "status.json", json.dumps(data, indent=2) + "\n"); return data
+	data = {"viewport": [320, 240], "placement_source": "User-provided original STATUS/Map/Items/Equipment screenshots, normalized to the original 320x240 viewport; not an executed native packet layout", "atlases": atlases, "frames": frames, "sprites": sprites, "pages": pages, "buster_parts": buster_part_stats(), "equipment_definitions": {"special_weapons": {"0": {"name": "Lifter", "description": "Lift and throw objects.", "runtime_handler": "lifter"}}, "items": {}, "key_items": {}, "body_parts": {}, "buster_parts": {}}}; write_output(MENU_OUTPUT / "status.json", json.dumps(data, indent=2) + "\n"); return data
 def export_menu():
 	export_status_menu()
 	MENU_OUTPUT.mkdir(parents=True, exist_ok=True); title = ROOT / "build/disc-assets/COMMON/TITLE.BIN"; vram, section_count = textures(title); sprites = {}
@@ -413,7 +417,7 @@ def native_item_text(code):
 	return decode_native_text(executable[start:cursor])
 def native_program_trace(data, payload_offset, payload_size, message_offset, entry_offsets):
 	lengths = {0x05: 4, 0x06: 8, 0x08: 4, 0x0A: 3, 0x0C: 2, 0x1A: 6, 0x22: 3, 0x09: 3, 0x0E: 3, 0x0F: 3, 0x10: 3, 0x11: 3, 0x15: 13, 0x16: 6, 0x18: 2, 0x19: 4, 0x1D: 2, 0x21: 3, 0x24: 2, 0x26: 4, 0x27: 4, 0x28: 6, 0x29: 3, 0x2A: 7, 0x2B: 2, 0x2C: 3, 0x30: 3, 0x31: 2, 0x33: 3, 0x37: 7, 0x38: 3, 0x39: 3, 0x3E: 4, 0x3F: 5}; cursor = message_offset + 2; text_mode = False; runs = []; commands = []; unresolved = []; status = "bank_end"
-	lengths.update({0x0B: 2, 0x20: 4, 0x3C: 14, 0x40: 4, 0x42: 9, 0x47: 6})
+	lengths.update({0x0B: 2, 0x12: 4, 0x20: 4, 0x2E: 3, 0x3C: 14, 0x3D: 2, 0x40: 4, 0x41: 5, 0x42: 9, 0x47: 6})
 	for _ in range(2048):
 		if cursor >= payload_size: break
 		value = data[payload_offset + cursor]
@@ -467,6 +471,10 @@ def native_program_trace(data, payload_offset, payload_size, message_offset, ent
 		elif opcode == 0x0B:
 			command.update(effect="text_color_reset", source="program SLES0x80048288 advances2; text renderer FB 0B handler SLES0x8004C6B8 restores context+0x21 from +0x22")
 			runs.append({"file_offset": payload_offset + cursor, "relative_offset": cursor, "raw_hex": "", "text": chr(0xE0FF), "dynamic": "text_color", "native_length": 2})
+		elif opcode == 0x12: command.update(effect="nested_message_open", window_id=args[0], message_index=args[1], bank_pointer="message_context+0x28", source="SLES0x8004CD68: advances4, opens bank message args[1] in window args[0] through 0x80048474 and keeps running the program")
+		elif opcode == 0x41: command.update(effect="native_byte45_redirect", selector_address="0x8009C82D", candidate_indices=list(args), skip_index=255, bank_pointer="message_context+0x28", source="SLES0x8004E950..4EA10: byte 0x8009C82D 0/1/2 selects program byte +2/+3/+4, 0xFF continues after 5 bytes")
+		elif opcode == 0x2E: command.update(effect="text_advance_x", pixels=args[0] - 256 if args[0] > 127 else args[0], source="program SLES0x800482A0 advances3; glyph renderer handler SLES0x8004E00C (table 0x8006B74C) adds the signed byte to the pen x")
+		elif opcode == 0x3D: command.update(effect="variable_item_name_text", value_source="message_context+0x6C", source="SLES0x8004E73C/0x8004E79C: advances2; the item code halfword at context+0x6C indexes the u16 offsets at 0x8006CFB8 (as op 0x20)")
 		elif opcode == 0x22:
 			texts = native_control_texts(args[0]); command.update(effect="control_text", inserted_text_by_layout=texts, layout_address="0x8009C834 (byte -3 path when 0x8009BEE4==7)", source="SLES0x8004D47C..4D520: byte table0x8006B8A4[layout*12+arg] -> u16 offsets0x8007019C, returns via context+0x38")
 			if texts and texts[0]: runs.append({"file_offset": payload_offset + cursor, "relative_offset": cursor, "raw_hex": "", "text": texts[0], "dynamic": "control_text"})

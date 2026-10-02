@@ -61,8 +61,8 @@ With the bulk game folders ignored a cleared `.godot` imports in about 12 s (660
 
 | Group | Contents |
 | --- | --- |
-| `world` | stage geometry, collision, routes, props, NPCs and scripted actors, lighting, depth cue, weather, minimaps, room layouts, shops, location names, roofs, plus every stage-bound scene and mission: fire mission (ST1E), flight (ST3A), landing and Joseph's workshop (ST08), dropship (ST49), Flutter (ST04, ST01 travel, ST10 craft), Yosyonke (ST09), Joseph's room (ST47), mine quest, scenes and effects (ST0D, ST0F), church (ST0B) |
-| `models` | player and its variants, special weapon 0F, player effects, special-mode table, mine and Icefield enemy effects, every actor model archive on the disc |
+| `world` | stage geometry, collision, routes, props, NPCs and scripted actors, lighting, depth cue, weather, minimaps (HUD bitmap/tile maps and the Flutter deck map), room layouts, shops, location names, roofs, Roll's development tables, plus every stage-bound scene and mission: fire mission (ST1E), flight (ST3A), landing and Joseph's workshop (ST08), dropship (ST49), Flutter (ST04, ST01 travel, ST10 craft), Yosyonke (ST09), Joseph's room (ST47), mine quest, scenes and effects (ST0D, ST0F), church (ST0B) |
+| `models` | player and its variants, player outfit meshes (helmet/shoes sets), special weapon 0F, special weapons 05 (Hyper Shell), 06 (Homing Missile) and 0E (Spread Buster), effects captured by running the original code and the SLES record renderer in Unicorn with an emulated GTE, player effects, special-mode table, weapon stat tables, mine and Icefield enemy effects, every actor model archive on the disc |
 | `textures` | texture upload library |
 | `ui` | HUD, projectiles, title menu, fonts (including the title font), status menu, dialogue text banks, mission banner, game over, screen fades |
 | `audio` | sound effects, music, zone and stage audio, game-over music, scene audio |
@@ -80,9 +80,11 @@ python tools/assets.py --only audio --only media "disc.cue"
 
 A full run orders its tasks by dependency (verified from a clone holding only the PAL disc image: 180 tasks, no failures, a second run rewrites nothing, and the editor imports the result in about 75 s). With `--stage` or `--only`, tasks that consume other exports (room layouts need every stage's `doors.json`; Flutter travel needs the ST10, ST24 and ST01 models; landing, Yosyonke, Joseph and mine-quest scenes need `doors.json` and the ST08 audio) read earlier output, so run the dependency first or run without `--stage`.
 
-XA voices retain each native descriptor ID, archive, range, channel and source hash while identical archive/range/channel keys reference one Ogg Vorbis file. The SLES archive table at `0x800695F4` contains 24 slots, ending at the common descriptor table `0x80069624`; stage enumeration stops when the next record has no matching native XA audio sectors. Overlapping descriptors decode with separate predictor histories. New voices use `assets/audio/voices/xa_<key>.ogg`; verified existing files can remain at their current paths. Entries carry `file_sha256` (the written `.ogg`) and `pcm_sha256` (the decoded native PCM it was encoded from). Each entry declares its `voice-<key>` asset group so stage and opening loaders mount the corresponding PCK before playback.
+XA voices retain each native descriptor ID, archive, range, channel and source hash while identical archive/range/channel keys reference one Ogg Vorbis file. The SLES archive table at `0x800695F4` contains 24 slots, ending at the common descriptor table `0x80069624`; stage enumeration stops when the next record has no matching native XA audio sectors. Each stage's two descriptor tables (`id & 0x8000` selects the `0x80078DD4` table, otherwise `0x80078DD8`) are located by the `sw` of the table pointer to `0x8DD4`/`0x8DD8` in the stage overlay, with the pointer built by `lui`/`addiu` into whichever register that `sw` stores. Overlapping descriptors decode with separate predictor histories. New voices use `assets/audio/voices/xa_<key>.ogg`; verified existing files can remain at their current paths. Entries carry `file_sha256` (the written `.ogg`) and `pcm_sha256` (the decoded native PCM it was encoded from). Each entry declares its `voice-<key>` asset group so stage and opening loaders mount the corresponding PCK before playback.
 
 Dialogue opcode `0x1A` follows SLES `0x8004D11C`: request playback through `0x8001B9A4`, then wait for `0x8001AF94` readiness before advancing the command or accepting page input. SPU effects, reverb and scores reuse verified canonical resources before exporting; default reruns preserve existing Ogg files and manifests. Duplicate pruning removes only outputs created during the run or explicitly selected for overwrite, and follows the same policy.
+
+Dialogue opcodes `0x12` (open a bank message in another window, SLES `0x8004CD68`), `0x41` (three-way redirect on byte `0x8009C82D`, SLES `0x8004E950`), `0x2E` (signed pen advance) and `0x3D` (item name from the message context) are decoded; Roll's bridge menu (ST04 messages 71, 72 and 75) needs them, so a tree extracted earlier refreshes with `--only ui --overwrite-only "assets/dialogue/ST04.json"`. `assets/development` holds the ST04T development scene's 74-message bank, the 26 recipe records and the per-weapon improvement costs and caps (`world.py`, `export_development`).
 
 ## Audio encoding
 
@@ -117,6 +119,7 @@ Rules:
 - `build/` is a disposable cache (normalised archives, map sections, decoded audio, FluidSynth, pip packages, the coverage report) and is always rewritten, except for the extracted disc files in `build/disc-assets`. Those follow the same rules: an existing file identical to the disc is reused; a different one stops the run unless `--overwrite` (or a matching `--overwrite-only`) allows replacing it.
 - `tools/location_names.json` is an output too (the area names `tools/world.py` reads) and is kept unless overwritten like any other file.
 - `python tools/world.py room-layout [--overwrite]` regenerates the Flutter room layout. Ladder pairs between Flutter decks (ST04 area 1 / ST06 area 0 / ST07 area 0) stack their rooms: the lower room's ceiling hatch (its `area_roofs.json` black-out height) meets the bottom of the upper room's ladder pit, with both ladder foot points (each route's source transform) on one vertical line. Each `ladder_transitions` entry records `seamless`, `delta`, `upper`/`lower`, `hatch_height` and `pit_depth`; the runtime streams the destination room and climbs through without a fade. Ladders without a hatch height or pit (the mine ladders) keep `seamless: false` and fade.
+- Town groups use the same exporter through `assets.py`: `town_room_layout.json` (Yosyonke: ST09 with ST0A, ST0C and ST47 area 0) and `ruminoa_room_layout.json` (Ruminoa: ST19 area 1 with ST1A and ST1B areas 0-3). `TOWN_AREAS` lists the areas of a stage that join a town layout (ST1B area 4 is entered only from an event and has no reciprocal door); non-hinged routes (ST19 to ST35, the ST19 area 0 and ST1B to ST4D transitions) stay external and fade. Refresh one with `python tools/assets.py --only world --overwrite-only "assets/locations/ruminoa_room_layout.json"`.
 - Existing Godot `.import` files are kept by default.
 
 ## Where the output goes
@@ -129,7 +132,7 @@ Rules:
 | `assets/library/` | every model archive, texture upload, sound bank/sequence, voice archive and player on the disc (marked `.gdignore`) |
 | `assets/audio/`, `assets/opening/`, `assets/video/` | sound effects and music, opening scene data, movies |
 | `assets/hud/`, `assets/menu/`, `assets/dialogue/`, `assets/fades/`, `assets/effects/` | interface art, fonts, text banks, fades |
-| `assets/player/`, `assets/stage_props/`, `assets/minimap/`, `assets/locations/`, `assets/weather/`, `assets/shops/` | player, props, minimaps, room layouts, weather, shop catalogues |
+| `assets/player/`, `assets/stage_props/`, `assets/minimap/`, `assets/locations/`, `assets/weather/`, `assets/shops/`, `assets/development/` | player, props, minimaps, room layouts, weather, shop catalogues, development messages and tables |
 
 ## Open it in Redot
 
@@ -141,13 +144,21 @@ If you open the project before extracting, extract and reopen (or use Project > 
 
 `python tools/export_web.py --engine "path/to/redot-editor" [--output bin/web] [--chunk-mib 4]` packs the generated assets into chunked `.pck` files and runs the editor's Web export. It needs the Web export templates installed in that editor and the assets extracted. `python tools/asset_server.py` is a local upload endpoint for the mesh viewer in `build/mml2-mesh-viewer`; it always replaces the uploaded file.
 
+## Actor coverage audit
+
+`world.export_actor_coverage` (run by `python tools/assets.py --only world`, skipped with `--stage`) scans every stage overlay's standard 20-byte actor list and writes `docs/actor_coverage.md` and `docs/actor_coverage.json`: per stage and record class (`type/class/variant`) how many original records exist, how many are exported (static props, NPCs, scripted actors, pickups, doors, weather), which capabilities the exports carry (talk, movement, enemy, follower, kickable, lock-on), callback addresses and whether the stage has a scripted-actor export. Both files are regenerated only with `--overwrite` or `--overwrite-only "docs/actor_coverage.*"`.
+
+Regular dungeon enemies are listed in `world.DUNGEON_ENEMIES` (stage, class) -> GDScript port; `export_props` then adds `source_attributes`, `native_enemy.script` and the transform to those stage-prop instances and `export_dungeon_effects` writes `assets/levels/<stage>/effect_burst.png` and `effect_projectile.png`. The model resource key per class is read from its constructor (`actor_resource_keys`), which resolves classes whose key is not `actor+6` (ST41/42 class 97 uses `actor+7`).
+
+Dungeon chests (type 0x20, class 21) share one callback across 20+ overlays; `world.chest_profile` finds it by its prologue, reads the stage's chest table, and `export_props` adds `native_chest` (collected flag, message, reward word) plus the interaction descriptor to those instances in `assets/stage_props/manifest.json`. `NativeProps` attaches the same chest controller the mine uses.
+
 ## Module map
 
 | Module | Owns |
 | --- | --- |
 | `tools/assets.py` | the CLI and the order of every export |
 | `tools/disc.py` | CUE/ISO reading, XA sector access, section decompression, movies, the output policy (`write_output`) and dependency bootstrap |
-| `tools/world.py` | maps, terrain, lighting, minimaps, collision, routes, props, shops, location names, roofs, Flutter travel, mine quest |
+| `tools/world.py` | maps, terrain, lighting, minimaps, collision, routes, props, shops, Roll's development tables, location names, roofs, Flutter travel, mine quest |
 | `tools/models.py` | models, skeletons, animations, actors, NPCs, doors, special weapons, player and mine effects |
 | `tools/ui.py` | HUD, menus, fonts, dialogue, banners, game over, fades |
 | `tools/audio.py` | sound banks, effects, music, XA voices |
@@ -163,3 +174,9 @@ If you open the project before extracting, extract and reopen (or use Project > 
 - `pip` errors when installing `unicorn` or `capstone`: install them yourself with `pip install --target build/pydeps unicorn==2.1.4 capstone==5.0.9`.
 - A refreshed export still shows old data: the file was kept. Use `--overwrite-only` with a path pattern, or `--overwrite`.
 - Only `Full media extraction requires the original CUE.` failed: you ran without a CUE; pass the CUE or restrict `--only`.
+
+The ST11 `scripted_actors.json` also carries `native_encounter` (Icefield mini-boss record `0x800F3278`, class 59, its model `ST11_model_09.glb`, scene trigger, arrival, music cue, radio message, barrier collision boxes and defeat actions), produced by `models.bind_icefield_encounter`; `icefield_effects.json` gains `death.boss`. Regenerate with `python tools/assets.py --only world --stage ST11 --overwrite-only "assets/levels/ST11/scripted_actors.json"`.
+
+The ST10 ice domes (class 29, area 1, story byte14 1; resource variant 0 is the translucent dome, variants 1-4 the curled figures) combine three exports: `models.SCRIPT_FLOOR_SNAP` stores `native_floor_snap.floor_raw`, the floor query result including the variant-1 collision that the dome record selects with `GAME 0x800C010C` (`models.script_snap_floor` reads it from `world.export_floor_shapes`), so the runtime places the actor at `floor_raw + 0x90` without a physics ray; `models.SCRIPT_TRANSLUCENCY` stores `native_translucency` (`SLES 0x8003F28C` semi-transparency, mode 0) that `native_material.translucent` applies; `world.AREA_COLLISION_VARIANTS[("ST10", 1)]` adds the four dome collision variants to `manifest.json` and their examine contacts (message 0 of the ST10 bank) to `doors.json`. Regenerate with `python tools/assets.py --only world --only models --stage ST10 --overwrite-only "assets/levels/ST10/scripted_actors.json" --overwrite-only "assets/levels/ST10/manifest.json" --overwrite-only "assets/levels/ST10/doors.json"`.
+
+`cinematics.export_icefield_scene` (world group, ST11) emulates ST11 scene 0x2A with the same Unicorn harness as the other scenes and writes `scene_2a.json`, `scene_2a_callbacks.json`, `player_scene.json` and `player_scene_ST11.glb`.

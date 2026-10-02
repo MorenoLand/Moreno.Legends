@@ -113,7 +113,7 @@ static func initialize_into(parent: Node3D, stage: String, area: int, native_con
 		flags_changed = flags_changed or bool(result.get("flags_changed", false)); state_changed = state_changed or bool(result.get("state_changed", false))
 		if not bool(result.get("flags_changed", false)) and not bool(result.get("state_changed", false)): break
 		await tree.physics_frame
-	if is_instance_valid(parent): parent.set_meta("native_initialization_result", {"flags_changed": flags_changed, "state_changed": state_changed, "pending_scene_requests": pending_scene_requests(parent)})
+	if is_instance_valid(parent): parent.set_meta("native_initialization_result", {"flags_changed": flags_changed, "state_changed": state_changed, "pending_scene_requests": pending_scene_requests(parent)}); preload("res://scripts/world/enemies/native_icefield_encounter.gd").attach(parent, stage, area, native_context)
 	return created
 static func initialization_result(parent: Node3D) -> Dictionary: return parent.get_meta("native_initialization_result", {}) if is_instance_valid(parent) else {}
 static func spawn_entry(parent: Node3D, stage: String, area: int, entry: Dictionary, model: Dictionary, context: Dictionary = {}) -> Node3D:
@@ -254,6 +254,8 @@ static func _models_by_index(models: Array) -> Dictionary:
 static func _attach_native_source(node: Node3D, stage: String, area: int, entry: Dictionary) -> void:
 	node.set_meta("native_stage", stage); node.set_meta("native_area", area); node.set_meta("native_actor_source", entry.duplicate(true)); preload("res://scripts/world/actors/native_interaction.gd").attach(node, entry)
 	if entry.get("native_lock_on", null) is Dictionary: node.set_meta("native_lock_on", entry["native_lock_on"]); node.add_to_group("lock_targets")
+	if entry.has("native_chest"): _attach_chest(node, entry)
+	if int(entry.get("actor_class", -1)) == 0x6F and stage != "ST0F" and entry.has("native_interaction"): _attach_refractor(node, entry)
 	if str(entry.get("role", "")) == "bridge_steering_wheel": node.add_to_group("flutter_steering_wheels")
 	if int(entry.get("native_resource_flags", -1)) == 0x3020: node.add_to_group("parked_flutter_hulls")
 	var receiver := node.get_node_or_null("NativeKickableBody")
@@ -262,6 +264,17 @@ static func _attach_native_source(node: Node3D, stage: String, area: int, entry:
 		while ancestor != null:
 			if ancestor.has_method("bind_native_kickable_prop"): ancestor.bind_native_kickable_prop(receiver); break
 			ancestor = ancestor.get_parent()
+static func _attach_chest(node: Node3D, entry: Dictionary) -> void:
+	var gameplay: Node = node.get_parent()
+	while gameplay != null and gameplay.get_node_or_null("Player") == null: gameplay = gameplay.get_parent()
+	if gameplay == null or node.has_meta("native_item_controller"): return
+	var item: Node = preload("res://scripts/world/missions/mine/native_mine_item.gd").new(); node.add_child(item); item.configure(gameplay, node, entry, entry["native_chest"])
+	if int(entry.get("position_raw", [0, 0, 0])[1]) == -1: preload("res://scripts/world/actors/native_actor_motion.gd").settle_on_floor.call_deferred(node)
+static func _attach_refractor(node: Node3D, entry: Dictionary) -> void:
+	var gameplay: Node = node.get_parent()
+	while gameplay != null and gameplay.get_node_or_null("Player") == null: gameplay = gameplay.get_parent()
+	if gameplay == null or node.get_node_or_null("NativeMineRefractor") != null: return
+	var behavior: Node = preload("res://scripts/world/missions/mine/native_mine_refractor.gd").new(); behavior.name = "NativeMineRefractor"; node.add_child(behavior); behavior.configure(gameplay, node, entry, {})
 static func _npc_source_offsets(stage: String) -> Dictionary:
 	if _npc_source_cache.has(stage): return _npc_source_cache[stage]
 	var result := {}; var data := _read_manifest("res://assets/levels/%s/npcs.json" % stage)
@@ -278,7 +291,7 @@ static func _spawn_enemy(parent: Node3D, path: String, entry: Dictionary, model:
 	var gameplay: Node = parent
 	while gameplay != null and gameplay.get_node_or_null("Player") == null: gameplay = gameplay.get_parent()
 	if gameplay == null: return null
-	gameplay.actor_manifest["pickups"] = "pickups.json"; var script: GDScript = preload("res://scripts/world/enemies/native_icefield_burrower.gd") if int(entry["actor_class"]) == 41 else preload("res://scripts/world/enemies/native_icefield_spitter.gd"); var enemy: CharacterBody3D = script.new(); parent.add_child(enemy)
+	gameplay.actor_manifest["pickups"] = "pickups.json"; var script: GDScript = load(str(entry["native_enemy"]["script"])) if entry["native_enemy"].has("script") else preload("res://scripts/world/enemies/native_icefield_burrower.gd") if int(entry["actor_class"]) == 41 else preload("res://scripts/world/enemies/native_icefield_spitter.gd"); var enemy: CharacterBody3D = script.new(); parent.add_child(enemy); enemy.add_to_group("native_pool_actors")
 	if not enemy.configure(gameplay, entry, model, path): enemy.queue_free(); return null
 	enemy.sound_requested.connect(gameplay.audio.play_at); enemy.drop_requested.connect(gameplay._spawn_actor_drops); enemy.contact_hit.connect(gameplay._actor_contact)
 	preload("res://scripts/world/rendering/native_material.gd").depth_cue(enemy.model, gameplay.depth_cue_parameters)
@@ -290,7 +303,7 @@ static func _load_actor(parent: Node3D, path: String, entry: Dictionary, model: 
 	if entry.has("native_pose_resolver"):
 		transform = preload("res://scripts/world/actors/native_interaction.gd").resolve_pose(entry, native_context)
 		if transform.is_empty(): return null
-	if entry.has("native_enemy") and int(entry.get("actor_class", -1)) in [23, 41]: return _spawn_enemy(parent, path, entry, model)
+	if entry.has("native_enemy") and (int(entry.get("actor_class", -1)) in [23, 41] or entry["native_enemy"].has("script")): return _spawn_enemy(parent, path, entry, model)
 	var packed := await _threaded_scene(path)
 	if packed == null or not is_instance_valid(parent): return null
 	var node := packed.instantiate() as Node3D
@@ -319,6 +332,7 @@ static func _load_actor(parent: Node3D, path: String, entry: Dictionary, model: 
 		var follower := preload("res://scripts/world/actors/native_follower.gd").new(); follower.name = "NativeFollower"; node.add_child(follower)
 		if not follower.configure(node, entry, native_context): follower.queue_free()
 	preload("res://scripts/world/rendering/native_material.gd").apply(node, 255.0 if bool(model.get("native_vertex_colors", false)) else 128.0)
+	if entry.has("native_translucency"): preload("res://scripts/world/rendering/native_material.gd").translucent(node, int(entry["native_translucency"]["blend"]))
 	if entry.has("native_broadphase") or entry.has("pc_source_mesh_collision"):
 		var meshes: Array[MeshInstance3D] = []
 		if node is MeshInstance3D: meshes.append(node as MeshInstance3D)
@@ -342,7 +356,10 @@ static func _load_actor(parent: Node3D, path: String, entry: Dictionary, model: 
 			collider.set_meta("native_stream_actor_layer", collider.collision_layer)
 			if not bool(parent.get_meta("native_stream_room_active")): collider.collision_layer = 0
 	if int(entry.get("actor_class", -1)) == 0 and entry.has("native_hitbox") and not entry.has("native_pose_resolver"): preload("res://scripts/world/actors/native_actor_motion.gd").settle_on_floor.call_deferred(node)
-	if entry.has("native_floor_snap"): preload("res://scripts/world/actors/native_actor_motion.gd").snap_to_floor.call_deferred(node, int(entry["native_floor_snap"]["offset_raw"]))
+	if entry.has("native_floor_snap"):
+		var snap: Dictionary = entry["native_floor_snap"]
+		if snap.has("floor_raw"): node.position.y = -float(int(snap["floor_raw"]) + int(snap["offset_raw"])) / 256.0
+		else: preload("res://scripts/world/actors/native_actor_motion.gd").snap_to_floor.call_deferred(node, int(snap["offset_raw"]))
 	return node
 static func _prefetchable(entry: Dictionary) -> bool: return str(entry.get("model_file", "")).ends_with(".glb") and not entry.has("native_kickable") and not entry.has("native_pose_resolver")
 static func _prefetch(paths: Array[String]) -> void:

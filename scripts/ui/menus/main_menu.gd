@@ -26,6 +26,11 @@ var achievements := ConfigFile.new()
 var achievement_catalog: Dictionary = {}
 var achievement_notice: Control
 var achievement_menu: Control
+var inventory_menu: Control
+var map_menu: Control
+var equipment_menu: Control
+var special_last := 0
+var info_return := "pause"
 var debug_achievements := false
 var flutter_fly_anytime := false
 var error_dialogue: Control
@@ -73,7 +78,7 @@ func _ready() -> void:
 	overlay.add_child(achievement_notice)
 	var pause_menu := preload("res://scripts/ui/menus/pause_menu.gd").new()
 	overlay.add_child(pause_menu)
-	pause_menu.configure()
+	pause_menu.configure(); pause_menu.host = self
 	pages["pause"] = pause_menu
 	options = preload("res://scripts/ui/menus/options_menu.gd").new()
 	overlay.add_child(options)
@@ -104,6 +109,10 @@ func _ready() -> void:
 	achievement_menu.configure(self)
 	achievement_menu.closed.connect(func(): audio.play_ui("menu_cancel"); _show("pause"))
 	pages["achievements"] = achievement_menu
+	inventory_menu = preload("res://scripts/ui/menus/inventory_menu.gd").new(); overlay.add_child(inventory_menu); inventory_menu.configure(self); inventory_menu.closed.connect(_close_info); pages["inventory"] = inventory_menu
+	equipment_menu = preload("res://scripts/ui/menus/equipment_menu.gd").new(); overlay.add_child(equipment_menu); equipment_menu.configure(self); equipment_menu.closed.connect(_close_info); pages["equipment"] = equipment_menu
+	map_menu = preload("res://scripts/ui/menus/map_menu.gd").new(); overlay.add_child(map_menu); map_menu.configure(self); map_menu.closed.connect(_close_info); pages["map"] = map_menu
+	for page_name: String in ["inventory", "equipment", "map"]: pages[page_name].page_requested.connect(_cycle_info)
 	title = preload("res://scripts/ui/menus/title_menu.gd").new()
 	overlay.add_child(title)
 	pages["main"] = title
@@ -133,11 +142,16 @@ func _ready() -> void:
 	var pause_page: Control = pages["pause"].get_meta("content")
 	_button(pause_page, "Resume", _resume)
 	_button(pause_page, "Save Game", _save_game)
+	_button(pause_page, "Inventory", func(): _open_info("inventory", "pause"))
+	_button(pause_page, "Equipment", func(): _open_info("equipment", "pause"))
+	_button(pause_page, "Map", func(): _open_info("map", "pause"))
 	_button(pause_page, "Options", func(): _options("pause"))
 	_button(pause_page, "Achievements", func(): achievement_menu.refresh(); _show("achievements"))
 	_button(pause_page, "Cheats", func(): _open_custom("cheats"))
 	_button(pause_page, "Main Menu", _confirm_main_menu)
+	_button(pause_page, "Quit to Desktop", func(): _show("quit_confirm"))
 	var confirmation := preload("res://scripts/ui/menus/confirmation_menu.gd").new(); overlay.add_child(confirmation); confirmation.configure("Return to Title Screen?"); confirmation.confirmed.connect(func(): audio.play_ui("menu_confirm"); _main_menu()); confirmation.cancelled.connect(func(): audio.play_ui("menu_cancel"); _show("pause")); confirmation.moved.connect(func(): audio.play_ui("menu_move")); pages["title_confirm"] = confirmation
+	var quit_confirmation := preload("res://scripts/ui/menus/confirmation_menu.gd").new(); overlay.add_child(quit_confirmation); quit_confirmation.configure("Quit to Desktop?"); quit_confirmation.confirmed.connect(func(): audio.play_ui("menu_confirm"); get_tree().quit()); quit_confirmation.cancelled.connect(func(): audio.play_ui("menu_cancel"); _show("pause")); quit_confirmation.moved.connect(func(): audio.play_ui("menu_move")); pages["quit_confirm"] = quit_confirmation
 	save_feedback = Label.new()
 	save_feedback.hide()
 	save_feedback.add_theme_font_size_override("font_size", 9)
@@ -236,7 +250,7 @@ func _show(name: String) -> void:
 	var context := "gameplay" if is_instance_valid(gameplay) else "title"
 	for page: Control in pages.values():
 		if page.visible and page != pages[name] and page.has_method("animate_exit"): await page.animate_exit(context)
-	overlay.visible = true
+	overlay.visible = true; _set_pickers(name == "main")
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	for key in pages: pages[key].visible = key == name
 	if pages[name].has_method("animate_enter"): await pages[name].animate_enter(context)
@@ -276,7 +290,7 @@ func _threaded_scene(path: String) -> PackedScene:
 		await get_tree().process_frame
 		status = ResourceLoader.load_threaded_get_status(path)
 	return ResourceLoader.load_threaded_get(path) as PackedScene if status == ResourceLoader.THREAD_LOAD_LOADED else null
-func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0, context: Dictionary = {}, load_feedback: bool = false, parked_override: Dictionary = {}) -> void:
+func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0, context: Dictionary = {}, load_feedback: bool = false, parked_override: Dictionary = {}, carried: Dictionary = {}) -> void:
 	if session_loading or opening_loading: return
 	session_loading = true
 	if not state.is_empty():
@@ -348,6 +362,7 @@ func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0, co
 	if candidate.audio != null and candidate.audio.music != null: candidate.audio.music.stream_paused = true
 	var success: bool = candidate.playable if candidate.preparation_finished else await candidate.prepared
 	if success and not state.is_empty(): success = await candidate.restore_state(state)
+	if success and not carried.is_empty(): candidate.apply_carry(carried)
 	if success: candidate.entry_route = {}; candidate.initial_player_state = {}
 	var docked_hull: Node3D = await preload("res://scripts/world/flutter/flutter_dock.gd").ensure(candidate) if success else null
 	if not success:
@@ -375,7 +390,7 @@ func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0, co
 	gameplay.location_requested.connect(_load_location)
 	gameplay.achievement_earned.connect(_unlock_achievement)
 	gameplay.game_over_requested.connect(_game_over)
-	var achievement_blockers: Array[Control] = [pages["pause"], options, save_menu, custom, status_menu, achievement_menu, gameplay.dialogue_box, gameplay.transition_overlay]; achievement_notice.configure(achievement_blockers)
+	var achievement_blockers: Array[Control] = [pages["pause"], options, save_menu, custom, status_menu, achievement_menu, inventory_menu, equipment_menu, map_menu, gameplay.dialogue_box, gameplay.transition_overlay]; achievement_notice.configure(achievement_blockers)
 	gameplay.set_meta("native_landing_active", bool(state.get("entry_route", {}).get("flutter_landing", false)))
 	gameplay.show()
 	gameplay.get_node("HUD").show()
@@ -408,9 +423,10 @@ func _game_over() -> void:
 	screen.queue_free()
 	_main_menu()
 func _load_location(stage: String, area: int) -> void:
+	var carried: Dictionary = gameplay.carry_state() if is_instance_valid(gameplay) else {}
 	var context: Dictionary = gameplay.native_context.duplicate(true) if is_instance_valid(gameplay) else {}
 	var parked: Dictionary = gameplay.parked_location.duplicate(true) if is_instance_valid(gameplay) else {}
-	await _start_session({}, stage, area, context, false, parked)
+	await _start_session({}, stage, area, context, false, parked, carried)
 func _stage_transition(route: Dictionary) -> void:
 	if session_loading or not is_instance_valid(gameplay): return
 	var previous := gameplay
@@ -483,6 +499,7 @@ func _close_save_menu(play_sound := true) -> void:
 	else: _show("pause" if save_menu.save_mode else "main")
 func _pause() -> void:
 	pause_return = ""
+	if is_instance_valid(gameplay): gameplay.sync_items()
 	save_feedback.text = ""
 	save_feedback.hide()
 	get_tree().paused = true
@@ -503,7 +520,7 @@ func _resume(capture_mouse: bool = true) -> void:
 		if page.visible and page.has_method("animate_exit"): await page.animate_exit("gameplay")
 	audio.music.stop()
 	gameplay.audio.music.stream_paused = false
-	overlay.hide()
+	overlay.hide(); _set_pickers(true)
 	for page in pages.values(): page.hide()
 	title.set_process(false)
 	get_tree().paused = false
@@ -535,16 +552,57 @@ func _options(return_page: String) -> void:
 func _input(event: InputEvent) -> void:
 	if is_instance_valid(error_dialogue) and error_dialogue.active: return
 	if menu_transitioning: get_viewport().set_input_as_handled(); return
+	if event.is_action_pressed("swap_special") and is_instance_valid(gameplay) and (pages["pause"].visible or pages["equipment"].visible): swap_special(); get_viewport().set_input_as_handled(); return
 	if event.is_action_pressed("status_menu"):
 		if not session_loading and not opening_loading and is_instance_valid(gameplay) and not is_instance_valid(opening):
 			if pages["pause"].visible: _resume()
 			else: _pause(); audio.play_ui("menu_confirm")
 		get_viewport().set_input_as_handled()
 		return
+	for action in ["inventory_menu", "map_menu"]:
+		if event.is_action_pressed(action): _info_hotkey(action.trim_suffix("_menu")); get_viewport().set_input_as_handled(); return
 	if not event.is_action_pressed("debug_overlay"): return
 	if not is_instance_valid(debug_overlay): debug_overlay = preload("res://scripts/ui/hud/debug_overlay.gd").new(); debug_overlay.name = "DebugOverlay"; add_child(debug_overlay); debug_overlay.configure(self)
 	debug_overlay.toggle()
 	get_viewport().set_input_as_handled()
+func _gameplay_free() -> bool:
+	return is_instance_valid(gameplay) and not is_instance_valid(opening) and gameplay.playable and not gameplay.loading and not gameplay.native_scenes.active and not (is_instance_valid(gameplay.dialogue_box) and gameplay.dialogue_box.active) and gameplay.transition_overlay.is_idle()
+func special_partner() -> String:
+	if not is_instance_valid(gameplay): return ""
+	var player: Node = gameplay.player; var owned: Dictionary = player.inventory["special_weapons"]
+	if int(player.equipped_special) != 0: return "0"
+	var ids: Array = owned.keys().filter(func(id): return id != "0" and int(owned[id]) > 0)
+	return str(special_last) if ids.has(str(special_last)) else str(ids[0]) if not ids.is_empty() else ""
+func swap_special() -> bool:
+	var target := special_partner()
+	if target.is_empty(): audio.play_ui("menu_cancel"); return false
+	if int(gameplay.player.equipped_special) != 0: special_last = int(gameplay.player.equipped_special)
+	gameplay.player.equipped_special = int(target); audio.play_ui("menu_confirm")
+	for page_name: String in ["pause", "equipment"]: pages[page_name].queue_redraw()
+	return true
+func _cycle_info(direction: int) -> void:
+	var order := ["inventory", "equipment", "map"]; var from := order.find(order.filter(func(key): return pages[key].visible)[0])
+	audio.play_ui("menu_move"); _open_info(order[posmod(from + direction, order.size())], info_return)
+func _set_pickers(shown: bool) -> void:
+	if not is_instance_valid(gameplay) or not gameplay.scene_ui_state.is_empty(): return
+	if shown: gameplay.set_location_picker_visible(bool(settings.get_value("interface", "show_location_picker", true)))
+	else: gameplay.set_location_picker_visible(false)
+func _open_info(page: String, source: String) -> void:
+	info_return = source; pages[page].refresh(); _show(page)
+func _close_info() -> void:
+	audio.play_ui("menu_cancel")
+	if info_return == "pause": _show("pause")
+	else: _resume()
+func _info_hotkey(page: String) -> void:
+	if session_loading or opening_loading or not is_instance_valid(gameplay): return
+	var shown: Array = pages.keys().filter(func(key): return pages[key].visible)
+	if shown.has(page): _close_info(); return
+	if shown.is_empty():
+		if get_tree().paused or not _gameplay_free(): return
+		info_return = ""; pause_return = ""; save_feedback.hide()
+	elif shown == ["pause"]: info_return = "pause"
+	elif not (shown.size() == 1 and shown[0] in ["inventory", "equipment", "map"]): return
+	audio.play_ui("menu_confirm"); get_tree().paused = true; _open_info(page, info_return)
 func _open_custom(page: String) -> void:
 	if page == "extra": _options("pause"); return
 	custom.open_page(page)
@@ -556,9 +614,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	if is_instance_valid(opening) and not (pages["pause"].visible or custom.visible or pages["options"].visible): return
 	if not event.is_action_pressed("ui_cancel"): return
 	audio.play_ui("menu_cancel")
-	if pages["title_confirm"].visible: _show("pause")
+	if pages["title_confirm"].visible or pages["quit_confirm"].visible: _show("pause")
 	elif custom.visible: _close_custom()
 	elif status_menu.visible: status_menu.back()
+	elif inventory_menu.visible or equipment_menu.visible or map_menu.visible: _close_info()
 	elif pages["saves"].visible: _close_save_menu(false)
 	elif pages["options"].visible: _show(options_return)
 	elif pages["pause"].visible: _resume()

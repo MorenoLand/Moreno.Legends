@@ -77,7 +77,7 @@ func _process(delta: float) -> void:
 	var trimmed := travel <= 0.0 or clip.size.x <= 0.0; title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS if trimmed else TextServer.OVERRUN_NO_TRIMMING
 	_fit_title(title, 0.0 if trimmed else roundf(_cycle(marquee_time, travel, 28.0)))
 	# The footer shows whole lines only and steps a line at a time, so no line is ever cut through the middle.
-	var line_height := float(details.get_line_height()); var shown := maxi(1, floori(28.0 / line_height)); var hidden := maxi(details.get_line_count() - shown, 0)
+	var line_height := float(details.get_line_height() + details.get_theme_constant("line_spacing")); var shown := maxi(1, floori(28.0 / line_height)); var hidden := maxi(details.get_line_count() - shown, 0)
 	details_clip.size.y = shown * line_height; details_clip.position.y = 200.0 + floorf((28.0 - details_clip.size.y) * 0.5); details.size.y = maxf(details.get_line_count() * line_height, details_clip.size.y)
 	details.position.y = -line_height * mini(int(footer_time / 1.6) % (hidden + 2), hidden)
 func _track() -> Rect2: return Rect2(scroll.position.x + scroll.size.x + 6.0, scroll.position.y + 1.0, 3.0, scroll.size.y - 2.0)
@@ -123,7 +123,7 @@ func _draw() -> void:
 	var factor: float = size.y / 240.0; draw_set_transform(Vector2((size.x - 320.0 * factor) * 0.5, 0), 0, Vector2.ONE * factor)
 	FRAME.draw(self, layout, "header", Rect2(20, 4, 112, 22)); FRAME.draw(self, layout, "prompt", Rect2(36, 38, 248, 14)); FRAME.draw(self, layout, "selector", Rect2(36, 64, 248, 120)); FRAME.draw(self, layout, "prompt", Rect2(36, 196, 248, 34))
 	if not FRAME.content_visible(self): return
-	draw_string(font, Vector2(29, 10 + font.get_ascent(12)), "Achievements", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
+	FRAME.title(self, font, "Achievements", Rect2(20, 4, 112, 22))
 	draw_string(font, Vector2(44, 40 + font.get_ascent(9)), "%d / %d unlocked   %d / %d points" % [unlocked_count, ids.size(), earned_points, total_points], HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color.WHITE)
 	# Scrollbar in the native frame colours, matching the options list (thin track + thumb inside the selector frame).
 	var maximum := maxf(rows.size.y - scroll.size.y, 0.0)

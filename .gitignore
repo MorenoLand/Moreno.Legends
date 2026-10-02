@@ -25,9 +25,11 @@ assets/flutter/
 assets/library/
 assets/dialogue/
 assets/shops/
+assets/development/
 assets/weather/
 assets/fades/
 *.tmp
 !assets/achievements/
 !assets/achievements/**
 SESSION*/
+assets/runner/

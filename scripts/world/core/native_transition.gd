@@ -28,13 +28,8 @@ static func manual_contact(route: Dictionary, position: Vector3, yaw: float) -> 
 	var start := Vector3(-position.x, -position.y, position.z) * 256.0
 	for contact: Dictionary in route.get("native_contacts", []):
 		if bool(contact.get("automatic", false)) or int(contact.get("type", -1)) == 1: continue
-		var step := float(contact.get("probe_forward_raw", 0)); var finish := start + Vector3(-sin(yaw) * step, 0, cos(yaw) * step); var minimum := Vector3(contact["x"][0], contact["y"][0], contact["z"][0]) - Vector3.ONE; var maximum := Vector3(contact["x"][1], contact["y"][1], contact["z"][1]) + Vector3.ONE; var direction := finish - start; var entry := 0.0; var exit := 1.0
-		for axis in 3:
-			if is_zero_approx(direction[axis]):
-				if start[axis] < minimum[axis] or start[axis] > maximum[axis]: exit = -1.0; break
-			else:
-				var first := (minimum[axis] - start[axis]) / direction[axis]; var last := (maximum[axis] - start[axis]) / direction[axis]; entry = maxf(entry, minf(first, last)); exit = minf(exit, maxf(first, last))
-		if entry <= exit: return true
+		var step := float(contact.get("probe_forward_raw", 0)); var point := start + Vector3(-sin(yaw) * step, 0, cos(yaw) * step)
+		if point.x > float(contact["x"][0]) - 1.0 and point.x < float(contact["x"][1]) + 1.0 and point.y > float(contact["y"][0]) - 1.0 and point.y < float(contact["y"][1]) + 1.0 and point.z > float(contact["z"][0]) - 1.0 and point.z < float(contact["z"][1]) + 1.0: return true
 	return false
 static func automatic_route(routes: Array, position: Vector3) -> Dictionary:
 	var native := Vector3i(int(-position.x * 256.0), int(-position.y * 256.0), int(position.z * 256.0))

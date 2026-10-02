@@ -9,7 +9,7 @@ func configure(gameplay: Node, target: Node3D, source: Dictionary, descriptor: D
 func can_interact() -> bool: return not busy and is_instance_valid(actor) and not _flag(int(data["collected_flag"]))
 func interact() -> bool:
 	if not can_interact(): return false
-	busy = true; host.audio.play_at(0xF1, actor.global_position); _control(1)
+	busy = true; host.native_context["native_wallet"] = host.player.zenny; host.audio.play_at(0xF1, actor.global_position); _control(1)
 	await host.event_script.play_bound_message(str(entry["stage"]), "0x8010C000", int(data["message_index"]), str(data.get("message_call", "0x800BE330")), actor, 0)
 	if not is_instance_valid(actor): return false
 	await _wait_terminal()
