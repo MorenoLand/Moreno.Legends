@@ -33,7 +33,6 @@ var list_active := false
 var list_dimmed := false
 var list_selling := false
 var description_code := -1
-var icon_atlas: Texture2D
 static func supports(shop_stage: String) -> bool:
 	var manifest: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://assets/shops/manifest.json")) if FileAccess.file_exists("res://assets/shops/manifest.json") else null
 	return manifest is Dictionary and manifest.get("banks", {}).has(shop_stage)
@@ -343,13 +342,20 @@ func _flush_segment(segment: String, x: float, baseline: float, colour: int, tin
 	if segment.is_empty(): return x
 	var segment_font: Font = colour_fonts[colour] if colour < colour_fonts.size() and colour_fonts[colour] != null else font
 	draw_string(segment_font, Vector2(x, baseline), segment, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, tint); return x + segment_font.get_string_size(segment, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
-const ICONS := [Vector2(0x80, 0), Vector2(0x90, 0), Vector2(0xa0, 0), Vector2(0xb0, 0), Vector2(0xc0, 0), Vector2(0xd0, 0), Vector2(0xe0, 0), Vector2(0xc0, 0x10), Vector2(0xf0, 0), Vector2(0xb0, 0x10), Vector2(0x70, 0x10)]
+const SHOP_CLASS_ICON := [1, 4, 2, 3, 0, 5, 6, 13, 7, 12, 8]
+static var icon_codes: Dictionary = {}
+static var icon_sheet: Texture2D
+static func icon_for_code(code: int) -> int:
+	if icon_codes.is_empty(): icon_codes = JSON.parse_string(FileAccess.get_file_as_string("res://assets/menu/status.json"))["item_icons"]["code_icon"]
+	return int(icon_codes.get(str(code), -1))
+static func draw_item_icon(canvas: CanvasItem, icon: int, rect: Rect2, dimmed: bool = false) -> void:
+	if icon < 0: return
+	if icon_sheet == null: icon_sheet = load("res://assets/menu/item_icons.png") as Texture2D
+	canvas.draw_texture_rect_region(icon_sheet, rect, Rect2(icon * 16, 0, 16, 16), Color(0.75, 0.75, 0.75) if dimmed else Color.WHITE)
 static func _icon_index(code: int) -> int:
 	# SLES-independent icon classes of the overlay list draw routine (ST0AT 0x800EE35C), by item index code - 0x380.
 	var index := code - 0x380
 	for entry: Array in [[0x14, 0x24, 0], [0x38, 4, 2], [0x3c, 0xc, 3], [0x48, 8, 1], [0x83, 5, 9], [0x88, 0x34, 6], [0xcd, 3, 10], [0xbc, 2, 8], [0xbe, 3, 7], [0xc3, 0x34, 5]]:
-		if index >= entry[0] and index < entry[0] + entry[1]: return entry[2]
-	return 8
-func _draw_icon(code: int, y: int) -> void:
-	if icon_atlas == null: icon_atlas = load("res://assets/menu/status_normal_atlas.png") as Texture2D
-	draw_texture_rect_region(icon_atlas, Rect2(37, y - 2, 16, 16), Rect2(ICONS[_icon_index(code)], Vector2(16, 16)), Color(0.55, 0.55, 0.55) if list_dimmed else Color.WHITE)
+		if index >= entry[0] and index < entry[0] + entry[1]: return SHOP_CLASS_ICON[entry[2]]
+	return SHOP_CLASS_ICON[8]
+func _draw_icon(code: int, y: int) -> void: draw_item_icon(self, _icon_index(code), Rect2(37, y - 2, 16, 16), list_dimmed)

@@ -99,6 +99,10 @@ def main():
         groups.update({"library-" + path.parent.name + "-" + path.name: [path] for path in sorted(library.glob("*/*")) if path.is_dir()})
     dialogue = json.loads((ROOT / "assets" / "dialogue" / "manifest.json").read_text(encoding="utf-8"))
     groups.update({"dialogue-" + stage: [ROOT / "assets" / "dialogue" / bank["file"]] for stage, bank in sorted(dialogue["banks"].items())})
+    runner = ROOT / "assets" / "runner"
+    if (runner / "manifest.json").is_file():
+        groups["runner-core"] = [runner / "engine.gd", runner / "manifest.json", runner / "ram.bin"]
+        groups.update({"runner-" + stage: [runner / (stage + suffix) for suffix in (".gd", ".bin", ".root.bin", ".models.bin", ".vram.bin")] for stage, entry in json.loads((runner / "manifest.json").read_text(encoding="utf-8"))["stages"].items() if "attach" in entry})
     groups["opening"] = [ROOT / "assets" / "opening", ROOT / "assets" / "video"]
     groups["shared"] = [ROOT / "assets" / name for name in ("minimap", "flutter", "stage_props", "weather", "shops")]
     groups["shared"].append(ROOT / "assets" / "opening" / "effects")

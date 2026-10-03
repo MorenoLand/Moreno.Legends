@@ -10,7 +10,6 @@ var life := 0
 var level := 0
 var special := 0
 var target: Node3D
-var offset := Vector3.ZERO
 var direction := Vector3.FORWARD
 var speed := 0.0
 var counter := 0
@@ -29,7 +28,7 @@ var blast_hit: Dictionary = {}
 static func spawn(shot: Node, muzzle: Vector3, heading: Vector3, damage_value: int, range_ticks: float) -> void:
 	var rocket := Node3D.new(); rocket.set_script(shot.bullet_script); rocket.set("data", shot.data); rocket.set("player", shot.player); rocket.set("damage", damage_value); rocket.set("life", int(range_ticks)); rocket.set("level", shot.level(shot.player.weapon_stats.ATTACK)); rocket.set("special", shot.level(4))
 	var lock: Node3D = shot.aim_target
-	if is_instance_valid(lock): rocket.set("target", lock); rocket.set("offset", muzzle + heading - lock.global_position)
+	if is_instance_valid(lock): rocket.set("target", lock)
 	shot.player.get_parent().add_child(rocket); rocket.global_position = muzzle; rocket.set("direction", heading.normalized()); rocket.history.append(muzzle)
 func _ready() -> void:
 	var bullet: Dictionary = data["bullet"]; var steering: Dictionary = bullet["steering"]; speed = float(bullet["initialSpeedRaw"]); counter = int(steering.get("armDelayBase", steering.get("delayTicks", 0))) - (special if steering["kind"] == "ramp" else 0)
@@ -58,7 +57,7 @@ func _tick() -> void:
 	elif is_instance_valid(target):
 		if counter > 0: counter -= 1
 		else:
-			_steer(float(steering["yawRate"]) * TAU / 4096.0, float(steering["pitchFactor"])); var distance := (target.global_position + offset - global_position).length() * SIZE_UNIT
+			_steer(float(steering["yawRate"]) * TAU / 4096.0, float(steering["pitchFactor"])); var distance: float = (player.lock_on.lock_point(target) - global_position).length() * SIZE_UNIT
 			if distance < nearest: nearest = distance
 			elif nearest < float(steering["fuseDistanceRaw"]): _explode(global_position); return
 	life -= 1
@@ -75,7 +74,7 @@ func _tick() -> void:
 	if history.size() > (int(data["trail"]["history"]) if data["trail"]["kind"] == "ribbon" else 8): history.pop_back()
 	if puffs != null: puffs.set("anchors", history.duplicate())
 func _steer(limit: float, pitch_factor: float) -> void:
-	var goal := (target.global_position + offset - global_position).normalized(); var yaw := atan2(direction.x, direction.z); var pitch := asin(clampf(direction.y, -1.0, 1.0))
+	var goal: Vector3 = (player.lock_on.lock_point(target) - global_position).normalized(); var yaw := atan2(direction.x, direction.z); var pitch := asin(clampf(direction.y, -1.0, 1.0))
 	yaw += clampf(wrapf(atan2(goal.x, goal.z) - yaw, -PI, PI), -limit, limit); pitch += clampf(asin(clampf(goal.y, -1.0, 1.0)) - pitch, -limit * pitch_factor, limit * pitch_factor)
 	direction = Vector3(sin(yaw) * cos(pitch), sin(pitch), cos(yaw) * cos(pitch))
 func _explode(point: Vector3) -> void:

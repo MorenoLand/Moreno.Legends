@@ -26,6 +26,7 @@ var sequence_volume := 0x3FFF
 var sequence_fade: Dictionary = {}
 var sequence_elapsed := 0.0
 var requested_music_cue := -1
+var hold_music := false
 var requested_music_signature := ""
 var native_context: Dictionary = {}
 var preparing := false
@@ -71,6 +72,7 @@ func configure(player: Node3D, path: String, music_role: String = "music") -> vo
 	movement.bus = "SE"
 	player.add_child(movement)
 	player.footstep.connect(_footstep)
+	player.clip_sound.connect(play_sound)
 	player.fired.connect(_fire)
 	player.jumped.connect(func(): _effect(movement, "jump"))
 	player.landed.connect(func(): _effect(movement, "land"))
@@ -249,6 +251,7 @@ func set_stage(value: String, target_area: int = 0, context: Dictionary = {}) ->
 	return true
 func set_area(value: int) -> void:
 	area = value
+	if hold_music: return
 	var entry: Dictionary = audio_catalog.get("zones", {}).get(stage, {})
 	var variant := int(native_context.get("native_save_byte14", 0))
 	var flags: Dictionary = native_context.get("event_flags", {})

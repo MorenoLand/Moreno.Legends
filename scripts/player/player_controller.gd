@@ -4,10 +4,12 @@ signal fired(projectile: Node3D)
 signal interaction_finished(role: String)
 signal scripted_walk_finished(completed: bool)
 signal footstep
+signal clip_sound(sound_id: int)
 signal jumped
 signal landed
 signal died
 signal special_sound_requested(sound_id: int)
+signal hold_ended(holder: Node3D, escaped: bool)
 @export var projectile_scene: PackedScene = preload("res://scenes/projectile.tscn")
 
 @export var move_speed := 2.2
@@ -82,7 +84,10 @@ var interaction_roles: Dictionary = {}
 var interaction_role := ""
 var interaction_elapsed := 0.0
 var interaction_duration := 0.0
+const LADDER_RATE := 1.3
 var interaction_loop := false
+var interaction_rate := 1.0
+var clip_sound_events: Dictionary = {}
 var interaction_vertical_speed := 0.0
 var interaction_movement_ticks := 0
 var interaction_target_y := NAN
@@ -94,9 +99,17 @@ var equipped_special := 0
 var special_usable := true
 var special_mode := 1
 var hose: Node3D
-const SHOT_BULLETS := {5: "res://scripts/world/combat/rocket.gd", 6: "res://scripts/world/combat/rocket.gd", 14: "res://scripts/world/combat/spread_bullet.gd"}
+## Weapons whose shot sequence is not the generic one.
+const SHOT_CONTROLLERS := {11: "res://scripts/player/special_blade.gd"}
+const SHOT_BULLETS := {5: "res://scripts/world/combat/rocket.gd", 6: "res://scripts/world/combat/rocket.gd", 14: "res://scripts/world/combat/spread_bullet.gd", 3: "res://scripts/runner/runner_bullet.gd", 4: "res://scripts/runner/runner_bullet.gd", 7: "res://scripts/runner/runner_bullet.gd", 8: "res://scripts/runner/runner_bullet.gd", 9: "res://scripts/runner/runner_bullet.gd", 10: "res://scripts/runner/runner_bullet.gd", 11: "res://scripts/runner/runner_bullet.gd", 12: "res://scripts/runner/runner_bullet.gd", 17: "res://scripts/runner/runner_bullet.gd", 13: "res://scripts/runner/runner_bullet.gd", 16: "res://scripts/runner/runner_bullet.gd"}
 var shots: Dictionary = {}
 var carried_actor: CharacterBody3D
+var gravity_modifier := 0
+var soft_ground_ticks := 0
+var ice_slip_ticks := 0
+var ice_sliding := false
+var ice_speed := 0.0
+var ice_direction := Vector2.ZERO
 var special_action := ""
 var special_action_time := 0.0
 var special_hit_started := false
@@ -108,6 +121,21 @@ var hurt_ticks := 0.0
 var hurt_immunity := 0.0
 var hurt_damage := 0
 var hurt_hits := 0
+var hurt_push := Vector3.ZERO
+const HOLD_MASH_ACTIONS := ["move_forward", "move_back", "turn_left", "turn_right", "jump"]
+var holder: Node3D
+var hold_profile := {}
+var hold_accumulator := 0.0
+var hold_ticks := 0
+var hold_counter := 0
+var hold_armed := false
+var hold_pressed := false
+var roll_phase := ""
+var roll_flag := 0
+var roll_ticks := 0
+var roll_accumulator := 0.0
+var roll_vertical := 0
+var roll_queued := 0
 enum JumpPhase { GROUNDED, TAKEOFF, RISING, RELEASED, FALLING, LANDING }
 var jump_phase := JumpPhase.GROUNDED
 var jump_moving := false
@@ -130,6 +158,7 @@ var camera_distance := -1.0
 var camera_world_position := Vector3.ZERO
 var camera_world_origin := Vector3.ZERO
 var camera_world_valid := false
+var camera_stuck_time := 0.0
 var camera_world_basis := Basis.IDENTITY
 
 func _ready() -> void:
@@ -165,7 +194,7 @@ func _ready() -> void:
 	hose = preload("res://scripts/player/special_hose.gd").new(); hose.name = "SpecialHose"; add_child(hose)
 	if not hose.configure(self): hose.queue_free(); hose = null
 	for id: int in SHOT_BULLETS:
-		var shot := preload("res://scripts/player/special_shot.gd").new(); shot.name = "SpecialShot%02X" % id; add_child(shot)
+		var shot: Node = load(SHOT_CONTROLLERS.get(id, "res://scripts/player/special_shot.gd")).new(); shot.name = "SpecialShot%02X" % id; add_child(shot)
 		if shot.configure(self, id): shot.bullet_script = load(SHOT_BULLETS[id]); shots[id] = shot
 		else: shot.queue_free()
 	lock_on = preload("res://scripts/player/lock_on.gd").new(); lock_on.name = "LockOn"; add_child(lock_on); lock_on.configure(self)
@@ -173,11 +202,14 @@ func _ready() -> void:
 		for clip: Dictionary in metadata.get("clips", []):
 			native_clips[str(clip["name"])] = clip
 			var times: Array[float] = []
+			var sounds: Array[float] = []
 			var ticks := 0
 			for record: Dictionary in clip.get("records", []):
 				if int(record["event"]) & 128: times.append(ticks / 30.0)
+				if int(record["event"]) & 32: sounds.append(ticks / 30.0)
 				ticks += int(record["durationTicks"])
 			footstep_events[str(clip["name"])] = times
+			clip_sound_events[str(clip["name"])] = sounds
 	health = max_health
 func _process(delta: float) -> void:
 	_update_special_action(delta)
@@ -209,7 +241,11 @@ func _process(delta: float) -> void:
 		else: camera_world_position = _move_camera(camera_world_position, camera_world_position + camera_pivot.global_position - camera_world_origin)
 		camera_world_origin = camera_pivot.global_position
 		camera_world_basis = basis
+		var followed := camera_world_position
 		camera_world_position = _move_camera(camera_world_position, camera_world_position.lerp(goal, 1.0 - exp(-delta * 10.0)))
+		# A camera wedged on geometry the arm line itself is clear of (a doorway lintel after leaving a building) snaps to the arm goal.
+		camera_stuck_time = camera_stuck_time + delta if camera_world_position.distance_to(followed) < 0.002 and camera_world_position.distance_to(goal) > 0.25 else 0.0
+		if camera_stuck_time > 0.3: camera_world_position = goal; camera_stuck_time = 0.0
 		camera.global_position = camera_world_position
 		var focus := camera_pivot.global_position - camera_world_position
 		if focus.length_squared() > 0.000001 and absf(focus.normalized().y) < 0.999: camera.look_at(camera_pivot.global_position, Vector3.UP)
@@ -218,7 +254,10 @@ func _process(delta: float) -> void:
 	var time := float(motion_tree.get("parameters/Motion/current_position"))
 	if footstep_clip != locomotion.animation:
 		footstep_clip = locomotion.animation
-		footstep_time = 0.0
+		footstep_time = -1.0 if interaction_loop and not interaction_role.is_empty() else 0.0
+	if interaction_loop and not interaction_role.is_empty():
+		for event: float in clip_sound_events.get(footstep_clip, []):
+			if (event > footstep_time and event <= time) if time >= footstep_time else (event > footstep_time or event <= time): clip_sound.emit(0x140)
 	if not interaction_role.is_empty() or (is_on_floor() and Vector2(velocity.x, velocity.z).length_squared() > 0.001):
 		for event: float in footstep_events.get(footstep_clip, []):
 			if (event > footstep_time and event <= time) if time >= footstep_time else (event > footstep_time or event <= time): footstep.emit()
@@ -226,7 +265,7 @@ func _process(delta: float) -> void:
 	if not interaction_role.is_empty():
 		interaction_elapsed = minf(interaction_elapsed + delta, interaction_duration)
 		if interaction_loop:
-			var ticks := mini(floori(interaction_elapsed * 30.0 + 0.000001), roundi(interaction_duration * 30.0))
+			var ticks := mini(floori(interaction_elapsed * interaction_rate * 30.0 + 0.000001), roundi(interaction_duration * interaction_rate * 30.0))
 			global_position.y += float(ticks - interaction_movement_ticks) * interaction_vertical_speed / 30.0
 			interaction_movement_ticks = ticks
 			if is_finite(interaction_target_y) and (global_position.y - interaction_target_y) * signf(interaction_vertical_speed) >= 0.0: global_position.y = interaction_target_y; interaction_duration = interaction_elapsed
@@ -257,10 +296,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		camera_pivot.rotation.z = 0.0
 
 func _physics_process(delta: float) -> void:
+	soft_ground_ticks = maxi(0, soft_ground_ticks - 1); ice_slip_ticks = maxi(0, ice_slip_ticks - 1)
 	if not scripted_walk.is_empty(): _update_scripted_walk(delta); return
 	if not interaction_role.is_empty(): return
 	if input_blocker.is_valid() and input_blocker.call(): velocity = Vector3.ZERO; return
 	if not ledge_phase.is_empty(): _update_ledge(delta); _update_camera(delta); return
+	if holder != null: _update_hold(delta); _update_camera(delta); return
+	if not roll_phase.is_empty(): _update_roll(delta); _update_camera(delta); return
 	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and (Input.is_action_just_pressed("special") or active_special() == 15 and Input.is_action_just_pressed("fire")): use_special()
 	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and Input.is_action_just_pressed("kick"): kick()
 	lock_on.update(delta, combat_allowed and hurt_phase.is_empty() and not is_instance_valid(carried_actor) and (Input.is_action_pressed("lock_on") or Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and (buster_auto_lock and buster_allowed and active_special() == 0 or special_auto_lock and active_special() != 0) and (Input.is_action_pressed("fire") or Input.is_action_pressed("aim"))))
@@ -290,14 +332,22 @@ func _physics_process(delta: float) -> void:
 	right.y = 0.0
 	var direction := (right.normalized() * input_vector.x + forward.normalized() * input_vector.y).normalized()
 	slow_walking = Input.is_action_pressed("slow_walk")
-	var speed := move_speed * (0.45 if slow_walking else 1.0) * (0.6 if aiming else 1.0)
+	var speed := move_speed * (0.45 if slow_walking else 1.0) * (0.6 if aiming else 1.0) * (1.0 - float(maxi(gravity_modifier, 0)) / 64.0)
 	if jump_phase in [JumpPhase.GROUNDED, JumpPhase.TAKEOFF, JumpPhase.LANDING] or free_flight:
-		velocity.x = direction.x * speed
-		velocity.z = direction.z * speed
+		if ice_slip_ticks > 0 and jump_phase == JumpPhase.GROUNDED and not free_flight:
+			var wish := Vector2(direction.x, direction.z)
+			if not ice_sliding: ice_sliding = true; ice_speed = Vector2(velocity.x, velocity.z).length(); ice_direction = Vector2(velocity.x, velocity.z).normalized() if ice_speed > 0.001 else Vector2(-sin(player_model.rotation.y), -cos(player_model.rotation.y))
+			if wish.length_squared() > 0.001: ice_direction = wish.normalized()
+			ice_speed = move_toward(ice_speed, speed if wish.length_squared() > 0.001 else 0.0, (16.0 if slow_walking else 8.0) * 30.0 / 4096.0 * 30.0 * delta); velocity.x = ice_direction.x * ice_speed; velocity.z = ice_direction.y * ice_speed
+		else:
+			ice_sliding = false; velocity.x = direction.x * speed
+			velocity.z = direction.z * speed
 	else:
 		var air_speed := 640.0 * 30.0 / 4096.0 * (0.6 if aiming else 1.0)
 		velocity.x = move_toward(velocity.x, direction.x * air_speed, 16.0 * 900.0 / 4096.0 * delta)
 		velocity.z = move_toward(velocity.z, direction.z * air_speed, 16.0 * 900.0 / 4096.0 * delta)
+	if not hurt_phase.is_empty() and not free_flight:
+		var pushed := hurt_phase in ["weak", "launch"]; velocity.x = hurt_push.x if pushed else 0.0; velocity.z = hurt_push.z if pushed else 0.0
 	collision_mask = 0 if no_clip else 89
 	var grounded := is_on_floor()
 	if free_flight:
@@ -312,7 +362,7 @@ func _physics_process(delta: float) -> void:
 	if not free_flight and not no_clip and _try_grab_ledge(before_slide.origin, intended): _update_camera(delta); return
 	if (grounded or placement_frames > 0) and jump_phase == JumpPhase.GROUNDED and not free_flight and not no_clip: apply_floor_snap()
 	placement_frames = maxi(placement_frames - 1, 0)
-	if not free_flight and not no_clip:
+	if not free_flight and not no_clip and hurt_phase.is_empty():
 		var drift := global_position - before_slide.origin; drift.y = 0.0
 		if drift.length() > intended.length() + 0.08:
 			global_position = Vector3(before_slide.origin.x + intended.x, global_position.y, before_slide.origin.z + intended.z); velocity.x = intended.x / delta if delta > 0.0 else 0.0; velocity.z = intended.z / delta if delta > 0.0 else 0.0
@@ -570,10 +620,10 @@ func _update_look(delta: float) -> void:
 	if upper_modifier.track_target: upper_modifier.aim_target = _aim_point() if aiming or is_instance_valid(locked_target) else global_position + Vector3.UP * body_height * 0.7 - camera.global_basis.z * 80.0
 func _aim_point() -> Vector3:
 	var ray_start := camera.global_position
-	var direction := (locked_target.global_position + Vector3.UP - ray_start).normalized() if is_instance_valid(locked_target) else -camera.global_basis.z
+	var direction: Vector3 = (lock_on.lock_point(locked_target) - ray_start).normalized() if is_instance_valid(locked_target) else -camera.global_basis.z
 	var chest := global_position + Vector3.UP * body_height * 0.7
 	var distance := maxf((chest - ray_start).dot(direction), 0.0) + body_height * 0.45
-	var end := ray_start + direction * 80.0
+	var end: Vector3 = ray_start + direction * 80.0
 	var query := PhysicsRayQueryParameters3D.create(ray_start + direction * distance, end, 9)
 	query.exclude = [get_rid()]
 	var hit := get_world_3d().direct_space_state.intersect_ray(query)
@@ -582,7 +632,7 @@ func _set_jump_phase(phase: JumpPhase) -> void:
 	jump_phase = phase
 	jump_ticks = 0
 func _launch_jump() -> void:
-	jump_velocity = -800
+	jump_velocity = -800 * 3 / 4 if soft_ground_ticks > 0 else -800
 	_set_jump_phase(JumpPhase.RISING)
 	jumped.emit()
 func _update_jump(delta: float, grounded: bool, direction: Vector3) -> void:
@@ -608,17 +658,18 @@ func _update_jump(delta: float, grounded: bool, direction: Vector3) -> void:
 				if jump_ticks >= 3 and _jump_clip_ended(): _launch_jump()
 			JumpPhase.RISING:
 				if Input.is_action_pressed("jump"):
-					jump_velocity += 48
+					jump_velocity += _fall_step()
 					if jump_velocity >= 0: _set_jump_phase(JumpPhase.FALLING)
 				else:
 					_set_jump_phase(JumpPhase.RELEASED)
 					_release_jump()
 			JumpPhase.RELEASED: _release_jump()
-			JumpPhase.FALLING: jump_velocity += 48
+			JumpPhase.FALLING: jump_velocity += _fall_step()
 			JumpPhase.LANDING:
 				if jump_ticks == (3 if jump_moving else 1): var ring := preload("res://scripts/player/ground_effect.gd").new() as Node3D; get_parent().add_child(ring); ring.global_position = global_position
 				if jump_ticks >= 3 and _jump_clip_ended(): _set_jump_phase(JumpPhase.GROUNDED)
 	velocity.y = -float(jump_velocity) * 30.0 / 4096.0
+func _fall_step() -> int: return 48 if gravity_modifier == 0 else 16 * ((3 * (16 + gravity_modifier)) >> 4)
 func _release_jump() -> void:
 	if -jump_velocity > 576: jump_velocity += 576
 	else:
@@ -833,7 +884,8 @@ func begin_interaction(role: String = "door_open", quick: bool = false, target_y
 	var source: Dictionary = interaction_roles[role]
 	interaction_role = role
 	interaction_elapsed = 0.0
-	var rate := 3.0 if quick and role == "door_open" else 1.0
+	var rate := 3.0 if quick and role == "door_open" else LADDER_RATE if int(source.get("loop_ticks", 0)) > 0 else 1.0
+	interaction_rate = rate if int(source.get("loop_ticks", 0)) > 0 else 1.0
 	interaction_target_y = target_y if int(source.get("loop_ticks", 0)) > 0 else NAN
 	interaction_duration = 3600.0 if is_finite(interaction_target_y) else float(source["duration_ticks"]) / (30.0 * rate)
 	interaction_loop = int(source.get("loop_ticks", 0)) > 0
@@ -1031,6 +1083,8 @@ func _apply_native_materials() -> void:
 			mesh.set_surface_override_material(surface, material)
 func reset_at(point: Vector3) -> void:
 	cancel_scripted_walk(); _set_ledge_shift(0.0)
+	if holder != null: end_hold(false)
+	_end_roll()
 	ledge_phase = ""; ledge_ticks = 0; ledge_accumulator = 0.0
 	if motion_tree != null: motion_tree.set("parameters/MotionSpeed/scale", 1.0)
 	interaction_role = ""
@@ -1069,8 +1123,9 @@ func reset_at(point: Vector3) -> void:
 	player_model.rotation.y = 0.0
 	_play_animation("idle")
 func take_hit(amount: int = 16, flags: int = 0, incoming: Vector3 = Vector3.ZERO) -> void:
-	if invulnerable or hurt_immunity > 0 or not hurt_phase.is_empty() or health < 0: return
+	if invulnerable or hurt_immunity > 0 or not hurt_phase.is_empty() or not roll_phase.is_empty() or health < 0: return
 	if not ledge_phase.is_empty(): _release_ledge()
+	if holder != null: end_hold(false)
 	if is_instance_valid(carried_actor): carried_actor.release_lift(-player_model.global_basis.z, -768, -64)
 	carried_actor = null
 	special_action = ""
@@ -1084,6 +1139,7 @@ func take_hit(amount: int = 16, flags: int = 0, incoming: Vector3 = Vector3.ZERO
 	var strong := hurt_damage > int(weapon_stats.data["body_parts"]["knockdown_base"]) + int(weapon_stats.data["body_parts"]["knockdown_step"]) * multiplier or hurt_hits >= 4 or (flags & 0x80000) != 0 or not is_on_floor() or lethal
 	var back := incoming.dot(Basis(Vector3.UP, player_model.rotation.y) * Vector3.FORWARD) > 0
 	hurt_phase = "launch" if strong else "weak"
+	var away := Vector3(incoming.x, 0.0, incoming.z); hurt_push = away.normalized() * (512.0 * 30.0 / 4096.0) if not away.is_zero_approx() else Vector3.ZERO
 	hurt_clip = "clip_%03d" % ((38 if back else 34) if strong else (33 if back else 32))
 	hurt_ticks = 0.0
 	gun_pose_active = false
@@ -1109,11 +1165,13 @@ func _update_hurt(delta: float) -> void:
 	var length := int(info.get("durationTicks", 0))
 	if hurt_phase == "weak":
 		var ticks := 0
+		var pose := 99
 		for record: Dictionary in info.get("records", []):
-			if hurt_ticks < ticks + int(record["durationTicks"]):
-				if int(record["pose"]) >= 5: hurt_phase = ""
-				break
+			if hurt_ticks < ticks + int(record["durationTicks"]): pose = int(record["pose"]); break
 			ticks += int(record["durationTicks"])
+		if pose >= 5:
+			if worn("helmet") == 2: _roll_window(length)
+			else: hurt_phase = ""
 	elif hurt_phase == "launch" and (is_on_floor() or hurt_ticks >= length):
 		hurt_phase = "land"
 		hurt_clip = "clip_039" if hurt_clip == "clip_038" else "clip_035"
@@ -1134,6 +1192,80 @@ func _update_hurt(delta: float) -> void:
 		hurt_immunity = 65.0 / 30.0
 		hurt_damage = 0
 		hurt_hits = 0
+func begin_hold(source: Node3D, profile: Dictionary = {}) -> bool:
+	if holder != null or not hurt_phase.is_empty() or not roll_phase.is_empty() or not ledge_phase.is_empty() or not interaction_role.is_empty() or not special_action.is_empty() or is_instance_valid(carried_actor) or not scripted_walk.is_empty() or health < 0 or jump_phase != JumpPhase.GROUNDED or not is_on_floor(): return false
+	holder = source; hold_profile = profile; hold_accumulator = 0.0; hold_ticks = 0; hold_counter = 0; hold_armed = false; hold_pressed = false
+	velocity = Vector3.ZERO; jump_velocity = 0; gun_pose_active = false; pending_shot = false; locked_target = null; hurt_damage = 0; hurt_hits = 0
+	global_position = holder.global_position; _play_ledge_clip("clip_091"); return true
+func hold_grip() -> void:
+	if holder != null: _play_ledge_clip("clip_090")
+func hold_arm() -> void:
+	if holder != null: hold_armed = true; hold_counter = int(hold_profile.get("mash", 32)); hold_ticks = 0
+func end_hold(escaped: bool = true) -> void:
+	if holder == null: return
+	var source := holder; holder = null; hold_armed = false; velocity = Vector3.ZERO; motion_tree.set("parameters/MotionSpeed/scale", 1.0)
+	if upper_modifier != null: upper_modifier.active = true
+	hold_ended.emit(source, escaped)
+func _update_hold(delta: float) -> void:
+	if not is_instance_valid(holder): end_hold(false); return
+	for action: String in HOLD_MASH_ACTIONS:
+		if Input.is_action_just_pressed(action): hold_pressed = true
+	hold_accumulator += delta * 25.0
+	while hold_accumulator >= 1.0 and holder != null:
+		hold_accumulator -= 1.0; hold_ticks += 1; global_position = holder.global_position; velocity = Vector3.ZERO
+		if hold_armed:
+			if health > 0 and hold_ticks % int(hold_profile.get("drain_every", 4)) == 0 and not invulnerable: _lose_health(int(hold_profile.get("drain", 1)))
+			if hold_pressed:
+				hold_counter -= 1
+				if hold_counter <= 0: end_hold(true)
+		hold_pressed = false
+func _roll_flag() -> int:
+	if Input.is_action_pressed("jump"): return 3
+	var left := Input.is_action_pressed("turn_left"); var right := Input.is_action_pressed("turn_right")
+	if left != right: return 2 if left else 3
+	left = Input.is_action_pressed("strafe_left"); right = Input.is_action_pressed("strafe_right")
+	return (2 if left else 3) if left != right else 0
+func _roll_window(length: int) -> void:
+	if roll_queued == 0: roll_queued = _roll_flag()
+	if hurt_ticks < length: return
+	hurt_phase = ""
+	if roll_queued != 0: _begin_roll(roll_queued)
+	roll_queued = 0
+func _begin_roll(flag: int) -> void:
+	roll_flag = flag; roll_phase = "slide"; roll_ticks = 0; roll_accumulator = 0.0; roll_vertical = 0; gun_pose_active = false; pending_shot = false; special_sound_requested.emit(0xA0); _play_ledge_clip("clip_025" if flag == 2 else "clip_024")
+func _end_roll() -> void:
+	roll_queued = 0
+	if roll_phase.is_empty(): return
+	roll_phase = ""; velocity = Vector3.ZERO; motion_tree.set("parameters/MotionSpeed/scale", 1.0)
+	if upper_modifier != null: upper_modifier.active = true
+func _roll_event_tick(clip: String) -> int:
+	var elapsed := 0
+	for record: Dictionary in native_clips.get(clip, {}).get("records", []):
+		if int(record["event"]) == 1: return elapsed
+		elapsed += int(record["durationTicks"])
+	return int(native_clips.get(clip, {}).get("durationTicks", 0))
+func _roll_next(clip: String) -> void: roll_ticks = 0; _play_ledge_clip(clip)
+func _update_roll(delta: float) -> void:
+	roll_accumulator += delta * 25.0
+	while roll_accumulator >= 1.0 and not roll_phase.is_empty():
+		roll_accumulator -= 1.0; roll_ticks += 1
+		var landed_now := is_on_floor() and roll_vertical >= 0
+		match roll_phase:
+			"slide":
+				if roll_ticks >= int(native_clips.get("clip_025" if roll_flag == 2 else "clip_024", {}).get("durationTicks", 3)): roll_phase = "leap"; roll_vertical = -0x80; _roll_next("clip_026")
+			"leap":
+				roll_vertical += 0x18 if underwater else 0x30
+				if roll_ticks >= int(native_clips.get("clip_026", {}).get("durationTicks", 9)): roll_phase = "land" if landed_now else "fall"; _roll_next("clip_027" if landed_now else "clip_028"); roll_vertical = 0 if landed_now else roll_vertical
+			"fall":
+				roll_vertical += 0x18 if underwater else 0x30
+				if landed_now: roll_phase = "land"; roll_vertical = 0; _roll_next("clip_027")
+				elif roll_ticks >= int(native_clips.get("clip_028", {}).get("durationTicks", 8)): jump_velocity = roll_vertical; _end_roll(); _set_jump_phase(JumpPhase.FALLING); return
+			"land":
+				if roll_ticks > _roll_event_tick("clip_027"): special_sound_requested.emit(0x93); _end_roll(); _set_jump_phase(JumpPhase.GROUNDED); return
+	var side := player_model.global_basis.x * (1.0 if roll_flag == 3 else -1.0); var speed := 0x200 if roll_phase in ["slide", "leap", "fall"] else 0
+	velocity = side * float(speed) * 25.0 / 4096.0
+	velocity.y = -float(roll_vertical) * 25.0 / 4096.0 if roll_phase in ["leap", "fall"] else _slope_velocity()
+	move_and_slide()
 func refill_health() -> void:
 	health = max_health
 	health_changed.emit(health, max_health)

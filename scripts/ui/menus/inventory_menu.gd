@@ -7,12 +7,11 @@ const GROUPS := {"items": "Items", "key_items": "Key Items", "special_weapons": 
 var rows: Array[Dictionary] = []
 var selected := -1
 var top := 0
-var icons: Texture2D
 var life := 0
 var life_max := 1
 var zenny := 0
 func configure(owner: Node) -> void:
-	super(owner); icons = load("res://assets/menu/status_normal_atlas.png") as Texture2D; footer_rect = Rect2(44, 187, 232, 24)
+	super(owner); footer_rect = Rect2(44, 187, 232, 24)
 func refresh() -> void:
 	var player: Node = host.gameplay.player; var catalog: Node = host.status_menu.inventory_view
 	life = int(player.health); life_max = maxi(int(player.max_health), 1); zenny = int(player.zenny); rows.clear()
@@ -22,7 +21,7 @@ func refresh() -> void:
 		ids.sort_custom(func(a, b): return int(a) < int(b)); rows.append({"header": GROUPS[group]})
 		for id: String in ids:
 			var equipped: bool = str(player.equipped_special) == id if group == "special_weapons" else id in player.equipment.get(group, [])
-			rows.append({"id": id, "name": catalog.item_name(group, id), "count": int(owned[id]) if group in ["items", "key_items"] else 0, "equipped": equipped, "icon": SHOP._icon_index((0x380 if group == "special_weapons" else 0) + int(id)), "description": str(catalog.definitions.get(group, {}).get(id, {}).get("description", ""))})
+			rows.append({"id": id, "name": catalog.item_name(group, id), "count": int(owned[id]) if group in ["items", "key_items"] else 0, "equipped": equipped, "icon": SHOP.icon_for_code((0x380 if group == "special_weapons" else 0) + int(id)), "description": str(catalog.definitions.get(group, {}).get(id, {}).get("description", ""))})
 	top = 0; selected = -1; _step(1, false); _sync()
 func _step(direction: int, sound: bool = true) -> void:
 	var index := selected + direction
@@ -93,7 +92,7 @@ func _content() -> void:
 		var row: Dictionary = rows[index]; var y := LIST.position.y + float(index - top) * ROW
 		if row.has("header"): _text(str(row["header"]), Vector2(LIST.position.x + 2, y + 5), 9, Color8(150, 205, 220)); draw_line(Vector2(LIST.position.x, y + 16.5), Vector2(LIST.end.x, y + 16.5), Color8(70, 96, 120)); continue
 		var color := Color.WHITE if index == selected else Color8(255, 222, 99); var right := LIST.end.x - 2.0
-		draw_texture_rect_region(icons, Rect2(LIST.position.x + 1, y + 1, 16, 16), Rect2(SHOP.ICONS[int(row["icon"])], Vector2(16, 16)))
+		SHOP.draw_item_icon(self, int(row["icon"]), Rect2(LIST.position.x + 1, y + 1, 16, 16))
 		_text(str(row["name"]), Vector2(LIST.position.x + 22, y + 3), 11, color)
 		if int(row["count"]) > 0: var count := "x%d" % int(row["count"]); _text(count, Vector2(right - 40, y + 4), 9, color, 40, HORIZONTAL_ALIGNMENT_RIGHT); right -= font.get_string_size(count, HORIZONTAL_ALIGNMENT_LEFT, -1, 9).x + 6.0
 		if bool(row["equipped"]): _text("Equipped", Vector2(right - 50, y + 5), 8, Color8(140, 230, 170), 50, HORIZONTAL_ALIGNMENT_RIGHT)

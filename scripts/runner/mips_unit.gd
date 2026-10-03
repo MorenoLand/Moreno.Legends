@@ -7,6 +7,8 @@ var gte
 var hle
 var engine
 var fn: Dictionary
+const MODULE_BASE := 0x8010A000
+const MODULE_SIZE := 0x2000
 var faults: Array = []
 var trace_log: Array = []
 
@@ -20,6 +22,9 @@ func miss(address: int) -> void:
 func jalr(address: int) -> void:
 	var target: Variant = fn.get(address)
 	if target == null:
+		if address >= MODULE_BASE and address < MODULE_BASE + MODULE_SIZE:
+			ram[R[4] & 0x9FFFFF] &= 0xFE
+			return
 		miss(address)
 		return
 	target.call()

@@ -8,7 +8,13 @@ static func attach(node: Node3D, record: Dictionary) -> bool:
 static func binding(node: Node3D) -> Dictionary:
 	return node.get_meta("native_interaction", {}) if is_instance_valid(node) else {}
 static func label(node: Node3D) -> String:
-	return str(node.get_meta("native_interaction_label", "Talk")) if is_instance_valid(node) else ""
+	return str(node.get_meta("native_interaction_label", "Examine" if is_examine(node) else "Talk")) if is_instance_valid(node) else ""
+static func is_examine(node: Node3D) -> bool:
+	return binding(node).has("examine_event_flag")
+static func examine(gameplay: Node, node: Node3D) -> void:
+	var flags: Dictionary = gameplay.native_context.get("event_flags", {}); var id := int(binding(node)["examine_event_flag"]); flags[id if flags.has(id) or not flags.has(str(id)) else str(id)] = true; gameplay.native_context["event_flags"] = flags
+	gameplay.event_script.update_native_context(gameplay.native_context); gameplay.event_script.native_context_changed.emit(str(binding(node)["stage"]), gameplay.native_context)
+	node.remove_from_group("native_interaction_targets"); node.queue_free()
 static func is_data_service(node: Node3D) -> bool:
 	var source := binding(node)
 	var record: Dictionary = node.get_meta("native_actor_source", {}) if is_instance_valid(node) else {}
@@ -65,7 +71,7 @@ static func resolve_pose(record: Dictionary, native_context: Dictionary) -> Dict
 static func can_play(node: Node3D, event_script: Node) -> bool:
 	var item: Node = node.get_meta("native_item_controller") if is_instance_valid(node) and node.has_meta("native_item_controller") else null
 	if is_instance_valid(item): return item.can_interact()
-	return is_data_service(node) or can_play_dialogue(node, event_script)
+	return is_examine(node) or is_data_service(node) or can_play_dialogue(node, event_script)
 static func can_play_dialogue(node: Node3D, event_script: Node) -> bool:
 	var source := binding(node)
 	if source.is_empty() or not is_instance_valid(event_script): return false

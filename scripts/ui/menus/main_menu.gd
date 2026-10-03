@@ -316,6 +316,8 @@ func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0, co
 		var entries: Array = stage_manifest.get("areas", [])
 		for index in range(entries.size()):
 			if int(entries[index]["index"]) == area: area_index = index; break
+	var runner_area := -1
+	if area_index < 0 and not stage_manifest.get("areas", []).is_empty() and preload("res://scripts/world/actors/native_props.gd").runner_owned(stage): runner_area = area; area_index = 0
 	if area_index < 0:
 		if pages["saves"].visible: save_menu.set_message("This area's native ID is not available.")
 		elif custom.visible: custom.set_location_message("This area's native ID is not available.")
@@ -348,6 +350,7 @@ func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0, co
 		return
 	candidate.manifest_path = stage_path
 	candidate.initial_area = area_index
+	if runner_area >= 0: candidate.set_meta("runner_start_area", runner_area)
 	candidate.entry_route = state.get("entry_route", {}).duplicate(true)
 	var entry_fade_code := int(candidate.entry_route.get("native_entry_fade", 0x02))
 	candidate.parked_location = state.get("parked_location", parked_override).duplicate(true)
@@ -437,7 +440,7 @@ func _stage_transition(route: Dictionary) -> void:
 	if route.get("parked_location", null) is Dictionary: state["parked_location"] = route["parked_location"].duplicate(true)
 	elif source_stage in ["ST04", "ST05", "ST06", "ST07"] and stage not in ["ST04", "ST05", "ST06", "ST07"]:
 		if str(state.get("parked_location", {}).get("stage", "")) != stage or int(state.get("parked_location", {}).get("area", -1)) != area: state["parked_location"] = {"stage": stage, "area": area}
-	elif stage in ["ST04", "ST05", "ST06", "ST07"] and source_stage not in ["ST04", "ST05", "ST06", "ST07"]:
+	elif stage in ["ST04", "ST05", "ST06", "ST07"] and source_stage not in ["ST04", "ST05", "ST06", "ST07"] and (state.get("parked_location", {}).is_empty() or not preload("res://scripts/world/flutter/flutter_dock.gd").descriptor(source_stage).is_empty()):
 		if str(state.get("parked_location", {}).get("stage", "")) != source_stage or int(state.get("parked_location", {}).get("area", -1)) != source_area: state["parked_location"] = {"stage": source_stage, "area": source_area}
 	state["stage"] = stage; state["area"] = area
 	state["defeated_actors"] = state.get("stage_events", {}).get(stage, []).duplicate()

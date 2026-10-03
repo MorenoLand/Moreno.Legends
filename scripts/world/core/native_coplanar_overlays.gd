@@ -151,7 +151,7 @@ static func _cross_scan(jobs: Array) -> Array[Dictionary]:
 				var canonical := _canonical_normal(normal / doubled_area); var key := Vector4i(roundi(canonical.x * PLANE_SCALE), roundi(canonical.y * PLANE_SCALE), roundi(canonical.z * PLANE_SCALE), roundi(canonical.dot(points[0]) * PLANE_SCALE)); var axis := _dominant_axis(canonical); var polygon := PackedVector2Array()
 				for point: Vector3 in points: polygon.append(_project(point, axis))
 				var existing := 0
-				if not colors.is_empty() and colors[i0].a < 0.5: existing = maxi(1, roundi(colors[i0].a * 255.0))
+				if not colors.is_empty() and colors[i0].a < 0.5 and not (arrays[Mesh.ARRAY_TEX_UV2] is PackedVector2Array and arrays[Mesh.ARRAY_TEX_UV2].size() == vertices.size()): existing = maxi(1, roundi(colors[i0].a * 255.0))
 				if not groups.has(key): groups[key] = []
 				groups[key].append({"node": int(job["node_index"]), "placement": bool(job["placement"]), "surface": int(item["surface"]), "triangle": triangle, "polygon": polygon, "bounds": _polygon_bounds(polygon), "layer": existing})
 	var by_surface := {}

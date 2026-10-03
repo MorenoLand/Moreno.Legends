@@ -182,7 +182,10 @@ func _draw() -> void:
 	FRAME.draw(self, layout, "prompt", current_frame)
 	if not heading_panel.is_empty(): FRAME.draw(self, layout, "prompt", heading_panel.get("frame", Rect2(85, 32, 151, 23)))
 	if pages.is_empty() or not FRAME.content_visible(self): return
-	if not heading_panel.is_empty(): draw_string(font, heading_panel.get("origin", Vector2(92, 35)) + Vector2(0, 3 + font.get_ascent(12)), str(heading_panel["text"]), HORIZONTAL_ALIGNMENT_LEFT, 144, 12, Color.WHITE)
+	if not heading_panel.is_empty():
+		var heading_y: float = 3.0 + font.get_ascent(12)
+		for heading_line: String in str(heading_panel["text"]).split("
+"): draw_string(font, heading_panel.get("origin", Vector2(92, 35)) + Vector2(0, heading_y), heading_line, HORIZONTAL_ALIGNMENT_LEFT, heading_panel["frame"].size.x - 3 if heading_panel.has("frame") else 144, 12, Color.WHITE); heading_y += 16.0
 	var remaining := visible_glyphs; var y := current_layout_origin.y + 3.0 + font.get_ascent(12)
 	for line_index in range(pages[page_index].size()):
 		var line := pages[page_index][line_index]; var shown := mini(remaining, line.length()); if shown > 0: _draw_native_text(Vector2(current_layout_origin.x, y), line.substr(0, shown), current_frame.size.x - 10)

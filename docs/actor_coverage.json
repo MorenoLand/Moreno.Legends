@@ -204,7 +204,7 @@
      "areas": [
       0
      ],
-     "class_callback": null,
+     "class_callback": "0x800ebd70",
      "unresolved_model": false
     },
     "E0/4": {
@@ -218,7 +218,7 @@
      "areas": [
       1
      ],
-     "class_callback": null,
+     "class_callback": "0x800eba74",
      "unresolved_model": false
     }
    }
@@ -488,6 +488,7 @@
     },
     "capabilities": {
      "talk": 42,
+     "movement": 40,
      "lock_on": 42,
      "pose_resolver": 1
     }
@@ -678,7 +679,7 @@
      "areas": [
       0
      ],
-     "class_callback": null,
+     "class_callback": "0x800ef530",
      "unresolved_model": false
     }
    }
@@ -735,7 +736,7 @@
       2,
       4
      ],
-     "class_callback": null,
+     "class_callback": "0x800eb1d8",
      "unresolved_model": false
     }
    }
@@ -854,8 +855,8 @@
     "actor": 3,
     "controller_e0": 1
    },
-   "exported_records": 2,
-   "unexported_records": 2,
+   "exported_records": 3,
+   "unexported_records": 1,
    "export_files": [
     "pickups.json",
     "scripted_actors.json"
@@ -870,6 +871,7 @@
     },
     "capabilities": {
      "talk": 23,
+     "movement": 20,
      "lock_on": 22,
      "follower": 1,
      "pose_resolver": 1
@@ -912,16 +914,17 @@
     "20/21/v67": {
      "kind": "actor",
      "records": 1,
-     "exported": 0,
-     "sources": [],
+     "exported": 1,
+     "sources": [
+      "static_prop"
+     ],
      "capabilities": [],
      "callbacks": [],
      "spawn_gated": false,
      "areas": [
       1
      ],
-     "class_callback": "0x800eb55c",
-     "unresolved_model": true
+     "class_callback": "0x800eb55c"
     },
     "E0/10": {
      "kind": "controller_e0",
@@ -934,7 +937,7 @@
      "areas": [
       0
      ],
-     "class_callback": null,
+     "class_callback": "0x800ee9e0",
      "unresolved_model": false
     }
    }
@@ -968,7 +971,7 @@
       1,
       2
      ],
-     "class_callback": null,
+     "class_callback": "0x800f49a8",
      "unresolved_model": false
     }
    }
@@ -1136,7 +1139,7 @@
      "areas": [
       12
      ],
-     "class_callback": null,
+     "class_callback": "0x800fa930",
      "unresolved_model": false
     }
    }
@@ -1237,7 +1240,9 @@
      "sources": [
       "static_prop"
      ],
-     "capabilities": [],
+     "capabilities": [
+      "talk"
+     ],
      "callbacks": [],
      "spawn_gated": false,
      "areas": [
@@ -1289,7 +1294,7 @@
       1,
       3
      ],
-     "class_callback": null,
+     "class_callback": "0x800ff814",
      "unresolved_model": false
     },
     "E0/21": {
@@ -1304,7 +1309,7 @@
       0,
       4
      ],
-     "class_callback": null,
+     "class_callback": "0x80101b84",
      "unresolved_model": false
     },
     "E0/27": {
@@ -1320,7 +1325,25 @@
       1,
       4
      ],
-     "class_callback": null,
+     "class_callback": "0x80101d48",
+     "variant_routines": [
+      "0x80101e4c",
+      "0x80101e6c",
+      "0x80101f1c",
+      "0x80101fb4",
+      "0x80102070",
+      "0x8010212c",
+      "0x801021e8",
+      "0x801022a4",
+      "0x80101fb4",
+      "0x80102070",
+      "0x8010212c",
+      "0x801021e8",
+      "0x801022c8",
+      "0x80102300",
+      "0x801023c4",
+      "0x80101e6c"
+     ],
      "unresolved_model": false
     }
    }
@@ -1547,7 +1570,7 @@
       5,
       9
      ],
-     "class_callback": null,
+     "class_callback": "0x800fe4b4",
      "unresolved_model": false
     },
     "E0/27": {
@@ -1562,7 +1585,25 @@
       2,
       4
      ],
-     "class_callback": null,
+     "class_callback": "0x800ff8ac",
+     "variant_routines": [
+      "0x800ff9b0",
+      "0x800ff9d0",
+      "0x800ffa80",
+      "0x800ffb18",
+      "0x800ffbd4",
+      "0x800ffc90",
+      "0x800ffd4c",
+      "0x800ffe08",
+      "0x800ffb18",
+      "0x800ffbd4",
+      "0x800ffc90",
+      "0x800ffd4c",
+      "0x800ffe2c",
+      "0x800ffe64",
+      "0x800fff28",
+      "0x800ff9d0"
+     ],
      "unresolved_model": false
     }
    }
@@ -1578,9 +1619,10 @@
     "controller_e0": 4,
     "actor": 2
    },
-   "exported_records": 5,
-   "unexported_records": 4,
+   "exported_records": 6,
+   "unexported_records": 3,
    "export_files": [
+    "area_controllers.json",
     "scripted_actors.json"
    ],
    "scripted": {
@@ -1681,22 +1723,23 @@
      "areas": [
       1
      ],
-     "class_callback": null,
+     "class_callback": "0x800ff7e4",
      "unresolved_model": false
     },
     "E0/19": {
      "kind": "controller_e0",
      "records": 1,
-     "exported": 0,
-     "sources": [],
+     "exported": 1,
+     "sources": [
+      "area_controller"
+     ],
      "capabilities": [],
      "callbacks": [],
      "spawn_gated": false,
      "areas": [
       0
      ],
-     "class_callback": null,
-     "unresolved_model": false
+     "class_callback": "0x80100018"
     },
     "E0/27": {
      "kind": "controller_e0",
@@ -1710,7 +1753,25 @@
       3,
       4
      ],
-     "class_callback": null,
+     "class_callback": "0x8010038c",
+     "variant_routines": [
+      "0x80100490",
+      "0x801004b0",
+      "0x80100560",
+      "0x801005f8",
+      "0x801006b4",
+      "0x80100770",
+      "0x8010082c",
+      "0x801008e8",
+      "0x801005f8",
+      "0x801006b4",
+      "0x80100770",
+      "0x8010082c",
+      "0x8010090c",
+      "0x80100944",
+      "0x80100a08",
+      "0x801004b0"
+     ],
      "unresolved_model": false
     }
    }
@@ -1758,7 +1819,7 @@
      "areas": [
       0
      ],
-     "class_callback": null,
+     "class_callback": "0x800f9a30",
      "unresolved_model": false
     },
     "E0/10": {
@@ -1772,7 +1833,7 @@
      "areas": [
       0
      ],
-     "class_callback": null,
+     "class_callback": "0x800f8c8c",
      "unresolved_model": false
     }
    }
@@ -1835,7 +1896,7 @@
      "areas": [
       0
      ],
-     "class_callback": null,
+     "class_callback": "0x800fa170",
      "unresolved_model": false
     },
     "E0/10": {
@@ -1849,7 +1910,7 @@
      "areas": [
       0
      ],
-     "class_callback": null,
+     "class_callback": "0x800f9124",
      "unresolved_model": false
     }
    }
@@ -1880,7 +1941,8 @@
     },
     "capabilities": {
      "talk": 18,
-     "lock_on": 18
+     "lock_on": 18,
+     "movement": 2
     }
    },
    "talk_sites": [
@@ -1913,7 +1975,7 @@
      "areas": [
       0
      ],
-     "class_callback": null,
+     "class_callback": "0x800f9510",
      "unresolved_model": false
     }
    }
@@ -2004,7 +2066,7 @@
       0,
       1
      ],
-     "class_callback": null,
+     "class_callback": "0x800f9124",
      "unresolved_model": false
     }
    }
@@ -2077,7 +2139,8 @@
       "static_prop"
      ],
      "capabilities": [
-      "lock_on"
+      "lock_on",
+      "movement"
      ],
      "callbacks": [
       "0x800e7e3c"
@@ -2097,7 +2160,8 @@
       "static_prop"
      ],
      "capabilities": [
-      "lock_on"
+      "lock_on",
+      "movement"
      ],
      "callbacks": [
       "0x800e7e3c"
@@ -2117,7 +2181,8 @@
       "static_prop"
      ],
      "capabilities": [
-      "lock_on"
+      "lock_on",
+      "movement"
      ],
      "callbacks": [
       "0x800e7e3c"
@@ -2613,7 +2678,7 @@
      "areas": [
       0
      ],
-     "class_callback": null,
+     "class_callback": "0x800facc8",
      "unresolved_model": false
     },
     "E0/5": {
@@ -2627,7 +2692,7 @@
      "areas": [
       0
      ],
-     "class_callback": null,
+     "class_callback": "0x800fab34",
      "unresolved_model": false
     }
    }
@@ -2657,6 +2722,7 @@
     },
     "capabilities": {
      "talk": 54,
+     "movement": 54,
      "lock_on": 54
     }
    },
@@ -2745,7 +2811,7 @@
      "areas": [
       0
      ],
-     "class_callback": null,
+     "class_callback": "0x800ee1bc",
      "unresolved_model": false
     },
     "E0/26": {
@@ -2759,7 +2825,7 @@
      "areas": [
       0
      ],
-     "class_callback": null,
+     "class_callback": "0x800eed10",
      "unresolved_model": false
     }
    }
@@ -2791,7 +2857,7 @@
      "areas": [
       0
      ],
-     "class_callback": null,
+     "class_callback": "0x800ee148",
      "unresolved_model": false
     }
    }
@@ -2823,7 +2889,7 @@
      "areas": [
       0
      ],
-     "class_callback": null,
+     "class_callback": "0x800f92c0",
      "unresolved_model": false
     },
     "E0/5": {
@@ -2837,7 +2903,7 @@
      "areas": [
       0
      ],
-     "class_callback": null,
+     "class_callback": "0x800f8d9c",
      "unresolved_model": false
     }
    }
@@ -2891,7 +2957,7 @@
      "areas": [
       0
      ],
-     "class_callback": null,
+     "class_callback": "0x800e94c8",
      "unresolved_model": false
     }
    }
@@ -2921,7 +2987,8 @@
     },
     "capabilities": {
      "talk": 291,
-     "lock_on": 239
+     "lock_on": 239,
+     "movement": 119
     }
    },
    "talk_sites": [
@@ -2971,6 +3038,7 @@
     },
     "capabilities": {
      "talk": 2142,
+     "movement": 1836,
      "lock_on": 2142
     }
    },
@@ -3066,7 +3134,7 @@
       3,
       5
      ],
-     "class_callback": null,
+     "class_callback": "0x800f66c8",
      "unresolved_model": false
     },
     "E0/21": {
@@ -3081,7 +3149,7 @@
       0,
       3
      ],
-     "class_callback": null,
+     "class_callback": "0x800f5e9c",
      "unresolved_model": false
     }
    }
@@ -3191,7 +3259,7 @@
       3,
       6
      ],
-     "class_callback": null,
+     "class_callback": "0x800f9ce0",
      "unresolved_model": false
     },
     "E0/21": {
@@ -3205,7 +3273,7 @@
      "areas": [
       2
      ],
-     "class_callback": null,
+     "class_callback": "0x800fa004",
      "unresolved_model": false
     },
     "E0/22": {
@@ -3221,7 +3289,7 @@
       3,
       6
      ],
-     "class_callback": null,
+     "class_callback": "0x800fa118",
      "unresolved_model": false
     }
    }
@@ -3238,9 +3306,11 @@
     "door": 7,
     "actor": 3
    },
-   "exported_records": 10,
-   "unexported_records": 7,
-   "export_files": [],
+   "exported_records": 11,
+   "unexported_records": 6,
+   "export_files": [
+    "area_controllers.json"
+   ],
    "scripted": null,
    "talk_sites": [],
    "bindings": {},
@@ -3343,7 +3413,7 @@
       0,
       5
      ],
-     "class_callback": null,
+     "class_callback": "0x800ff96c",
      "unresolved_model": false
     },
     "E0/22": {
@@ -3358,22 +3428,23 @@
       0,
       3
      ],
-     "class_callback": null,
+     "class_callback": "0x800ffa80",
      "unresolved_model": false
     },
     "E0/30": {
      "kind": "controller_e0",
      "records": 1,
-     "exported": 0,
-     "sources": [],
+     "exported": 1,
+     "sources": [
+      "area_controller"
+     ],
      "capabilities": [],
      "callbacks": [],
      "spawn_gated": false,
      "areas": [
       3
      ],
-     "class_callback": null,
-     "unresolved_model": false
+     "class_callback": "0x8010064c"
     }
    }
   },
@@ -3391,15 +3462,17 @@
     "scripted_actors.json"
    ],
    "scripted": {
-    "instances": 64,
-    "spawn_sets": 155,
-    "unported_script_paths": 36,
+    "instances": 65,
+    "spawn_sets": 156,
+    "unported_script_paths": 34,
     "classes": {
-     "0": 64
+     "0": 64,
+     "1": 1
     },
     "capabilities": {
-     "talk": 64,
-     "lock_on": 64
+     "talk": 65,
+     "lock_on": 65,
+     "movement": 32
     }
    },
    "talk_sites": [
@@ -3411,7 +3484,7 @@
     {
      "request_call": "0x800e9b08",
      "function": "0x800e9aa8",
-     "bound": false
+     "bound": true
     }
    ],
    "bindings": {
@@ -3540,7 +3613,7 @@
     {
      "request_call": "0x800ed5c0",
      "function": "0x800ed4d4",
-     "bound": false
+     "bound": true
     }
    ],
    "bindings": {
@@ -3634,9 +3707,11 @@
     "prop": 40,
     "door": 1
    },
-   "exported_records": 47,
-   "unexported_records": 9,
-   "export_files": [],
+   "exported_records": 56,
+   "unexported_records": 0,
+   "export_files": [
+    "area_controllers.json"
+   ],
    "scripted": null,
    "talk_sites": [],
    "bindings": {},
@@ -3821,8 +3896,10 @@
     "E0/25": {
      "kind": "controller_e0",
      "records": 9,
-     "exported": 0,
-     "sources": [],
+     "exported": 9,
+     "sources": [
+      "area_controller"
+     ],
      "capabilities": [],
      "callbacks": [],
      "spawn_gated": false,
@@ -3837,8 +3914,7 @@
       7,
       8
      ],
-     "class_callback": null,
-     "unresolved_model": false
+     "class_callback": "0x800f6034"
     }
    }
   },
@@ -3853,9 +3929,11 @@
     "prop": 29,
     "actor": 3
    },
-   "exported_records": 32,
-   "unexported_records": 12,
-   "export_files": [],
+   "exported_records": 44,
+   "unexported_records": 0,
+   "export_files": [
+    "area_controllers.json"
+   ],
    "scripted": null,
    "talk_sites": [],
    "bindings": {},
@@ -3995,8 +4073,10 @@
     "E0/25": {
      "kind": "controller_e0",
      "records": 12,
-     "exported": 0,
-     "sources": [],
+     "exported": 12,
+     "sources": [
+      "area_controller"
+     ],
      "capabilities": [],
      "callbacks": [],
      "spawn_gated": false,
@@ -4014,8 +4094,7 @@
       10,
       11
      ],
-     "class_callback": null,
-     "unresolved_model": false
+     "class_callback": "0x800f6680"
     }
    }
   },
@@ -4031,9 +4110,10 @@
     "door": 2,
     "actor": 2
    },
-   "exported_records": 38,
-   "unexported_records": 15,
+   "exported_records": 46,
+   "unexported_records": 7,
    "export_files": [
+    "area_controllers.json",
     "scripted_actors.json"
    ],
    "scripted": {
@@ -4204,14 +4284,16 @@
       7,
       8
      ],
-     "class_callback": null,
+     "class_callback": "0x800fde40",
      "unresolved_model": false
     },
     "E0/25": {
      "kind": "controller_e0",
      "records": 8,
-     "exported": 0,
-     "sources": [],
+     "exported": 8,
+     "sources": [
+      "area_controller"
+     ],
      "capabilities": [],
      "callbacks": [],
      "spawn_gated": false,
@@ -4225,8 +4307,7 @@
       7,
       8
      ],
-     "class_callback": null,
-     "unresolved_model": false
+     "class_callback": "0x800fdf54"
     }
    }
   },
@@ -4283,22 +4364,43 @@
    "name": "Pokte Mayor's Home",
    "areas": 1,
    "status": "listed",
-   "category": "room_only",
+   "category": "gameplay",
    "records": {
     "area_header": 1
    },
    "exported_records": 0,
    "unexported_records": 0,
-   "export_files": [],
-   "scripted": null,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 16,
+    "spawn_sets": 20,
+    "unported_script_paths": 0,
+    "classes": {
+     "1": 4,
+     "130": 4,
+     "88": 4,
+     "95": 4
+    },
+    "capabilities": {
+     "talk": 12,
+     "lock_on": 12
+    }
+   },
    "talk_sites": [
     {
      "request_call": "0x800e7a18",
      "function": "0x800e7874",
-     "bound": false
+     "bound": true
     }
    ],
-   "bindings": {},
+   "bindings": {
+    "callback": "0x800e74f4",
+    "constructor": "0x800e7720",
+    "hitbox": "0x800eb090",
+    "dispatcher": "0x800e739c"
+   },
    "classes": {}
   },
   "ST33": {
@@ -4328,7 +4430,7 @@
      "areas": [
       0
      ],
-     "class_callback": null,
+     "class_callback": "0x800f2398",
      "unresolved_model": false
     }
    }
@@ -4434,7 +4536,7 @@
       3,
       4
      ],
-     "class_callback": null,
+     "class_callback": "0x800f757c",
      "unresolved_model": false
     },
     "E0/22": {
@@ -4448,7 +4550,7 @@
      "areas": [
       1
      ],
-     "class_callback": null,
+     "class_callback": "0x800f7a20",
      "unresolved_model": false
     }
    }
@@ -4520,7 +4622,7 @@
       4,
       5
      ],
-     "class_callback": null,
+     "class_callback": "0x800f4704",
      "unresolved_model": false
     },
     "E0/27": {
@@ -4536,7 +4638,25 @@
       2,
       4
      ],
-     "class_callback": null,
+     "class_callback": "0x800f4818",
+     "variant_routines": [
+      "0x800f491c",
+      "0x800f493c",
+      "0x800f49ec",
+      "0x800f4a84",
+      "0x800f4b40",
+      "0x800f4bfc",
+      "0x800f4cb8",
+      "0x800f4d74",
+      "0x800f4a84",
+      "0x800f4b40",
+      "0x800f4bfc",
+      "0x800f4cb8",
+      "0x800f4d98",
+      "0x800f4dd0",
+      "0x800f4e94",
+      "0x800f493c"
+     ],
      "unresolved_model": false
     }
    }
@@ -4681,7 +4801,7 @@
       11,
       12
      ],
-     "class_callback": null,
+     "class_callback": "0x800f67dc",
      "unresolved_model": false
     },
     "E0/27": {
@@ -4698,7 +4818,25 @@
       4,
       10
      ],
-     "class_callback": null,
+     "class_callback": "0x800f6da0",
+     "variant_routines": [
+      "0x800f6ea4",
+      "0x800f6ec4",
+      "0x800f6f74",
+      "0x800f700c",
+      "0x800f70c8",
+      "0x800f7184",
+      "0x800f7240",
+      "0x800f72fc",
+      "0x800f700c",
+      "0x800f70c8",
+      "0x800f7184",
+      "0x800f7240",
+      "0x800f7320",
+      "0x800f7358",
+      "0x800f741c",
+      "0x800f6ec4"
+     ],
      "unresolved_model": false
     }
    }
@@ -4810,7 +4948,7 @@
       13,
       14
      ],
-     "class_callback": null,
+     "class_callback": "0x800f7f64",
      "unresolved_model": false
     },
     "E0/27": {
@@ -4826,7 +4964,25 @@
       5,
       9
      ],
-     "class_callback": null,
+     "class_callback": "0x800f8768",
+     "variant_routines": [
+      "0x800f886c",
+      "0x800f888c",
+      "0x800f893c",
+      "0x800f89d4",
+      "0x800f8a90",
+      "0x800f8b4c",
+      "0x800f8c08",
+      "0x800f8cc4",
+      "0x800f89d4",
+      "0x800f8a90",
+      "0x800f8b4c",
+      "0x800f8c08",
+      "0x800f8ce8",
+      "0x800f8d20",
+      "0x800f8de4",
+      "0x800f888c"
+     ],
      "unresolved_model": false
     }
    }
@@ -4999,7 +5155,7 @@
       10,
       11
      ],
-     "class_callback": null,
+     "class_callback": "0x800f97d0",
      "unresolved_model": false
     },
     "E0/27": {
@@ -5016,7 +5172,25 @@
       8,
       11
      ],
-     "class_callback": null,
+     "class_callback": "0x800fba74",
+     "variant_routines": [
+      "0x800fbb78",
+      "0x800fbb98",
+      "0x800fbc48",
+      "0x800fbce0",
+      "0x800fbd9c",
+      "0x800fbe58",
+      "0x800fbf14",
+      "0x800fbfd0",
+      "0x800fbce0",
+      "0x800fbd9c",
+      "0x800fbe58",
+      "0x800fbf14",
+      "0x800fbff4",
+      "0x800fc02c",
+      "0x800fc0f0",
+      "0x800fbb98"
+     ],
      "unresolved_model": false
     }
    }
@@ -5077,6 +5251,7 @@
      "8": 1
     },
     "capabilities": {
+     "movement": 3,
      "talk": 6,
      "lock_on": 4
     }
@@ -5095,7 +5270,7 @@
     {
      "request_call": "0x800f2ecc",
      "function": "0x800f2de0",
-     "bound": false
+     "bound": true
     }
    ],
    "bindings": {
@@ -5133,6 +5308,7 @@
     },
     "capabilities": {
      "talk": 35,
+     "movement": 9,
      "lock_on": 35
     }
    },
@@ -5209,7 +5385,8 @@
     },
     "capabilities": {
      "talk": 57,
-     "lock_on": 57
+     "lock_on": 57,
+     "movement": 12
     }
    },
    "talk_sites": [
@@ -5249,7 +5426,8 @@
     },
     "capabilities": {
      "talk": 76,
-     "lock_on": 76
+     "lock_on": 76,
+     "movement": 12
     }
    },
    "talk_sites": [
@@ -5291,7 +5469,8 @@
     },
     "capabilities": {
      "talk": 61,
-     "lock_on": 61
+     "lock_on": 61,
+     "movement": 10
     }
    },
    "talk_sites": [
@@ -5458,9 +5637,12 @@
     "actor": 20,
     "door": 2
    },
-   "exported_records": 33,
-   "unexported_records": 18,
-   "export_files": [],
+   "exported_records": 36,
+   "unexported_records": 15,
+   "export_files": [
+    "gravity_gates.json",
+    "pickups.json"
+   ],
    "scripted": null,
    "talk_sites": [],
    "bindings": {},
@@ -5523,7 +5705,9 @@
      "sources": [
       "static_prop"
      ],
-     "capabilities": [],
+     "capabilities": [
+      "enemy"
+     ],
      "callbacks": [],
      "spawn_gated": false,
      "areas": [
@@ -5636,14 +5820,16 @@
       13,
       14
      ],
-     "class_callback": null,
+     "class_callback": "0x800f69e4",
      "unresolved_model": false
     },
     "E0/37": {
      "kind": "controller_e0",
      "records": 3,
-     "exported": 0,
-     "sources": [],
+     "exported": 3,
+     "sources": [
+      "gravity_gate"
+     ],
      "capabilities": [],
      "callbacks": [],
      "spawn_gated": false,
@@ -5652,8 +5838,7 @@
       6,
       7
      ],
-     "class_callback": null,
-     "unresolved_model": false
+     "class_callback": "0x800f7210"
     }
    }
   },
@@ -5669,9 +5854,12 @@
     "actor": 14,
     "door": 1
    },
-   "exported_records": 29,
-   "unexported_records": 18,
-   "export_files": [],
+   "exported_records": 31,
+   "unexported_records": 16,
+   "export_files": [
+    "gravity_gates.json",
+    "pickups.json"
+   ],
    "scripted": null,
    "talk_sites": [],
    "bindings": {},
@@ -5768,7 +5956,9 @@
      "sources": [
       "static_prop"
      ],
-     "capabilities": [],
+     "capabilities": [
+      "enemy"
+     ],
      "callbacks": [],
      "spawn_gated": false,
      "areas": [
@@ -5881,14 +6071,16 @@
       14,
       15
      ],
-     "class_callback": null,
+     "class_callback": "0x800f9c60",
      "unresolved_model": false
     },
     "E0/37": {
      "kind": "controller_e0",
      "records": 2,
-     "exported": 0,
-     "sources": [],
+     "exported": 2,
+     "sources": [
+      "gravity_gate"
+     ],
      "capabilities": [],
      "callbacks": [],
      "spawn_gated": false,
@@ -5896,8 +6088,7 @@
       6,
       13
      ],
-     "class_callback": null,
-     "unresolved_model": false
+     "class_callback": "0x800fa48c"
     }
    }
   },
@@ -5993,7 +6184,7 @@
      "areas": [
       2
      ],
-     "class_callback": null,
+     "class_callback": "0x800f0a1c",
      "unresolved_model": false
     }
    }
@@ -6076,7 +6267,7 @@
      "areas": [
       2
      ],
-     "class_callback": null,
+     "class_callback": "0x800eadf4",
      "unresolved_model": false
     }
    }
@@ -6141,7 +6332,7 @@
      "areas": [
       1
      ],
-     "class_callback": null,
+     "class_callback": "0x800ef30c",
      "unresolved_model": false
     },
     "E0/21": {
@@ -6155,7 +6346,7 @@
      "areas": [
       1
      ],
-     "class_callback": null,
+     "class_callback": "0x800ef1f8",
      "unresolved_model": false
     }
    }
@@ -6226,9 +6417,10 @@
     "object_a0": 2,
     "controller_e0": 6
    },
-   "exported_records": 0,
-   "unexported_records": 8,
+   "exported_records": 3,
+   "unexported_records": 5,
    "export_files": [
+    "area_controllers.json",
     "scripted_actors.json"
    ],
    "scripted": {
@@ -6283,7 +6475,7 @@
       0,
       1
      ],
-     "class_callback": null,
+     "class_callback": "0x800f5630",
      "unresolved_model": false
     },
     "E0/26": {
@@ -6297,22 +6489,23 @@
      "areas": [
       1
      ],
-     "class_callback": null,
+     "class_callback": "0x800f60c4",
      "unresolved_model": false
     },
     "E0/35": {
      "kind": "controller_e0",
      "records": 3,
-     "exported": 0,
-     "sources": [],
+     "exported": 3,
+     "sources": [
+      "area_controller"
+     ],
      "capabilities": [],
      "callbacks": [],
      "spawn_gated": false,
      "areas": [
       1
      ],
-     "class_callback": null,
-     "unresolved_model": false
+     "class_callback": "0x800f6218"
     }
    }
   },
@@ -6344,16 +6537,34 @@
    },
    "exported_records": 1,
    "unexported_records": 14,
-   "export_files": [],
-   "scripted": null,
+   "export_files": [
+    "scripted_actors.json"
+   ],
+   "scripted": {
+    "instances": 294,
+    "spawn_sets": 1470,
+    "unported_script_paths": 0,
+    "classes": {
+     "0": 294
+    },
+    "capabilities": {
+     "talk": 294,
+     "lock_on": 294
+    }
+   },
    "talk_sites": [
     {
      "request_call": "0x800e7cd0",
      "function": "0x800e7c2c",
-     "bound": false
+     "bound": true
     }
    ],
-   "bindings": {},
+   "bindings": {
+    "callback": "0x800e7850",
+    "constructor": "0x800e7aa0",
+    "hitbox": "0x800eff48",
+    "dispatcher": "0x800e7344"
+   },
    "classes": {
     "20/21/v11": {
      "kind": "actor",
@@ -6389,7 +6600,7 @@
       5,
       6
      ],
-     "class_callback": null,
+     "class_callback": "0x800ed2e4",
      "unresolved_model": false
     }
    }
@@ -6510,7 +6721,7 @@
      "areas": [
       4
      ],
-     "class_callback": null,
+     "class_callback": "0x800f5e54",
      "unresolved_model": false
     }
    }
@@ -6721,7 +6932,7 @@
       7,
       8
      ],
-     "class_callback": null,
+     "class_callback": "0x800fc950",
      "unresolved_model": false
     }
    }
@@ -7005,7 +7216,7 @@
       7,
       8
      ],
-     "class_callback": null,
+     "class_callback": "0x800fb054",
      "unresolved_model": false
     }
    }
@@ -7178,7 +7389,7 @@
       5,
       6
      ],
-     "class_callback": null,
+     "class_callback": "0x800f5198",
      "unresolved_model": false
     }
    }
@@ -7249,8 +7460,8 @@
     "controller_e0": 1,
     "door": 1
    },
-   "exported_records": 3,
-   "unexported_records": 29,
+   "exported_records": 31,
+   "unexported_records": 1,
    "export_files": [
     "scripted_actors.json"
    ],
@@ -7287,16 +7498,17 @@
     "60/31/v3": {
      "kind": "prop",
      "records": 28,
-     "exported": 0,
-     "sources": [],
+     "exported": 28,
+     "sources": [
+      "static_prop"
+     ],
      "capabilities": [],
      "callbacks": [],
      "spawn_gated": false,
      "areas": [
       1
      ],
-     "class_callback": null,
-     "unresolved_model": true
+     "class_callback": null
     },
     "A1/2": {
      "kind": "door",
@@ -7324,7 +7536,7 @@
      "areas": [
       1
      ],
-     "class_callback": null,
+     "class_callback": "0x800ed8c0",
      "unresolved_model": false
     }
    }
@@ -7415,16 +7627,18 @@
    "name": "Saul Kada Circuit",
    "areas": 1,
    "status": "listed",
-   "category": "props_only",
+   "category": "gameplay",
    "records": {
     "area_header": 1,
     "object_a0": 1,
     "controller_e0": 6,
     "door": 1
    },
-   "exported_records": 1,
-   "unexported_records": 7,
-   "export_files": [],
+   "exported_records": 5,
+   "unexported_records": 3,
+   "export_files": [
+    "area_controllers.json"
+   ],
    "scripted": null,
    "talk_sites": [],
    "bindings": {},
@@ -7469,7 +7683,7 @@
      "areas": [
       0
      ],
-     "class_callback": null,
+     "class_callback": "0x800e8d04",
      "unresolved_model": false
     },
     "E0/26": {
@@ -7483,22 +7697,23 @@
      "areas": [
       0
      ],
-     "class_callback": null,
+     "class_callback": "0x800e8bb0",
      "unresolved_model": false
     },
     "E0/35": {
      "kind": "controller_e0",
      "records": 4,
-     "exported": 0,
-     "sources": [],
+     "exported": 4,
+     "sources": [
+      "area_controller"
+     ],
      "capabilities": [],
      "callbacks": [],
      "spawn_gated": false,
      "areas": [
       0
      ],
-     "class_callback": null,
-     "unresolved_model": false
+     "class_callback": "0x800e9080"
     }
    }
   },
@@ -7598,23 +7813,6 @@
     "ST38"
    ]
   },
-  "E0/25": {
-   "records": 29,
-   "exported": 0,
-   "stages": [
-    "ST2D",
-    "ST2E",
-    "ST2F"
-   ]
-  },
-  "60/31/v3": {
-   "records": 56,
-   "exported": 28,
-   "stages": [
-    "ST2F",
-    "ST58"
-   ]
-  },
   "E0/1": {
    "records": 9,
    "exported": 0,
@@ -7639,14 +7837,6 @@
     "ST5B"
    ]
   },
-  "E0/35": {
-   "records": 7,
-   "exported": 0,
-   "stages": [
-    "ST48",
-    "ST5B"
-   ]
-  },
   "E0/22": {
    "records": 6,
    "exported": 0,
@@ -7665,14 +7855,6 @@
     "ST48",
     "ST4C",
     "ST5B"
-   ]
-  },
-  "E0/37": {
-   "records": 5,
-   "exported": 0,
-   "stages": [
-    "ST41",
-    "ST42"
    ]
   },
   "E0/4": {
@@ -7799,32 +7981,11 @@
     "ST00"
    ]
   },
-  "20/21/v67": {
-   "records": 1,
-   "exported": 0,
-   "stages": [
-    "ST0D"
-   ]
-  },
-  "E0/19": {
-   "records": 1,
-   "exported": 0,
-   "stages": [
-    "ST14"
-   ]
-  },
   "20/98/v3": {
    "records": 1,
    "exported": 0,
    "stages": [
     "ST19"
-   ]
-  },
-  "E0/30": {
-   "records": 1,
-   "exported": 0,
-   "stages": [
-    "ST28"
    ]
   },
   "20/71/v0": {
@@ -7884,6 +8045,13 @@
   "20/126/v0": {
    "records": 2,
    "exported": 2,
+   "stages": [
+    "ST0D"
+   ]
+  },
+  "20/21/v67": {
+   "records": 1,
+   "exported": 1,
    "stages": [
     "ST0D"
    ]
@@ -8068,6 +8236,13 @@
     "ST13"
    ]
   },
+  "E0/19": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST14"
+   ]
+  },
   "60/24/v0": {
    "records": 2,
    "exported": 2,
@@ -8236,6 +8411,13 @@
     "ST28"
    ]
   },
+  "E0/30": {
+   "records": 1,
+   "exported": 1,
+   "stages": [
+    "ST28"
+   ]
+  },
   "20/0/v37": {
    "records": 1,
    "exported": 1,
@@ -8262,6 +8444,15 @@
    "exported": 1,
    "stages": [
     "ST2D"
+   ]
+  },
+  "E0/25": {
+   "records": 29,
+   "exported": 29,
+   "stages": [
+    "ST2D",
+    "ST2E",
+    "ST2F"
    ]
   },
   "60/31/v1": {
@@ -8369,6 +8560,14 @@
    "exported": 1,
    "stages": [
     "ST2F"
+   ]
+  },
+  "60/31/v3": {
+   "records": 56,
+   "exported": 56,
+   "stages": [
+    "ST2F",
+    "ST58"
    ]
   },
   "20/45/v0": {
@@ -8529,6 +8728,14 @@
     "ST41"
    ]
   },
+  "E0/37": {
+   "records": 5,
+   "exported": 5,
+   "stages": [
+    "ST41",
+    "ST42"
+   ]
+  },
   "20/97/v0": {
    "records": 26,
    "exported": 26,
@@ -8592,6 +8799,14 @@
    "exported": 1,
    "stages": [
     "ST44"
+   ]
+  },
+  "E0/35": {
+   "records": 7,
+   "exported": 7,
+   "stages": [
+    "ST48",
+    "ST5B"
    ]
   },
   "20/21/v11": {

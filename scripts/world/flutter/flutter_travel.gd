@@ -21,6 +21,18 @@ func _draw() -> void:
 		for line: String in footer_text.split("\n"): draw_string(FONT, Vector2(39, y), line, HORIZONTAL_ALIGNMENT_LEFT, 242, 12, Color.WHITE); y += 16.0
 static func available(host: Node3D) -> bool: return int(host.native_context.get("native_save_byte14", 0)) >= 1 or host._native_event_set(0x584)
 static func choose(table: Array, host: Node3D) -> int: return int(table[2]) if table.size() > 1 and host._native_event_set(int(table[1])) else int(table[0])
+static func _arrive(host: Node3D, data: Dictionary, slot: int, listing: int) -> Dictionary:
+	var request: Dictionary = {}
+	for rule: Dictionary in data.get("arrival_rules", {}).get(str(slot), []):
+		if int(rule["list_index"]) != listing: continue
+		if rule.has("when_flags_clear") and rule["when_flags_clear"].any(func(id: Variant) -> bool: return host._native_event_set(int(id))): continue
+		if rule.has("when_flags_set") and not rule["when_flags_set"].all(func(id: Variant) -> bool: return host._native_event_set(int(id))): continue
+		if bool(rule["advance"]): host.native_context["native_save_byte15"] = (int(host.native_context.get("native_save_byte15", host.native_context.get("native_save_byte14", 0))) + 1) & 255
+		var flags: Dictionary = host.native_context.get("event_flags", {})
+		for id: Variant in rule["sets_flags"]: flags[int(id)] = true
+		host.native_context["event_flags"] = flags
+		if rule["request"] != null: request = rule["request"]
+	return request
 static func run(host: Node3D, bypass_story: bool) -> bool:
 	if not await AssetStore.ensure_stage("ST01"):
 		push_error("Cannot open Flutter map: " + AssetStore.last_error); await host.dialogue_box.present_message("ST04", {"index": -1, "text": AssetStore.last_error}); return false
@@ -78,15 +90,15 @@ static func run(host: Node3D, bypass_story: bool) -> bool:
 			if not nearest.is_empty(): destination = nearest; host.audio.play_ui("menu_confirm")
 		await host.get_tree().create_timer(1.0 / rate, false).timeout
 	if not await AssetStore.ensure_stage(str(destination["stage"])): presentation.queue_free(); return false
+	var redirect: Dictionary = {} if bypass_story else _arrive(host, data, destinations.find(destination), listing)
 	for tick in landing: ship.position.y = float(landing - tick - 1) / 256.0; shadow.position = icon.position + Vector2(-float(landing - tick - 1) * 0.5, landing - tick - 1) * factor; await host.get_tree().create_timer(1.0 / rate, false).timeout
 	host.get_node("HUD").move_child(host.transition_overlay, -1)
 	await host.transition_overlay.request(0x22)
 	presentation.queue_free()
-	var redirect: Dictionary = data.get("redirects", {}).get(str(destination["stage"]), {}); var route_stage := str(destination["stage"]); var route_area := int(destination["area"])
-	if not redirect.is_empty() and not host._native_event_set(int(redirect["event_flag"])):
-		var flags: Dictionary = host.native_context.get("event_flags", {}); flags[int(redirect["event_flag"])] = true; host.native_context["event_flags"] = flags
+	var route_stage := str(destination["stage"]); var route_area := int(destination["area"])
+	if not redirect.is_empty():
 		var through: Array = redirect["position_raw"]
-		host.stage_transition_requested.emit({"destination_stage": redirect["stage"], "destination_area": redirect["area"], "destination_transform": {"position": [float(through[0]) / 256.0, float(through[1]) / 256.0, float(through[2]) / 256.0], "yaw_raw": redirect["facing_raw"]}, "native_entry_fade": 2, "parked_location": {"stage": route_stage, "area": route_area, "arrival_transform": {"position": [float(destination["position_raw"][0]) / 256.0, float(destination["position_raw"][1]) / 256.0, float(destination["position_raw"][2]) / 256.0], "yaw_raw": destination["yaw_raw"]}, "map_position": destination["map_position"].duplicate()}})
+		host.stage_transition_requested.emit({"destination_stage": "ST%02X" % int(redirect["stage"]), "destination_area": int(redirect["area"]), "destination_transform": {"position": [float(through[0]) / 256.0, float(through[1]) / 256.0, float(through[2]) / 256.0], "yaw_raw": redirect["facing_raw"], "floor_height": int(through[1]) == -1}, "native_entry_fade": 2, "parked_location": {"stage": route_stage, "area": route_area, "arrival_transform": {"position": [float(destination["position_raw"][0]) / 256.0, float(destination["position_raw"][1]) / 256.0, float(destination["position_raw"][2]) / 256.0], "yaw_raw": destination["yaw_raw"]}, "map_position": destination["map_position"].duplicate()}})
 		return true
 	var raw: Array = destination["position_raw"]; var arrival := {"position": [float(raw[0]) / 256.0, float(raw[1]) / 256.0, float(raw[2]) / 256.0], "yaw_raw": destination["yaw_raw"]}; host.stage_transition_requested.emit({"destination_stage": destination["stage"], "destination_area": destination["area"], "destination_transform": arrival, "native_entry_fade": 2, "flutter_landing": true, "parked_location": {"stage": destination["stage"], "area": destination["area"], "arrival_transform": arrival, "map_position": destination["map_position"].duplicate()}})
 	return true

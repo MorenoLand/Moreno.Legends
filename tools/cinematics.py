@@ -2037,6 +2037,22 @@ def export_flutter_scene(root=None, out_dir=None):
 yosyonke_STAGE = "ST09"; yosyonke_BASE = 0x800E7000; yosyonke_CTX = 0x8007CEC0; yosyonke_PLAYER = 0x8008C0A0; yosyonke_AREA_BYTE = 0x8009C7F9; yosyonke_SCENARIO = 0x8009C7FC; yosyonke_OWNER = 0x8009BE08
 yosyonke_SCENE_ID = 0x4E; yosyonke_HANDLER = 0x800E7884; yosyonke_STATES = 0x800F262C; yosyonke_CAMERA = 0x800F2588; yosyonke_TIMELINE = 0x800F25D4; yosyonke_PER_FRAME = 0x800E7410; yosyonke_STAGE_INIT = 0x800E7188; yosyonke_AREA0 = 0x800E7480; WALKER = 0x800F2574; WALKER_HITBOX = 0x800F2AAC; TOWNSFOLK = 0x800F2354; yosyonke_EYES = 0x800F261C; yosyonke_MOUTH = 0x800F2624
 yosyonke_D = {}
+def flutter_arrival_rules(root=None):
+	"""Runs the ST01T destination callbacks (table 0x800E94FC, one per map destination) on the original code for every scenario list: whether choosing the destination advances the pending story byte (GAME 0x800C0360 on 0x8009C7FD), rewrites the stage request (context +0xE stage, +0xF area, +0x10..+0x16 position and facing) or sets flags, per list index (context +0x38) and per flag state the callback tests."""
+	global intro_GAME, intro_OVL, intro_SLES
+	import unicorn; disc = Path(root or ROOT) / "build/disc-assets"; intro_SLES = (disc / "SLES_035.56").read_bytes(); intro_GAME = (disc / "COMMON/GAME.BIN").read_bytes(); intro_OVL = (disc / "DAT/ST01T.BIN").read_bytes()
+	callbacks = [struct.unpack_from("<I", intro_OVL, 0x30 + 0x800E94FC + 4 * slot - 0x800E7000)[0] for slot in range(7)]; e = fire_Emu(); context = 0x80190000; tested = []; rules = {}
+	e.cpu.hook_add(unicorn.UC_HOOK_CODE, lambda uc, address, size, data: tested.append(e.r(4)), begin=0x800C05B4, end=0x800C05B4)
+	def play(handler, listing, flags):
+		e.cpu.mem_write(context & 0x1FFFFFFF, bytes(0x100)); e.cpu.mem_write(FLAGS & 0x1FFFFFFF, bytes(0x100)); e.w8(context + 0x38, listing); e.w8(0x8009C7FD, 0); e.events.clear(); tested.clear(); e.init_flags(flags); e.call(handler, (context,))
+		return {"advance": e.u8(0x8009C7FD) == 1, "request": {"stage": e.u8(context + 0xE), "area": e.u8(context + 0xF), "position_raw": [intro_s16(e.u16(context + offset)) for offset in (0x10, 0x12, 0x14)], "facing_raw": e.u16(context + 0x16)} if e.u8(context + 0xE) else None, "sets_flags": sorted(event["args"][0] for event in e.events if event["kind"] == "flag_set")}, sorted(set(tested))
+	for slot, handler in enumerate(callbacks):
+		for listing in range(19):
+			outcome, flags = play(handler, listing, ())
+			variants = [({"when_flags_clear": flags} if flags else {}, outcome)] + ([({"when_flags_set": flags}, play(handler, listing, flags)[0])] if flags else [])
+			for condition, result in variants:
+				if result["advance"] or result["request"] or result["sets_flags"]: rules.setdefault(str(slot), []).append(dict(condition, list_index=listing, **result))
+	return rules
 def yosyonke_H(v): return "0x%08x" % (v & 0xFFFFFFFF)
 def yosyonke_load(root):
 	global intro_GAME, intro_OVL, intro_SLES

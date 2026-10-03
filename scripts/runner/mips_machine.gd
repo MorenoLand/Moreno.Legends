@@ -18,6 +18,7 @@ var fn: Dictionary = {}
 var originals: Dictionary = {}
 var replaced: Dictionary = {}
 var directory := ""
+var unit_tables: Dictionary = {}
 
 
 func _init(code_directory: String) -> void:
@@ -90,6 +91,11 @@ func load_unit(name: String, source: String) -> bool:
 		unit.set(known, units[known])
 	var table := {}
 	unit.call("table", table)
+	for address in unit_tables.get(name, []):
+		originals.erase(address)
+		if not replaced.has(address):
+			fn.erase(address)
+	unit_tables[name] = table.keys()
 	for address in table:
 		originals[address] = table[address]
 		if not replaced.has(address):

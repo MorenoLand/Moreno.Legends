@@ -11,6 +11,7 @@ func run_pending(parent: Node3D, stage: String, area: int) -> bool:
 	for request: Dictionary in pending:
 		if str(request.get("status", "")) in ["complete_native_scene", "running_native_scene"]: continue
 		var function := str(request.get("source_function", "")).to_lower(); var id := int(request.get("argument", -1)); var path := "res://assets/levels/%s/scene_%02x.json" % [stage, id]
+		if id >= 0 and not FileAccess.file_exists(path) and (id == int(preload("res://scripts/world/flutter/flutter_dock.gd").descriptor(stage).get("landing_scene", -1)) or host.get_node_or_null("RunnerHost") != null and host.get_node("RunnerHost").stage == stage): request["status"] = "complete_native_scene"; continue
 		if not (function.ends_with("800c0b0c") or function.ends_with("800c0b78")) or id < 0 or not FileAccess.file_exists(path):
 			request["status"] = "unbound_native_scene"; last_error = "Unsupported native scene %s:%02X requested by %s" % [stage, id, str(request.get("source_function", ""))]; parent.set_meta("native_pending_scene_requests", pending); return false
 		var runtime: Node = Runtime.new(); add_child(runtime)

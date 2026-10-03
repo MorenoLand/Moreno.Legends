@@ -57,7 +57,7 @@ func configure(gameplay: Node, entry: Dictionary, metadata: Dictionary, path: St
 			if material != null: materials.append(material)
 	var point: Array = entry["transform"]["position"]; position = Vector3(float(point[0]), float(point[1]), float(point[2])); rotation.y = -float(native_yaw) * TAU / 4096.0
 	clock = preload("res://scripts/world/actors/native_animation.gd").new(); clock.name = "NativeAnimationClock"; add_child(clock); clock.configure(model.find_child("AnimationPlayer", true, false) as AnimationPlayer, metadata.get("animations", [])); clock.automatic = false
-	shape = CollisionShape3D.new(); shape.shape = CapsuleShape3D.new(); add_child(shape); collision_layer = 0; collision_mask = 0; random_state = int(Time.get_ticks_usec()) & 0xFFFFFFFF
+	shape = CollisionShape3D.new(); shape.shape = CapsuleShape3D.new(); add_child(shape); collision_layer = 0; collision_mask = 0; target.add_collision_exception_with(self); random_state = int(Time.get_ticks_usec()) & 0xFFFFFFFF
 	return true
 func _physics_process(delta: float) -> void:
 	if not is_instance_valid(host) or not is_instance_valid(target) or not target.is_physics_processing() or bool(host.loading): return

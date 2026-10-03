@@ -3,6 +3,8 @@ static var catalog: Dictionary = {}
 static func descriptor(stage: String) -> Dictionary:
 	if catalog.is_empty() and FileAccess.file_exists("res://assets/levels/ST01/flutter_travel.json"): catalog = JSON.parse_string(FileAccess.get_file_as_string("res://assets/levels/ST01/flutter_travel.json"))
 	return catalog.get("docks", {}).get(stage, {})
+# Before the story byte reaches the dock's landing value the Flutter is still airborne there, so the windows show no ground.
+static func airborne(stage: String, story: int) -> bool: return story < int(descriptor(stage).get("minimum_save_byte14", 0))
 static func exterior_hatch(stage: String) -> Dictionary:
 	var data := descriptor(stage); var source := descriptor("ST08")
 	if data.is_empty() or source.is_empty(): return {}
@@ -12,7 +14,6 @@ static func exterior_hatch(stage: String) -> Dictionary:
 	return {"position": position, "yaw": yaw - float(door[3]) * TAU / 4096.0}
 static func ensure(host: Node3D) -> Node3D:
 	var stage := str(host.manifest_path.get_base_dir().get_file()); var area := int(host.areas[host.area_picker.selected]["index"])
-	if str(host.parked_location.get("stage", "")) != stage or int(host.parked_location.get("area", -1)) != area: return null
 	for node: Node3D in host.get_tree().get_nodes_in_group("parked_flutter_hulls"):
 		if host.is_ancestor_of(node) and node.visible: return node
 	if not await AssetStore.ensure_stage("ST01"): return null

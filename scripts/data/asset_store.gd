@@ -68,6 +68,7 @@ func _ensure_stage(stage: String) -> bool:
 	for owner: String in audio_dependencies.get(stage, []):
 		if not await ensure_group("audio-" + owner): return false
 	if not await ensure_group("dialogue-" + stage, true): return false
+	if manifest.get("groups", {}).has("runner-" + stage) and not (await ensure_group("runner-core") and await ensure_group("runner-" + stage)): return false
 	return await ensure_group("stage-" + stage)
 func ensure_menu() -> bool:
 	_block(DEFAULT_TITLE); var result := await ensure_group("menu-audio"); _unblock()

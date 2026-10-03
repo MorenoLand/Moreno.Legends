@@ -5,6 +5,27 @@ static func settle_on_floor(actor: Node3D) -> void:
 	if not is_instance_valid(actor) or not actor.is_inside_tree(): return
 	var ground := ray(actor, actor.global_position + Vector3.UP * 1.125, actor.global_position - Vector3.UP * 2.0)
 	if not ground.is_empty() and (ground["normal"] as Vector3).y >= 0.65: actor.global_position.y = (ground["position"] as Vector3).y
+static func clear_of_volumes(actor: Node3D, boxes: Array) -> void:
+	# The class-0 NPC callbacks (ST19 0x800E7E3C, ST1A 0x800E74B4, ST1B 0x800E78F0, ST2A 0x800E8038) run GAME 0x800B1864 then 0x800B3564 every tick, which moves an actor whose hitbox straddles a solid map volume out of it. A record placed on a counter edge (ST1B Junk Shop: x 320 on the face of volume x 96..320) therefore rests one hitbox half-width clear of it; this resolves the same overlap along the axis of least penetration. Actors whose centre is inside a volume are left alone.
+	var record: Dictionary = actor.get("source") if actor.get("source") is Dictionary else {}
+	if record.is_empty() or not record.has("transform_raw") or not record.has("native_hitbox"): return
+	var raw: Array = record["transform_raw"]; var bounds: Array = record["native_hitbox"]["bounds_raw"]; var x := int(raw[0]); var z := int(raw[2]); var feet := int(raw[1])
+	for _pass in 4:
+		var moved := false
+		for box: Dictionary in boxes:
+			if int(box["kind"]) not in [0, 2, 3, 0x1B] or (int(box["mask"]) & 1) == 0: continue
+			var bx: Array = box["x"]; var by: Array = box["y"]; var bz: Array = box["z"]
+			if feet + int(bounds[2]) >= int(by[1]) or feet + int(bounds[3]) <= int(by[0]) or x + int(bounds[0]) >= int(bx[1]) or x + int(bounds[1]) <= int(bx[0]) or z + int(bounds[4]) >= int(bz[1]) or z + int(bounds[5]) <= int(bz[0]): continue
+			if x > int(bx[0]) and x < int(bx[1]) and z > int(bz[0]) and z < int(bz[1]): continue
+			var push := [x + int(bounds[1]) - int(bx[0]), int(bx[1]) - (x + int(bounds[0])), z + int(bounds[5]) - int(bz[0]), int(bz[1]) - (z + int(bounds[4]))]; var least := push.find(push.min())
+			match least:
+				0: x -= int(push[0])
+				1: x += int(push[1])
+				2: z -= int(push[2])
+				3: z += int(push[3])
+			moved = true
+		if not moved: break
+	if x != int(raw[0]) or z != int(raw[2]): actor.position.x = -float(x) / 256.0; actor.position.z = float(z) / 256.0
 static func snap_to_floor(actor: Node3D, offset_raw: int) -> void:
 	if not is_instance_valid(actor) or not actor.is_inside_tree(): return
 	await actor.get_tree().physics_frame
@@ -47,7 +68,7 @@ static func move_actor(actor: Node3D, motion: Vector3, bounds: Array) -> Diction
 		if grounded:
 			var ground := ray(actor, actor.global_position + motion + Vector3.UP * (maximum.y + 0.125), actor.global_position + motion + Vector3.UP * (minimum.y - 0.125))
 			if not ground.is_empty() and (ground["normal"] as Vector3).y > 0.0: var restored: Vector3 = actor.global_position; restored.y = (ground["position"] as Vector3).y; actor.global_position = restored
-		return {"blocked": true, "floor": grounded, "grounded": grounded}
+		return {"blocked": true, "floor": grounded, "grounded": grounded, "normal": contact.get("normal", Vector3.ZERO)}
 	var next_position: Vector3 = actor.global_position + motion; var floor_drop := minf(0.25, (maximum.y - minimum.y) * 0.5) if is_zero_approx(motion.y) else 0.125; var floor_hit := ray(actor, next_position + Vector3.UP * (maximum.y + 0.125), next_position + Vector3.UP * (minimum.y - floor_drop))
 	var has_floor: bool = not floor_hit.is_empty() and (floor_hit["normal"] as Vector3).y > 0.0 and (floor_hit["position"] as Vector3).y <= actor.global_position.y + 0.125
 	var grounded: bool = has_floor and motion.y < 0.0 and (floor_hit["position"] as Vector3).y >= next_position.y

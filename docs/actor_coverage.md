@@ -15,21 +15,21 @@ Record kinds: `actor` = type 0x20 mesh actors (NPCs, enemies); `prop` = 0x60/0x6
 | ST06 | Flutter | 6 | room_only | 0 | 0 | - | - | - | - |
 | ST07 | Flutter | 3 | gameplay | 0 | 0 | 20 (talk 0, move 0, unported paths 0) | - | scripted_actors.json | callback 0x800e7574, constructor 0x800e74e4, hitbox 0x800e8b34, dispatcher 0x800e72f4 |
 | ST08 | Yosyonke City | 2 | gameplay | 7 | 0 | 27 (talk 12, move 4, unported paths 0) | 4/4 | scripted_actors.json | - |
-| ST09 | Yosyonke City | 1 | gameplay | 17 | 1 | 43 (talk 42, move 0, unported paths 1) | 2/2 | scripted_actors.json | callback 0x800e81ec, constructor 0x800e843c, hitbox 0x800f2744, dispatcher 0x800e7410 |
+| ST09 | Yosyonke City | 1 | gameplay | 17 | 1 | 43 (talk 42, move 40, unported paths 1) | 2/2 | scripted_actors.json | callback 0x800e81ec, constructor 0x800e843c, hitbox 0x800f2744, dispatcher 0x800e7410 |
 | ST0A | Yosyonke City | 5 | gameplay | 0 | 2 | 124 (talk 124, move 0, unported paths 1) | 1/1 | scripted_actors.json | callback 0x800e8920, constructor 0x800e8b70, hitbox 0x800efa80, dispatcher 0x800e74e8 |
 | ST0B | Yosyonke City | 2 | gameplay | 7 | 0 | 108 (talk 103, move 0, unported paths 0) | 2/2 | scripted_actors.json | callback 0x800e8174, constructor 0x800e83c4, hitbox 0x800ef450, dispatcher 0x800e75c8 |
 | ST0C | Yosyonke City | 3 | gameplay | 0 | 0 | 103 (talk 103, move 0, unported paths 0) | 1/1 | scripted_actors.json | callback 0x800e752c, constructor 0x800e777c, hitbox 0x800eaecc, dispatcher 0x800e72b4 |
-| ST0D | Calinca Tundra | 2 | gameplay | 2 | 2 | 23 (talk 23, move 0, unported paths 0) | 1/2 | pickups.json, scripted_actors.json | callback 0x800e74a4, constructor 0x800e76f4, hitbox 0x800f0840, dispatcher 0x800e72e4 |
+| ST0D | Calinca Tundra | 2 | gameplay | 3 | 1 | 23 (talk 23, move 20, unported paths 0) | 1/2 | pickups.json, scripted_actors.json | callback 0x800e74a4, constructor 0x800e76f4, hitbox 0x800f0840, dispatcher 0x800e72e4 |
 | ST0E | Calinca Tundra | 3 | props_only | 0 | 3 | - | - | - | - |
 | ST0F | Abandoned Mine | 14 | gameplay | 10 | 1 | - | 0/4 | mine_actors.json, npcs.json, pickups.json | - |
 | ST10 | Forbidden Island | 2 | gameplay | 0 | 0 | 47 (talk 19, move 0, unported paths 2) | 1/1 | scripted_actors.json | dispatcher 0x800e76d0 |
 | ST11 | Forbidden Island | 1 | gameplay | 0 | 0 | 10 (talk 0, move 0, unported paths 0) | - | pickups.json, scripted_actors.json | dispatcher 0x800e7654 |
 | ST12 | Manda Ruins | 10 | gameplay | 4 | 11 | - | - | - | - |
 | ST13 | Manda Ruins | 14 | gameplay | 20 | 8 | - | - | pickups.json | - |
-| ST14 | Manda Ruins | 8 | gameplay | 5 | 4 | 1 (talk 1, move 0, unported paths 84) | 1/1 | scripted_actors.json | dispatcher 0x800e78fc |
+| ST14 | Manda Ruins | 8 | gameplay | 6 | 3 | 1 (talk 1, move 0, unported paths 84) | 1/1 | area_controllers.json, scripted_actors.json | dispatcher 0x800e78fc |
 | ST15 | Nino Island | 1 | props_only | 1 | 5 | - | - | - | - |
 | ST16 | Nino Island | 1 | props_only | 2 | 3 | - | - | - | - |
-| ST17 | King Glydon | 3 | gameplay | 0 | 1 | 47 (talk 18, move 0, unported paths 3) | 2/2 | scripted_actors.json | callback 0x800e9d00, constructor 0x800e9f50, hitbox 0x80106f3c, dispatcher 0x800e7788 |
+| ST17 | King Glydon | 3 | gameplay | 0 | 1 | 47 (talk 18, move 2, unported paths 3) | 2/2 | scripted_actors.json | callback 0x800e9d00, constructor 0x800e9f50, hitbox 0x80106f3c, dispatcher 0x800e7788 |
 | ST18 | Nino Island | 6 | gameplay | 2 | 2 | 20 (talk 5, move 0, unported paths 8) | 1/1 | scripted_actors.json | callback 0x800e84c4, constructor 0x800e8620, hitbox 0x801075d8, dispatcher 0x800e760c |
 | ST19 | Nino Island | 4 | gameplay | 7 | 1 | - | 0/3 | npcs.json | callback 0x800e7e3c, constructor 0x800e808c, hitbox 0x800fdbb4 |
 | ST1A | Ruminoa City | 2 | gameplay | 7 | 0 | - | 0/1 | npcs.json | callback 0x800e74b4, constructor 0x800e7704, hitbox 0x800edfa4 |
@@ -38,25 +38,25 @@ Record kinds: `actor` = type 0x20 mesh actors (NPCs, enemies); `prop` = 0x60/0x6
 | ST1D | Forbidden Island | 3 | gameplay | 0 | 0 | 3 (talk 1, move 0, unported paths 0) | 1/1 | scripted_actors.json | dispatcher 0x800e7728 |
 | ST1E | Flutter fire | 3 | props_only | 0 | 3 | - | - | - | - |
 | ST1F | Glyde's Base | 2 | gameplay | 0 | 2 | 8 (talk 4, move 0, unported paths 22) | 2/2 | scripted_actors.json | callback 0x800e80d4, constructor 0x800e8324, hitbox 0x801012bc, dispatcher 0x800e7b7c |
-| ST20 | Kito Village | 2 | gameplay | 4 | 2 | 72 (talk 54, move 0, unported paths 1) | 1/1 | scripted_actors.json | callback 0x800e8494, constructor 0x800e86e4, hitbox 0x800f207c, dispatcher 0x800e7508 |
+| ST20 | Kito Village | 2 | gameplay | 4 | 2 | 72 (talk 54, move 54, unported paths 1) | 1/1 | scripted_actors.json | callback 0x800e8494, constructor 0x800e86e4, hitbox 0x800f207c, dispatcher 0x800e7508 |
 | ST21 | Calbania Plains | 1 | props_only | 0 | 1 | - | - | - | - |
 | ST22 | Calbania Plains | 1 | props_only | 0 | 2 | - | - | - | - |
 | ST23 | Calbania Plains | 1 | gameplay | 0 | 1 | 19 (talk 9, move 0, unported paths 0) | 1/1 | scripted_actors.json | dispatcher 0x800e75b0 |
-| ST24 | Pokte Plains | 3 | gameplay | 0 | 0 | 548 (talk 291, move 0, unported paths 1) | 3/3 | scripted_actors.json | callback 0x800e7944, constructor 0x800e7bcc, hitbox 0x800f2448, dispatcher 0x800e75f4 |
-| ST25 | Pokte Village | 7 | gameplay | 0 | 0 | 2616 (talk 2142, move 0, unported paths 1) | 1/1 | scripted_actors.json | callback 0x800e7ffc, constructor 0x800e824c, hitbox 0x800f9f38, dispatcher 0x800e7570 |
+| ST24 | Pokte Plains | 3 | gameplay | 0 | 0 | 548 (talk 291, move 119, unported paths 1) | 3/3 | scripted_actors.json | callback 0x800e7944, constructor 0x800e7bcc, hitbox 0x800f2448, dispatcher 0x800e75f4 |
+| ST25 | Pokte Village | 7 | gameplay | 0 | 0 | 2616 (talk 2142, move 1836, unported paths 1) | 1/1 | scripted_actors.json | callback 0x800e7ffc, constructor 0x800e824c, hitbox 0x800f9f38, dispatcher 0x800e7570 |
 | ST26 | Saul Kada Ruins | 12 | props_only | 12 | 6 | - | 0/1 | - | - |
 | ST27 | Saul Kada Ruins | 14 | gameplay | 12 | 10 | - | - | - | - |
-| ST28 | Saul Kada Ruins | 11 | gameplay | 10 | 7 | - | - | - | - |
-| ST29 | Kimotoma City | 2 | gameplay | 0 | 0 | 64 (talk 64, move 0, unported paths 36) | 1/2 | scripted_actors.json | callback 0x800e7cb4, constructor 0x800e7f04, hitbox 0x800f709c, dispatcher 0x800e7838 |
+| ST28 | Saul Kada Ruins | 11 | gameplay | 11 | 6 | - | - | area_controllers.json | - |
+| ST29 | Kimotoma City | 2 | gameplay | 0 | 0 | 65 (talk 65, move 32, unported paths 34) | 2/2 | scripted_actors.json | callback 0x800e7cb4, constructor 0x800e7f04, hitbox 0x800f709c, dispatcher 0x800e7838 |
 | ST2A | Kimotoma City | 5 | gameplay | 3 | 0 | - | 0/1 | npcs.json | callback 0x800e8038, constructor 0x800e8288, hitbox 0x800f0990 |
-| ST2B | Kimotoma City | 4 | gameplay | 2 | 0 | 2 (talk 0, move 0, unported paths 3) | 0/1 | scripted_actors.json | callback 0x800e7b6c, constructor 0x800e7c48, hitbox 0x800f3d00, dispatcher 0x800e7504 |
+| ST2B | Kimotoma City | 4 | gameplay | 2 | 0 | 2 (talk 0, move 0, unported paths 3) | 1/1 | scripted_actors.json | callback 0x800e7b6c, constructor 0x800e7c48, hitbox 0x800f3d00, dispatcher 0x800e7504 |
 | ST2C | Kimotoma City | 1 | gameplay | 0 | 0 | 2 (talk 2, move 0, unported paths 0) | 1/1 | scripted_actors.json | callback 0x800e7454, constructor 0x800e76a4, hitbox 0x800ea878, dispatcher 0x800e7358 |
-| ST2D | Calinca Ruins | 13 | gameplay | 47 | 9 | - | - | - | - |
-| ST2E | Calinca Ruins | 15 | gameplay | 32 | 12 | - | - | - | - |
-| ST2F | Calinca Ruins | 12 | gameplay | 38 | 15 | 38 (talk 17, move 0, unported paths 945) | 1/1 | scripted_actors.json | dispatcher 0x800e76d8 |
+| ST2D | Calinca Ruins | 13 | gameplay | 56 | 0 | - | - | area_controllers.json | - |
+| ST2E | Calinca Ruins | 15 | gameplay | 44 | 0 | - | - | area_controllers.json | - |
+| ST2F | Calinca Ruins | 12 | gameplay | 46 | 7 | 38 (talk 17, move 0, unported paths 945) | 1/1 | area_controllers.json, scripted_actors.json | dispatcher 0x800e76d8 |
 | ST30 | Glyde's Base | 5 | room_only | 0 | 0 | - | - | - | - |
 | ST31 | Glyde's Base | 2 | gameplay | 3 | 0 | - | - | - | - |
-| ST32 | Pokte Mayor's Home | 1 | room_only | 0 | 0 | - | 0/1 | - | - |
+| ST32 | Pokte Mayor's Home | 1 | gameplay | 0 | 0 | 16 (talk 12, move 0, unported paths 0) | 1/1 | scripted_actors.json | callback 0x800e74f4, constructor 0x800e7720, hitbox 0x800eb090, dispatcher 0x800e739c |
 | ST33 | Saul Kada Ruins | 6 | props_only | 0 | 1 | - | - | - | - |
 | ST34 | Saul Kada Ruins | 11 | gameplay | 8 | 6 | - | - | - | - |
 | ST35 | Nino Ruins | 10 | gameplay | 3 | 5 | 1 (talk 1, move 0, unported paths 2) | 1/1 | scripted_actors.json | dispatcher 0x800e74dc |
@@ -65,22 +65,22 @@ Record kinds: `actor` = type 0x20 mesh actors (NPCs, enemies); `prop` = 0x60/0x6
 | ST38 | Nino Ruins | 17 | gameplay | 9 | 16 | 363 (talk 0, move 0, unported paths 0) | - | scripted_actors.json | dispatcher 0x800e73e0 |
 | ST39 | Flutter new-game scene | 2 | room_only | 0 | 0 | - | - | - | - |
 | ST3A | Sulphur-Bottom / Forbidden Island scenes | 4 | room_only | 0 | 0 | - | - | - | - |
-| ST3B | Kimotoma City | 2 | gameplay | 0 | 0 | 10 (talk 6, move 0, unported paths 0) | 2/3 | scripted_actors.json | callback 0x800e8e24, constructor 0x800e9074, hitbox 0x800fe518, dispatcher 0x800e7644 |
-| ST3C | Kimotoma City | 5 | gameplay | 2 | 0 | 67 (talk 35, move 0, unported paths 19) | 2/2 | scripted_actors.json | callback 0x800e8a2c, constructor 0x800e8c7c, hitbox 0x800fea68, dispatcher 0x800e83b0 |
-| ST3D | Sulphur-Bottom | 4 | gameplay | 0 | 0 | 57 (talk 57, move 0, unported paths 0) | 1/1 | scripted_actors.json | callback 0x800e77c0, constructor 0x800e7a10, hitbox 0x800eb0ac, dispatcher 0x800e73b0 |
-| ST3E | Sulphur-Bottom | 7 | gameplay | 0 | 0 | 76 (talk 76, move 0, unported paths 125) | 1/1 | scripted_actors.json | callback 0x800e799c, constructor 0x800e7bec, hitbox 0x800ed608, dispatcher 0x800e75b0 |
-| ST3F | Sulphur-Bottom | 2 | gameplay | 0 | 0 | 78 (talk 61, move 0, unported paths 0) | 2/2 | scripted_actors.json | callback 0x800e77fc, constructor 0x800e7a4c, hitbox 0x800ef93c, dispatcher 0x800e7530 |
+| ST3B | Kimotoma City | 2 | gameplay | 0 | 0 | 10 (talk 6, move 3, unported paths 0) | 3/3 | scripted_actors.json | callback 0x800e8e24, constructor 0x800e9074, hitbox 0x800fe518, dispatcher 0x800e7644 |
+| ST3C | Kimotoma City | 5 | gameplay | 2 | 0 | 67 (talk 35, move 9, unported paths 19) | 2/2 | scripted_actors.json | callback 0x800e8a2c, constructor 0x800e8c7c, hitbox 0x800fea68, dispatcher 0x800e83b0 |
+| ST3D | Sulphur-Bottom | 4 | gameplay | 0 | 0 | 57 (talk 57, move 12, unported paths 0) | 1/1 | scripted_actors.json | callback 0x800e77c0, constructor 0x800e7a10, hitbox 0x800eb0ac, dispatcher 0x800e73b0 |
+| ST3E | Sulphur-Bottom | 7 | gameplay | 0 | 0 | 76 (talk 76, move 12, unported paths 125) | 1/1 | scripted_actors.json | callback 0x800e799c, constructor 0x800e7bec, hitbox 0x800ed608, dispatcher 0x800e75b0 |
+| ST3F | Sulphur-Bottom | 2 | gameplay | 0 | 0 | 78 (talk 61, move 10, unported paths 0) | 2/2 | scripted_actors.json | callback 0x800e77fc, constructor 0x800e7a4c, hitbox 0x800ef93c, dispatcher 0x800e7530 |
 | ST40 | Elysium | 14 | gameplay | 6 | 0 | 63 (talk 42, move 0, unported paths 756) | 2/2 | scripted_actors.json | callback 0x800e84e4, constructor 0x800e8734, hitbox 0x800fd558, dispatcher 0x800e7c70 |
-| ST41 | Defense Area | 17 | gameplay | 33 | 18 | - | - | - | - |
-| ST42 | Defense Area | 18 | gameplay | 29 | 18 | - | - | - | - |
+| ST41 | Defense Area | 17 | gameplay | 36 | 15 | - | - | gravity_gates.json, pickups.json | - |
+| ST42 | Defense Area | 18 | gameplay | 31 | 16 | - | - | gravity_gates.json, pickups.json | - |
 | ST43 | Mother Zone | 10 | gameplay | 4 | 1 | - | - | - | - |
 | ST44 | Mother Zone | 10 | gameplay | 4 | 1 | - | - | - | - |
 | ST45 | Mother Zone | 11 | props_only | 3 | 2 | - | - | - | - |
 | ST46 | Nino Island / Flutter scenes | 4 | room_only | 0 | 0 | - | - | - | - |
 | ST47 | Yosyonke City | 3 | gameplay | 0 | 0 | 93 (talk 93, move 0, unported paths 0) | 1/1 | scripted_actors.json | callback 0x800e8600, constructor 0x800e8850, hitbox 0x800ed068, dispatcher 0x800e7348 |
-| ST48 | Saul Kada Desert | 2 | gameplay | 0 | 8 | 27 (talk 1, move 0, unported paths 0) | 1/1 | scripted_actors.json | dispatcher 0x800e7668 |
+| ST48 | Saul Kada Desert | 2 | gameplay | 3 | 5 | 27 (talk 1, move 0, unported paths 0) | 1/1 | area_controllers.json, scripted_actors.json | dispatcher 0x800e7668 |
 | ST49 | Flutter / Dropship scenes | 4 | room_only | 0 | 0 | - | - | - | - |
-| ST4A | Tutorial | 8 | gameplay | 1 | 14 | - | 0/1 | - | - |
+| ST4A | Tutorial | 8 | gameplay | 1 | 14 | 294 (talk 294, move 0, unported paths 0) | 1/1 | scripted_actors.json | callback 0x800e7850, constructor 0x800e7aa0, hitbox 0x800eff48, dispatcher 0x800e7344 |
 | ST4B | Sulphur-Bottom | 6 | room_only | 1 | 0 | - | - | - | - |
 | ST4C | Mother Zone | 10 | gameplay | 11 | 1 | 105 (talk 21, move 0, unported paths 105) | 1/1 | scripted_actors.json | dispatcher 0x800e751c |
 | ST4D | Guild Ruins | 10 | gameplay | 3 | 0 | - | - | - | - |
@@ -94,10 +94,10 @@ Record kinds: `actor` = type 0x20 mesh actors (NPCs, enemies); `prop` = 0x60/0x6
 | ST55 | License Test Ruins | 8 | props_only | 0 | 7 | - | - | - | - |
 | ST56 | Master's Room | 1 | props_only | 1 | 0 | - | 0/1 | - | - |
 | ST57 | Game credits | 1 | room_only | 0 | 0 | - | - | - | - |
-| ST58 | Mother Zone | 10 | gameplay | 3 | 29 | 21 (talk 0, move 0, unported paths 126) | - | scripted_actors.json | dispatcher 0x800e73b0 |
+| ST58 | Mother Zone | 10 | gameplay | 31 | 1 | 21 (talk 0, move 0, unported paths 126) | - | scripted_actors.json | dispatcher 0x800e73b0 |
 | ST59 | Manda Circuit | 1 | room_only | 1 | 0 | - | - | - | - |
 | ST5A | Calinca Circuit | 1 | props_only | 8 | 0 | - | - | - | - |
-| ST5B | Saul Kada Circuit | 1 | props_only | 1 | 7 | - | - | - | - |
+| ST5B | Saul Kada Circuit | 1 | gameplay | 5 | 3 | - | - | area_controllers.json | - |
 | ST5C | Mother Zone | 1 | room_only | 1 | 0 | - | - | - | - |
 
 ## Record classes by unexported count
@@ -107,17 +107,13 @@ Record kinds: `actor` = type 0x20 mesh actors (NPCs, enemies); `prop` = 0x60/0x6
 | E0/10 | - | 106 | 0 | ST09, ST0D, ST0E, ST12, ST13, ST14, ST15, ST16, ST1F, ST21, ST22, ST26, ST27, ST34, ST36, ST37, ST38, ST45, ST4A, ST4E, ST50, ST55 |
 | E0/21 | - | 53 | 0 | ST0F, ST12, ST26, ST27, ST28, ST2F, ST33, ST35, ST41, ST42, ST43, ST44, ST45, ST58 |
 | E0/27 | - | 30 | 0 | ST12, ST13, ST14, ST35, ST36, ST37, ST38 |
-| E0/25 | - | 29 | 0 | ST2D, ST2E, ST2F |
-| 60/31/v3 | - | 56 | 28 | ST2F, ST58 |
 | E0/1 | - | 9 | 0 | ST15, ST16, ST17, ST18, ST20, ST48, ST5B |
 | A0/10 | - | 9 | 0 | ST27, ST28, ST34, ST48, ST5B |
-| E0/35 | - | 7 | 0 | ST48, ST5B |
-| E0/22 | - | 6 | 0 | ST27, ST28, ST34 |
-| E0/26 | - | 5 | 0 | ST00, ST20, ST48, ST4C, ST5B |
-| E0/37 | - | 5 | 0 | ST41, ST42 |
-| E0/4 | - | 3 | 0 | ST00, ST0A |
+| E0/22 | particle spawner | 6 | 0 | ST27, ST28, ST34 |
+| E0/26 | water ripple animation | 5 | 0 | ST00, ST20, ST48, ST4C, ST5B |
+| E0/4 | palette animation | 3 | 0 | ST00, ST0A |
 | A0/18 | - | 3 | 0 | ST1E |
-| E0/5 | - | 3 | 0 | ST1F, ST22, ST23 |
+| E0/5 | texture animation | 3 | 0 | ST1F, ST22, ST23 |
 | 20/2/v0 | - | 1 | 0 | ST00 |
 | 20/2/v1 | - | 1 | 0 | ST00 |
 | 20/2/v2 | - | 1 | 0 | ST00 |
@@ -130,10 +126,7 @@ Record kinds: `actor` = type 0x20 mesh actors (NPCs, enemies); `prop` = 0x60/0x6
 | 60/1/v3 | - | 3 | 2 | ST00, ST09, ST16 |
 | 60/1/v4 | - | 2 | 1 | ST00, ST09 |
 | 20/0/v3 | talk NPC (shared class-0 template) | 1 | 0 | ST00 |
-| 20/21/v67 | treasure chest (shared callback) | 1 | 0 | ST0D |
-| E0/19 | - | 1 | 0 | ST14 |
 | 20/98/v3 | - | 1 | 0 | ST19 |
-| E0/30 | - | 1 | 0 | ST28 |
 
 ## Unexported records per stage
 
@@ -151,96 +144,90 @@ Record kinds: `actor` = type 0x20 mesh actors (NPCs, enemies); `prop` = 0x60/0x6
 | ST00 | 60/1/v2 (model unresolved) | - | 1 | 1 | - |
 | ST00 | 60/1/v3 (model unresolved) | - | 1 | 1 | - |
 | ST00 | 60/1/v4 (model unresolved) | - | 1 | 1 | - |
-| ST00 | E0/26 | - | 1 | 0 | - |
-| ST00 | E0/4 | - | 1 | 1 | - |
-| ST09 | E0/10 | - | 1 | 0 | - |
-| ST0A | E0/4 | - | 2 | 2,4 | - |
-| ST0D | 20/21/v67 (model unresolved) | 0x800eb55c | 1 | 1 | - |
-| ST0D | E0/10 | - | 1 | 0 | - |
-| ST0E | E0/10 | - | 3 | 0,1,2 | - |
-| ST0F | E0/21 | - | 1 | 12 | - |
-| ST12 | E0/10 | - | 3 | 0,1,3 | - |
-| ST12 | E0/21 | - | 2 | 0,4 | - |
-| ST12 | E0/27 | - | 6 | 0,1,4 | - |
-| ST13 | E0/10 | - | 5 | 0,1,4,5,9 | - |
-| ST13 | E0/27 | - | 3 | 2,4 | - |
-| ST14 | E0/10 | - | 1 | 1 | - |
-| ST14 | E0/19 | - | 1 | 0 | - |
-| ST14 | E0/27 | - | 2 | 3,4 | - |
-| ST15 | E0/1 | - | 1 | 0 | - |
-| ST15 | E0/10 | - | 4 | 0 | - |
-| ST16 | E0/1 | - | 1 | 0 | - |
-| ST16 | E0/10 | - | 2 | 0 | - |
-| ST17 | E0/1 | - | 1 | 0 | - |
-| ST18 | E0/1 | - | 2 | 0,1 | - |
+| ST00 | E0/26 | 0x800ebd70 | 1 | 0 | - |
+| ST00 | E0/4 | 0x800eba74 | 1 | 1 | - |
+| ST09 | E0/10 | 0x800ef530 | 1 | 0 | - |
+| ST0A | E0/4 | 0x800eb1d8 | 2 | 2,4 | - |
+| ST0D | E0/10 | 0x800ee9e0 | 1 | 0 | - |
+| ST0E | E0/10 | 0x800f49a8 | 3 | 0,1,2 | - |
+| ST0F | E0/21 | 0x800fa930 | 1 | 12 | - |
+| ST12 | E0/10 | 0x800ff814 | 3 | 0,1,3 | - |
+| ST12 | E0/21 | 0x80101b84 | 2 | 0,4 | - |
+| ST12 | E0/27 | 0x80101d48 | 6 | 0,1,4 | - |
+| ST13 | E0/10 | 0x800fe4b4 | 5 | 0,1,4,5,9 | - |
+| ST13 | E0/27 | 0x800ff8ac | 3 | 2,4 | - |
+| ST14 | E0/10 | 0x800ff7e4 | 1 | 1 | - |
+| ST14 | E0/27 | 0x8010038c | 2 | 3,4 | - |
+| ST15 | E0/1 | 0x800f9a30 | 1 | 0 | - |
+| ST15 | E0/10 | 0x800f8c8c | 4 | 0 | - |
+| ST16 | E0/1 | 0x800fa170 | 1 | 0 | - |
+| ST16 | E0/10 | 0x800f9124 | 2 | 0 | - |
+| ST17 | E0/1 | 0x800f9510 | 1 | 0 | - |
+| ST18 | E0/1 | 0x800f9124 | 2 | 0,1 | - |
 | ST19 | 20/98/v3 (model unresolved) | - | 1 | 0 | - |
 | ST1E | A0/18 | - | 3 | 0,1,2 | - |
-| ST1F | E0/10 | - | 1 | 0 | - |
-| ST1F | E0/5 | - | 1 | 0 | - |
-| ST20 | E0/1 | - | 1 | 0 | - |
-| ST20 | E0/26 | - | 1 | 0 | - |
-| ST21 | E0/10 | - | 1 | 0 | - |
-| ST22 | E0/10 | - | 1 | 0 | - |
-| ST22 | E0/5 | - | 1 | 0 | - |
-| ST23 | E0/5 | - | 1 | 0 | - |
-| ST26 | E0/10 | - | 4 | 0,1,3,5 | - |
-| ST26 | E0/21 | - | 2 | 0,3 | - |
+| ST1F | E0/10 | 0x800facc8 | 1 | 0 | - |
+| ST1F | E0/5 | 0x800fab34 | 1 | 0 | - |
+| ST20 | E0/1 | 0x800ee1bc | 1 | 0 | - |
+| ST20 | E0/26 | 0x800eed10 | 1 | 0 | - |
+| ST21 | E0/10 | 0x800ee148 | 1 | 0 | - |
+| ST22 | E0/10 | 0x800f92c0 | 1 | 0 | - |
+| ST22 | E0/5 | 0x800f8d9c | 1 | 0 | - |
+| ST23 | E0/5 | 0x800e94c8 | 1 | 0 | - |
+| ST26 | E0/10 | 0x800f66c8 | 4 | 0,1,3,5 | - |
+| ST26 | E0/21 | 0x800f5e9c | 2 | 0,3 | - |
 | ST27 | A0/10 | - | 3 | 0,3,6 | - |
-| ST27 | E0/10 | - | 3 | 2,3,6 | - |
-| ST27 | E0/21 | - | 1 | 2 | - |
-| ST27 | E0/22 | - | 3 | 0,3,6 | - |
+| ST27 | E0/10 | 0x800f9ce0 | 3 | 2,3,6 | - |
+| ST27 | E0/21 | 0x800fa004 | 1 | 2 | - |
+| ST27 | E0/22 | 0x800fa118 | 3 | 0,3,6 | - |
 | ST28 | A0/10 | - | 2 | 0,3 | - |
-| ST28 | E0/21 | - | 2 | 0,5 | - |
-| ST28 | E0/22 | - | 2 | 0,3 | - |
-| ST28 | E0/30 | - | 1 | 3 | - |
-| ST2D | E0/25 | - | 9 | 0,1,2,3,4,5,6,7,8 | - |
-| ST2E | E0/25 | - | 12 | 0,1,2,3,4,5,6,7,8,9,10,11 | - |
-| ST2F | E0/21 | - | 7 | 1,2,3,5,6,7,8 | - |
-| ST2F | E0/25 | - | 8 | 0,1,2,3,4,5,7,8 | - |
-| ST33 | E0/21 | - | 1 | 0 | - |
+| ST28 | E0/21 | 0x800ff96c | 2 | 0,5 | - |
+| ST28 | E0/22 | 0x800ffa80 | 2 | 0,3 | - |
+| ST2F | E0/21 | 0x800fde40 | 7 | 1,2,3,5,6,7,8 | - |
+| ST33 | E0/21 | 0x800f2398 | 1 | 0 | - |
 | ST34 | A0/10 | - | 1 | 1 | - |
-| ST34 | E0/10 | - | 4 | 1,2,3,4 | - |
-| ST34 | E0/22 | - | 1 | 1 | - |
-| ST35 | E0/21 | - | 2 | 4,5 | - |
-| ST35 | E0/27 | - | 3 | 0,2,4 | - |
-| ST36 | E0/10 | - | 10 | 1,2,3,4,5,6,8,10,11,12 | - |
-| ST36 | E0/27 | - | 6 | 2,3,4,10 | - |
-| ST37 | E0/10 | - | 12 | 1,2,4,5,6,7,8,9,11,12,13,14 | - |
-| ST37 | E0/27 | - | 4 | 2,5,9 | - |
-| ST38 | E0/10 | - | 10 | 1,2,3,5,6,7,8,9,10,11 | - |
-| ST38 | E0/27 | - | 6 | 2,5,8,11 | - |
-| ST41 | E0/21 | - | 15 | 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14 | - |
-| ST41 | E0/37 | - | 3 | 2,6,7 | - |
-| ST42 | E0/21 | - | 16 | 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 | - |
-| ST42 | E0/37 | - | 2 | 6,13 | - |
-| ST43 | E0/21 | - | 1 | 2 | - |
-| ST44 | E0/21 | - | 1 | 2 | - |
-| ST45 | E0/10 | - | 1 | 1 | - |
-| ST45 | E0/21 | - | 1 | 1 | - |
+| ST34 | E0/10 | 0x800f757c | 4 | 1,2,3,4 | - |
+| ST34 | E0/22 | 0x800f7a20 | 1 | 1 | - |
+| ST35 | E0/21 | 0x800f4704 | 2 | 4,5 | - |
+| ST35 | E0/27 | 0x800f4818 | 3 | 0,2,4 | - |
+| ST36 | E0/10 | 0x800f67dc | 10 | 1,2,3,4,5,6,8,10,11,12 | - |
+| ST36 | E0/27 | 0x800f6da0 | 6 | 2,3,4,10 | - |
+| ST37 | E0/10 | 0x800f7f64 | 12 | 1,2,4,5,6,7,8,9,11,12,13,14 | - |
+| ST37 | E0/27 | 0x800f8768 | 4 | 2,5,9 | - |
+| ST38 | E0/10 | 0x800f97d0 | 10 | 1,2,3,5,6,7,8,9,10,11 | - |
+| ST38 | E0/27 | 0x800fba74 | 6 | 2,5,8,11 | - |
+| ST41 | E0/21 | 0x800f69e4 | 15 | 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14 | - |
+| ST42 | E0/21 | 0x800f9c60 | 16 | 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 | - |
+| ST43 | E0/21 | 0x800f0a1c | 1 | 2 | - |
+| ST44 | E0/21 | 0x800eadf4 | 1 | 2 | - |
+| ST45 | E0/10 | 0x800ef30c | 1 | 1 | - |
+| ST45 | E0/21 | 0x800ef1f8 | 1 | 1 | - |
 | ST48 | A0/10 | - | 2 | 0,1 | - |
-| ST48 | E0/1 | - | 2 | 0,1 | - |
-| ST48 | E0/26 | - | 1 | 1 | - |
-| ST48 | E0/35 | - | 3 | 1 | - |
-| ST4A | E0/10 | - | 14 | 0,1,2,3,4,5,6 | - |
-| ST4C | E0/26 | - | 1 | 4 | - |
-| ST4E | E0/10 | - | 9 | 0,1,2,3,4,5,6,7,8 | - |
-| ST50 | E0/10 | - | 9 | 0,1,2,3,4,5,6,7,8 | - |
-| ST55 | E0/10 | - | 7 | 0,1,2,3,4,5,6 | - |
-| ST58 | 60/31/v3 (model unresolved) | - | 28 | 1 | - |
-| ST58 | E0/21 | - | 1 | 1 | - |
+| ST48 | E0/1 | 0x800f5630 | 2 | 0,1 | - |
+| ST48 | E0/26 | 0x800f60c4 | 1 | 1 | - |
+| ST4A | E0/10 | 0x800ed2e4 | 14 | 0,1,2,3,4,5,6 | - |
+| ST4C | E0/26 | 0x800f5e54 | 1 | 4 | - |
+| ST4E | E0/10 | 0x800fc950 | 9 | 0,1,2,3,4,5,6,7,8 | - |
+| ST50 | E0/10 | 0x800fb054 | 9 | 0,1,2,3,4,5,6,7,8 | - |
+| ST55 | E0/10 | 0x800f5198 | 7 | 0,1,2,3,4,5,6 | - |
+| ST58 | E0/21 | 0x800ed8c0 | 1 | 1 | - |
 | ST5B | A0/10 | - | 1 | 0 | - |
-| ST5B | E0/1 | - | 1 | 0 | - |
-| ST5B | E0/26 | - | 1 | 0 | - |
-| ST5B | E0/35 | - | 4 | 0 | - |
+| ST5B | E0/1 | 0x800e8d04 | 1 | 0 | - |
+| ST5B | E0/26 | 0x800e8bb0 | 1 | 0 | - |
 
 ## Notes
 
 - Type 0x20 actors and 0x60 props share the class callback table the overlay init installs (the table slot for class 21 points at the cell holding the class update function; `class_callback` in the tables above). The update function dispatches `actor+8` through a state table whose entry 0 is the constructor.
 - The constructor selects the model with SLES 0x8003DFC8 using a key byte (`actor+6` for class 0, `actor+7` for class 97) or SLES 0x8003DFA4 (key 0, e.g. chests); `actor_resource_keys` reads that from the constructor.
-- Types 0xE0, 0xA0 and 0x40 are 32-byte pool records (SLES 0x8003E9D8, 0x8003EB7C) without a class callback; GAME 0x800DA1F8 and 0x800DB4A4 only stream-despawn them with per-stage bitmaps. What each E0 class encodes is still untraced.
-- Class 25 type-0x60 props at route contact positions are the lift pads (ST0F is ported; other dungeons use the same pad/route pairing).
+- Types 0xE0, 0xA0 and 0x40 are 32-byte pool records (SLES 0x8003E9D8, 0x8003EB7C); GAME 0x800DA1F8 and 0x800DB4A4 stream-despawn them with per-stage bitmaps. SLES 0x8003D0E8 walks the 32 E0 slots every frame and calls `table[actor+4]` (table pointer stored in GAME global 0x80078EA0 by the overlay init); `class_callback` of the E0 rows lists that table's entry per stage.
+- E0/10 is a per-stage scripted-event state machine with unique code in each of its 22 overlays (ST09's is Roll's follower pose resolver, ST4A's the tutorial steps). E0/21 is the door-lock barrier manager: for each event flag 0x710+i (i = 0..15) it allocates and frees an A1 class 2 variant 1 object with door index record byte 8 + i; the port gates the same doors through `lock_event` in `doors.json`. E0/27 is a gated spawner: state 0 frees the record when its record byte 10 is below the stage state byte (0x8009C7FC), state 1 frees it once the event flag in its last record word (actor+0x16, -1 for none) is set and otherwise calls `variant_routines[record byte 6]` (the table is listed per stage); those routines allocate the room's enemies and are the hook for the original-code runner. E0/25 (ST2D, ST2E, ST2F) is the ice-floor marker, not a let-go guard: GAME 0x800CD7C4 sets player+0xBD (the ice-slip state) unless the shoes at player+0x1A3 are cleated (4) or global byte 0x8007CEC0 is set. ST2E marks every area; ST2D marks every area except 0, where it applies only while the player stands on a class-31 prop (player+0x52 set, player+0x54 pointing at a type-0x60 class-31 record); ST2F does the same for area 7. With +0xBD set the walk start state accelerates forward speed by 0x10 per tick instead of setting it, the run state adds 8 instead of 0x28, and GAME 0x800CD93C decays +0x38/+0x3C/+0xD8/+0xDC by 0x20 per tick instead of zeroing them (ported as `ice_slip_ticks` in `player_controller.gd`: the ground velocity keeps a heading and a speed, the speed moves toward the input speed by 8 units per tick (16 for slow walking, the traced run stop on ice: GAME 0x800C61CC adds 8 instead of 0x28 per tick; units are 30/4096 world units per second as in the port's jump and air speeds), the heading follows the input and is kept when the input is released, which is the heading-rotated momentum of GAME 0x800CD7F4; the port's walk speed has no run ramp, so the traced 0x20 idle decay is not added; `native_area_controller.gd` applies the stage/area rule from `area_controllers.json`). Type-0x60 class 31 is therefore an ice slab, not a carryable (state-0 code hash-identical in ST2D, ST2E, ST2F and ST58; `export_props` writes `native_ice_block`, `native_ice_block.gd` runs it). The resource variant is the table byte at record variant (ST2F 0x80103D14: 0, 7, 6, 0; `prop_resource_variant`), which fixes the ST58 28 variant-3 tiles (model key 0) and the ST2D/2E/2F variant 1/2 models. Variant 0 cracks after 25 ticks of standing on it (model key 1, sound 0x24F), shatters after 50 (3 pieces, sound 0x250) and heals when stepped off early; variants 1 (key 7) and 2 (key 6) are translucent and break only on a hit with damage and flags & 0x440000 (1: 16 shards, sound 0x24D; 2: 4x4 shard grid, sound 0x254, freed for good). A broken slab returns after 90 (variants 0, 3) or 150 (1, 2) ticks with a 16-tick translucent fade (sound 0x24E, 0x260 in ST58). Variant 3 starts hidden and non-solid with an unwritten timer (0 in a fresh pool, so 65536 ticks): the 28 ST2F area 7 and ST58 area 1 tiles stay hidden. Record byte 5 selects the callback cell; state 2 records (ST2F plates) use another routine and are left static. Sparkle effects and the two class-8 flash objects of the variant 2 break are not ported. E0/5 (ST1F, ST22, ST23) and E0/26 (ST20, ST48, ST4C, ST5B) are VRAM animation players: their callbacks only emit SLES 0x80063D74 copies (the GPU VRAM-to-VRAM rectangle copy; coordinates wrap at 1024 x 512). `export_vram_animations` runs each callback unchanged in Unicorn for 1600 ticks (global tick counter 0x1F800006 counting up), detects the period (E0/5 96 ticks, E0/26 64 to 256) and writes `vram_animations.json` plus the area VRAM (`vram_area_NN.bin`); `native_vram_animation.gd` applies the copies at 25 Hz and patches the baked page textures (materials are named clut_XXXX_page_YYYY, so a VRAM rectangle maps to texel rows of the matching 256 x 256 pages through that material's CLUT). ST48's E0/26 ignores the player-range gate (always on); ST00's E0/26 emits no copies. E0/4 (ST00, ST0A) steps the 20-byte entries of the map renderer's polygon-group list (scratch 0x1F8000B0 pointer and 0x1F8000B4 count, written by SLES 0x80026A58 for every map draw; entry bytes: flags (bit 7 skips), frame count, index, countdown, +4 pointer to a polygon packet, +0xC frame list of delay << 8 | frame, +0x10 table of two-word values) and, when the countdown ends, copies the selected two words (the packet's CLUT/UV and tpage/UV words) into the polygon packet: a per-polygon UV/CLUT animation of baked map faces, which needs a map from those packets to GLB faces; not ported. E0/22 (ST27, ST28, ST34) trace for the runner: callback 0x800FA118 (ST27; state table 0x80101228, state 0 sets the countdown +0x18 to 0x3C, state 1 0x800FA16C); each tick it asks GAME 0x800CDAC0 (player, halfword of the table at 0x80101244 indexed by the record variant) and, when that returns nonzero and the tick counter (scratch 0x1F800006) & 7 is 0 it calls 0x800F6998 (purpose untraced: it allocates through SLES 0x8003E800); when the countdown (+0x18) is zero it reloads (rnd & 0x3F) + 0x28, takes two random indices into the halfword tables 0x80101234/0x8010123C and calls SLES 0x80042674 (polar offset: angle = player yaw (0x8007D0CE) + table, radius from the table), adds the player x/z, queries the floor with 0x800B13FC/0x800B12B0 and, when the tile word has bit 0x4000 and (word & 0x1F) in 5..8, allocates a type 0x60 object (SLES 0x8003E800, class 0x2E = 46, flags |= 2) at that point; class 46 (ST27 cell 0x80105558: dispatcher 0x800F5D2C, state table 0x801010DC, init 0x800F5D68 fills eight streak slots (+0x74 + 2 * i heights, +0xA4.. 0x40/0x18/0x1F colour bytes), update/draw 0x800F61FC (479 words, SLES 0x8003EEC4, 0x80042674, 0x800B13B4) emits gouraud streak packets): it needs the runner's effect renderer; not ported. E0/22 (ST27, ST28, ST34) spawns class-46 particle streak objects around the player while the floor flag word has bit 0x4000 and type 5-8 (visual). E0/30 (ST28 area 3) spawns two class-68 flame objects every 16 ticks at (48,-1040,2224) and (976,-1040,2224) with a damage zone (SLES 0x80042704): a fire-vent hazard (ported: `export_area_controllers`, `native_area_controller.gd`; the burst cadence, rise, growth, fade and damage 8 are the traced values, the flame sprite is the original 8-frame sheet (`flame_sprites.png`: GAME VRAM tpage 0x2F, CLUT 0x7CD2, rows 0x40-0x5F, additive, frame = tick mod 8) and the hit sphere uses the traced radius because the collision resolver at SLES 0x80042A04 is not ported). E0/35 (ST48 area 1, ST5B area 0) is a pull-in field: inside the record radius (halfword +0xE) it puts the player in state 0xC (+0xBA = 1, +0xE0.. = record centre) and spawns class-3 effect 0x1C sand puffs. GAME 0x800C4454 pulls the player toward the centre each tick while +0xBA is set, by record halfword 8 * (radius - distance) / radius in 16.16 position units (0.0625 units per tick at the centre for 256), snapping to the centre when closer than one step, and a nonzero +0xBC scales the jump launch by 3/4 (1/2 when +0xBB > 0x30, not ported). Ported: the pull, the 3/4 jump (`soft_ground_ticks`) and the sand puffs: each tick the callback allocates one SLES 0x8003E918 object (class 3 = GAME 0x800D90EC, variant 0x1C) at player joint 14 or 17 (count * 3 + 0xB) when the distance moved per tick is >= 9 raw (or player state byte +9 is 2 or 3: (tick & 1) + 1), none below 5 and on odd ticks (rnd & 1) + 1 between 5 and 8; `models.capture_effect` runs the class unchanged in NativeMachine (15 frames of two additive sprite quads, GAME VRAM tpage 0x0E, CLUT 0x7C91) and `native_effect.gd` plays them. E0/19 (ST14 area 0) is an ambient sound channel trigger: a plane test on x (variants 0, 1) or z (2, 3) calls SLES 0x800464B4 / 0x80046568 or GAME 0x800D9B50 by record byte 8 on the channel list at 0x8009E9E8 and frees itself; the call requests music cue = record byte 9 (ported through the audio `_request_music`; the secondary channel call 2 is ignored). NPC head tracking (`native_town_npc.gd`, `native_head_look.gd`) follows the class-0 template at ST09 0x800E85C8/0x800E960C: look modes 1 (straight), 2 (player), 3 and 4 (route node within +-0x100), 5 and 6 (the watched class-0 actor whose record byte 8 equals this NPC's byte 10, within 0x200 and +-0x100 of facing; mode 6 aims at the own height) and 7/8 (up/down); stationary gesture NPCs pick 5-8 per pattern. E0/37 (ST41 areas 2, 6, 7; ST42 areas 6, 13) is a gravity gate: when the sign of the bearing difference to the line through the record (angle = record byte 6 * 256 + 0x400) changes within 0x200 of it, it clears event flags 0x153 and 0x154, sets 0x155 and plays sound 0x2BF (it also spawns six class-0x56 markers). The ST41/ST42 stage routine (0x800E7398) writes player+0xBF each tick: 12 with flag 0x155 (heavy), -8 with 0x153 (light), else 0; GAME 0x800C7250 scales the fall step to (3 * (16 + modifier)) >> 4, and the gravity terminal (ST41/ST42 messages 21-25) sets the flags. Ported: `export_gravity_gates` (gravity_gates.json), `native_gravity_gate.gd`, `native_gravity.gd` and the player `gravity_modifier` (the fall step, and the run speed scaled by 1 - modifier / 64 for positive modifiers, GAME 0x800C62C0..0x800C63B0).
+- Class numbers are per overlay. Type-0x60 class 25 is the lift pad in every dungeon whose overlay carries the ST0F lift code (pad, setup, run, finish and ride hash-identical; 25 stages, `export_dungeon_lifts` writes their `mine_lifts.json`): record bytes 8-11 are the question message, direction, lock flag offset and locked message (ST26 messages 1-11 are the floor questions, 14 the power-off message). The talk sites ST26 0x800E7DA0 (security terminals, messages 16-21) and ST56 0x800E773C (transfer monitor, messages 1-2) are not lift pads: they belong to objects no static record places (the stage's E0/10 script creates them) and run the same ten-state device template as the class-1 data terminals of ST14, ST17, ST1D, ST24, ST29, ST2F, ST35, ST40 and ST4C.
 
 ## Easter eggs and secrets found so far
 
 - ST09 kickable can (class 0x4A, hit handler 0x800EE24C) and duck (class 0x4B, hit handler 0x800EEE98): kicking them is ported; message ST09:100 pays 200 zenny and earns the matching achievement.
-- ST2B/ST3B class-8 type-0x60 props: proximity message triggers (`lb a3,0xF(actor)` index, flag from the record) with request calls at ST2B 0x800ED5C0 and ST3B 0x800F2ECC; not ported.
+- ST2B/ST3B class-8 type-0x60 props: one-shot proximity messages. When the player is idle and within `radius` of the record (ST2B table 0x800F3F80, ST3B table 0x800FEBB4, indexed by the record variant, y offset added to the record y) the prop sets the event flag in record bytes 8-9 (ST2B 0x3EB, ST3B 0x3EC), requests message record byte 11 (ST2B 50, ST3B 60) through 0x800BE2E0 (request 0x20000) at ST2B 0x800ED5C0 / ST3B 0x800F2ECC and frees itself. Ported (`native_proximity_message.gd`, `world.bind_proximity_messages`).
+- ST32 (Pokte mayor's home) hosts the quizzes ST25 messages 12-19 call a secret section of: class 88, 95 and 130 records at 0x800EAF00, 0x800EAF14 and 0x800EAF28 (request 0x800E7A18, messages 80, 60 and 10; the quiz fee messages 12-16 and the prize flow live in the ST32 bank); bound through `NATIVE_SCRIPTED_INTERACTIONS["ST32"]`.
+- ST32 Pokte quiz (ST25 messages 12-19 are the rumour lines): the mayor (message 10) and the two teachers (messages 80 and 60) start quizzes by setting event flags 0x680 with 0x683 (messages 17 and 19, fee 200 or 100 zenny) or 0x684 (messages 27 and 36); the quiz scene object in ST32T (setup 0x800E87C4, runner 0x800E8C64, sub-state tables 0x800E7018..0x800E7060) shows the question from the embedded bank at 0x800EBB28 (u16 offsets, four answers), checks the answer table at 0x800EBA44 (1-4), uses the prompt window rows at 0x800EB9A4 (messages 115-159) and counts the score. The secret is the mayor's second offer (messages 25-35, flag 1:24): after the first prize she gives the village treasure, the weapon Zetsabre (item 4:43), for 2,000,000 zenny (message 28 wallet gate, message 30) or for answering 100 questions in a row without a mistake (messages 27, 31-47). The message engine runs the offer, payment and item grant; `export_quiz` writes `assets/levels/ST32/quiz.json` (the 212 embedded questions with the text-run opcode the native reader opens implicitly, the question rows per quiz kind, the answers, the prompt window map and the teacher prize flags) and `native_quiz.gd` runs the scene object: kind from flags 0x681/0x682/0x683 (else 0x684), random row, ten (or 100) questions, the progress messages at 50, 80, 90 and 99, the failure messages (base+5/6 for the 100 route, base+2/3 otherwise), prize flags for the first four teacher passes, and the pass/fail nibbles of game bytes 0x75-0x77 kept in `native_quiz_progress`. The Left counter is drawn from the original digit sprites (`quiz_digits.png`: tpage 0x0D, CLUT 0x7F11, 8 x 12, origin (0x40, 0x1A), pitch 9). Not ported: the quizmaster gesture commands (record byte +0xC of the scene NPC), the confetti sprite (0x800E97D4), the scene 0x2B camera and the prompt window (the question window already says to choose).
+- Post office (ST0C messages 50-62): letters are chosen by flags 1:3F7..3FB (3:247-251) and the counter redirects (native_counter_redirect on counter 1 at 3, 6, 9) to messages 85-89; message 58 (the Servbots' letter) is the counter-9 branch. ST3F messages 48-49 are two copies of one idle line (a worker who would rather play video games); ST17 message 174 (Roll's diary) sits in a run of tips 168-175 with no flag gate. All run through the existing message engine.
+- ST29 class-1 type-0x20 record (area 0, story states 12+) is a data terminal: request call 0x800E9B08 in callback 0x800E97D4 (flags 0x6FA/0x6F9); ported as a class-1 talk binding.

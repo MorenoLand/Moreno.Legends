@@ -27,6 +27,8 @@ func _select(index: int) -> void:
 func _activate(index: int) -> void:
 	if index == 0: cancelled.emit()
 	else: confirmed.emit()
+func _input(event: InputEvent) -> void:
+	if surface != null and surface.visible and is_visible_in_tree() and not event.is_echo() and event.is_action_pressed("interact"): _activate(selection); get_viewport().set_input_as_handled()
 func _layout() -> void:
 	if surface == null or size.y <= 0: return
 	var factor := size.y / 240.0; surface.scale = Vector2.ONE * factor; surface.position = Vector2((size.x - 320.0 * factor) * 0.5, 0); surface.size = Vector2(320, 240); queue_redraw()

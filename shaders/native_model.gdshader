@@ -43,6 +43,11 @@ uniform vec4 portal_floor_clip_planes[16];
 uniform vec4 portal_floor_clip_bounds[16];
 uniform bool portal_floor_clip_bounded[16];
 uniform vec2 portal_floor_clip_depths[16];
+uniform bool doorway_aperture_enabled = false;
+uniform int doorway_aperture_axis = 0;
+uniform vec3 doorway_aperture_center = vec3(0.0);
+uniform vec2 doorway_aperture_half = vec2(0.0);
+uniform vec2 doorway_aperture_depths = vec2(0.0);
 varying vec3 portal_world_position;
 void vertex() {
 	native_source_face_order = UV2.x;
@@ -86,6 +91,16 @@ void fragment() {
 	if (hidden_face_range.x >= 0.0 && native_source_face_order >= hidden_face_range.x - 0.25 && native_source_face_order < hidden_face_range.y - 0.25) { discard; }
 	for (int i = 0; i < interior_clip_count; i++) {
 		if (all(greaterThanEqual(portal_world_position, interior_clip_min[i])) && all(lessThanEqual(portal_world_position, interior_clip_max[i]))) { discard; }
+	}
+	if (doorway_aperture_enabled) {
+		// Doorway depth walls exist only for the view through the opening; hide them wherever the eye ray does not enter through the nearer mouth.
+		vec3 eye_point = INV_VIEW_MATRIX[3].xyz; int across = doorway_aperture_axis == 0 ? 2 : 0; float eye_depth = eye_point[doorway_aperture_axis];
+		if (eye_depth < doorway_aperture_depths.x || eye_depth > doorway_aperture_depths.y) {
+			float mouth = eye_depth < doorway_aperture_depths.x ? doorway_aperture_depths.x : doorway_aperture_depths.y; float span = portal_world_position[doorway_aperture_axis] - eye_depth;
+			if (abs(span) < 0.000001) { discard; }
+			vec3 crossing = mix(eye_point, portal_world_position, (mouth - eye_depth) / span);
+			if (abs(crossing[across] - doorway_aperture_center[across]) > doorway_aperture_half.x + 0.01 || abs(crossing.y - doorway_aperture_center.y) > doorway_aperture_half.y + 0.01) { discard; }
+		}
 	}
 	bool aperture_required = false; bool aperture_visible = false; vec3 eye = INV_VIEW_MATRIX[3].xyz;
 	for (int i = 0; i < room_clip_count; i++) {

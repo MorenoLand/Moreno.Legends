@@ -72,15 +72,21 @@ static func load_into(parent: Node3D, stage: String, area: int, native_context: 
 			if active: _attach_spawn_actions(node, spawn_set_id, spawn_source, action_sets)
 		if not is_instance_valid(parent): return created
 	if active:
+		var runner_handlers := {}
+		if runner_owned(stage):
+			for id: String in enabled_sets:
+				for effect: Dictionary in spawn_sets_by_id[id].get("source", {}).get("native_side_effects", []):
+					if str(effect.get("kind", "")) == "call": runner_handlers[str(spawn_sets_by_id[id]["source"].get("callback", ""))] = true
 		for id: String in enabled_sets:
 			if action_sets.has(id): continue
 			var script_source: Dictionary = spawn_sets_by_id[id].get("source", {})
+			if runner_handlers.has(str(script_source.get("callback", ""))): continue
 			if script_source.get("native_side_effects", []).is_empty() and script_source.get("native_local_state_mutations", []).is_empty(): continue
 			var name := "NativeScriptActions_" + id; var controller := parent.get_node_or_null(name) as Node3D
 			if controller == null: controller = Node3D.new(); controller.name = name; parent.add_child(controller); controller.set_meta("native_stage", stage); controller.set_meta("native_area", area)
 			_attach_spawn_actions(controller, id, script_source, action_sets)
 	parent.set_meta(registry_key, registry); parent.set_meta(registry_key + "_slots", slot_pointers)
-	if active: parent.set_meta("native_deferred_pose", deferred_pose)
+	if active: parent.set_meta("native_deferred_pose", deferred_pose); _attach_gravity_gates(parent, stage, area, native_context); _attach_quiz(parent, stage, native_context); _attach_area_controllers(parent, stage, area); _attach_vram_animations(parent, stage, area)
 	return created
 static func _attach_spawn_actions(node: Node3D, id: String, source: Dictionary, owners: Dictionary) -> void:
 	var actions: Array = source.get("native_side_effects", []).duplicate(true); actions.append_array(source.get("native_local_state_mutations", []))
@@ -113,7 +119,7 @@ static func initialize_into(parent: Node3D, stage: String, area: int, native_con
 		flags_changed = flags_changed or bool(result.get("flags_changed", false)); state_changed = state_changed or bool(result.get("state_changed", false))
 		if not bool(result.get("flags_changed", false)) and not bool(result.get("state_changed", false)): break
 		await tree.physics_frame
-	if is_instance_valid(parent): parent.set_meta("native_initialization_result", {"flags_changed": flags_changed, "state_changed": state_changed, "pending_scene_requests": pending_scene_requests(parent)}); preload("res://scripts/world/enemies/native_icefield_encounter.gd").attach(parent, stage, area, native_context)
+	if is_instance_valid(parent): parent.set_meta("native_initialization_result", {"flags_changed": flags_changed, "state_changed": state_changed, "pending_scene_requests": pending_scene_requests(parent)}); preload("res://scripts/world/enemies/native_icefield_encounter.gd").attach(parent, stage, area, native_context); preload("res://scripts/runner/runner_host.gd").attach(parent, stage, area, native_context)
 	return created
 static func initialization_result(parent: Node3D) -> Dictionary: return parent.get_meta("native_initialization_result", {}) if is_instance_valid(parent) else {}
 static func spawn_entry(parent: Node3D, stage: String, area: int, entry: Dictionary, model: Dictionary, context: Dictionary = {}) -> Node3D:
@@ -121,6 +127,7 @@ static func spawn_entry(parent: Node3D, stage: String, area: int, entry: Diction
 	if node != null: _attach_native_source(node, stage, area, entry)
 	return node
 static func pending_scene_requests(parent: Node3D) -> Array: return parent.get_meta("native_pending_scene_requests", []) if is_instance_valid(parent) else []
+static func runner_owned(stage: String) -> bool: return bool(_read_manifest("res://assets/runner/manifest.json").get("stages", {}).get(stage, {}).get("attach", {}).get("enabled", false))
 static func pending_audio_requests(parent: Node3D) -> Array: return parent.get_meta("native_pending_audio_requests", []) if is_instance_valid(parent) else []
 static func drain_audio_requests(parent: Node3D, audio: Node, stage: String, area: int) -> void:
 	if not is_instance_valid(parent) or not is_instance_valid(audio): return
@@ -255,6 +262,9 @@ static func _attach_native_source(node: Node3D, stage: String, area: int, entry:
 	node.set_meta("native_stage", stage); node.set_meta("native_area", area); node.set_meta("native_actor_source", entry.duplicate(true)); preload("res://scripts/world/actors/native_interaction.gd").attach(node, entry)
 	if entry.get("native_lock_on", null) is Dictionary: node.set_meta("native_lock_on", entry["native_lock_on"]); node.add_to_group("lock_targets")
 	if entry.has("native_chest"): _attach_chest(node, entry)
+	if entry.has("native_proximity_message"): _attach_proximity(node, entry)
+	if entry.has("native_ice_block"): _attach_ice(node, stage, entry)
+	if int(entry.get("class", -1)) == 0x19 and stage != "ST0F": _attach_lift(node)
 	if int(entry.get("actor_class", -1)) == 0x6F and stage != "ST0F" and entry.has("native_interaction"): _attach_refractor(node, entry)
 	if str(entry.get("role", "")) == "bridge_steering_wheel": node.add_to_group("flutter_steering_wheels")
 	if int(entry.get("native_resource_flags", -1)) == 0x3020: node.add_to_group("parked_flutter_hulls")
@@ -270,6 +280,52 @@ static func _attach_chest(node: Node3D, entry: Dictionary) -> void:
 	if gameplay == null or node.has_meta("native_item_controller"): return
 	var item: Node = preload("res://scripts/world/missions/mine/native_mine_item.gd").new(); node.add_child(item); item.configure(gameplay, node, entry, entry["native_chest"])
 	if int(entry.get("position_raw", [0, 0, 0])[1]) == -1: preload("res://scripts/world/actors/native_actor_motion.gd").settle_on_floor.call_deferred(node)
+static func _attach_lift(node: Node3D) -> void:
+	var gameplay: Node = node.get_parent()
+	while gameplay != null and gameplay.get_node_or_null("Player") == null: gameplay = gameplay.get_parent()
+	if gameplay != null: preload("res://scripts/world/missions/mine/native_mine_lift.gd").attach(gameplay, node)
+static func _attach_area_controllers(parent: Node3D, stage: String, area: int) -> void:
+	var document := _read_manifest("res://assets/levels/%s/area_controllers.json" % stage); var gameplay: Node = parent
+	while gameplay != null and gameplay.get_node_or_null("Player") == null: gameplay = gameplay.get_parent()
+	if gameplay == null: return
+	for controller: Dictionary in document.get("controllers", []):
+		var name := "NativeAreaController_%s" % str(controller["source_ram"])
+		if int(controller["area"]) != area or parent.get_node_or_null(name) != null: continue
+		var node: Node = preload("res://scripts/world/actors/native_area_controller.gd").new(); node.name = name; parent.add_child(node); node.configure(parent, gameplay, document, controller)
+static func _attach_vram_animations(parent: Node3D, stage: String, area: int) -> void:
+	var document := _read_manifest("res://assets/levels/%s/vram_animations.json" % stage)
+	for entry: Dictionary in document.get("animations", []):
+		var name := "NativeVramAnimation_%s" % str(entry["source_ram"])
+		if int(entry["area"]) != area or parent.get_node_or_null(name) != null: continue
+		var path := "res://assets/levels/%s/vram_area_%02d.bin" % [stage, area]
+		if not FileAccess.file_exists(path): continue
+		var node: Node = preload("res://scripts/world/actors/native_vram_animation.gd").new(); node.name = name; parent.add_child(node); node.configure(parent, entry, FileAccess.get_file_as_bytes(path))
+static func _attach_quiz(parent: Node3D, stage: String, native_context: Dictionary) -> void:
+	if stage != "ST32" or parent.get_node_or_null("NativeQuiz") != null: return
+	var document := _read_manifest("res://assets/levels/ST32/quiz.json"); var gameplay: Node = parent
+	while gameplay != null and gameplay.get_node_or_null("Player") == null: gameplay = gameplay.get_parent()
+	if gameplay == null or document.is_empty(): return
+	var node: Node = preload("res://scripts/world/actors/native_quiz.gd").new(); node.name = "NativeQuiz"; parent.add_child(node); node.configure(gameplay, native_context, document)
+static func _attach_gravity_gates(parent: Node3D, stage: String, area: int, native_context: Dictionary) -> void:
+	var document := _read_manifest("res://assets/levels/%s/gravity_gates.json" % stage); var gameplay: Node = parent
+	while gameplay != null and gameplay.get_node_or_null("Player") == null: gameplay = gameplay.get_parent()
+	if gameplay == null: return
+	for gate: Dictionary in document.get("gates", []):
+		var name := "NativeGravityGate_%s" % str(gate["source_ram"])
+		if int(gate["area"]) != area or parent.get_node_or_null(name) != null: continue
+		var node: Node = preload("res://scripts/world/actors/native_gravity_gate.gd").new(); node.name = name; parent.add_child(node); node.configure(parent, gameplay, native_context, document, gate)
+static func _attach_ice(node: Node3D, stage: String, entry: Dictionary) -> void:
+	var gameplay: Node = node.get_parent()
+	while gameplay != null and gameplay.get_node_or_null("Player") == null: gameplay = gameplay.get_parent()
+	var source: Dictionary = _read_manifest("res://assets/stage_props/manifest.json").get("stages", {}).get(stage, {})
+	if gameplay == null or not source.has("native_ice_block") or int(entry["native_ice_block"]["state"]) != 0 or node.get_node_or_null("NativeIceBlock") != null: return
+	var block: Node = preload("res://scripts/world/actors/native_ice_block.gd").new(); block.name = "NativeIceBlock"; node.add_child(block)
+	if not block.configure(gameplay, node, stage, source["native_ice_block"], source.get("models", []), entry): block.queue_free()
+static func _attach_proximity(node: Node3D, entry: Dictionary) -> void:
+	var gameplay: Node = node.get_parent()
+	while gameplay != null and gameplay.get_node_or_null("Player") == null: gameplay = gameplay.get_parent()
+	if gameplay == null or node.get_node_or_null("NativeProximityMessage") != null: return
+	var trigger: Node = preload("res://scripts/world/actors/native_proximity_message.gd").new(); trigger.name = "NativeProximityMessage"; node.add_child(trigger); trigger.configure(gameplay, node, entry["native_proximity_message"])
 static func _attach_refractor(node: Node3D, entry: Dictionary) -> void:
 	var gameplay: Node = node.get_parent()
 	while gameplay != null and gameplay.get_node_or_null("Player") == null: gameplay = gameplay.get_parent()
@@ -323,7 +379,9 @@ static func _load_actor(parent: Node3D, path: String, entry: Dictionary, model: 
 		if animation_clock.configure(animation, model.get("animations", [])): animation_clock.play_control(control, frame)
 	var movement_profile: Dictionary = entry.get("native_movement", {})
 	if not movement_profile.is_empty():
-		var behavior := preload("res://scripts/world/actors/native_npc_behavior.gd").new(); behavior.name = "NativeNpcBehavior"; node.add_child(behavior); behavior.configure(node, movement_profile, native_context)
+		var town := str(movement_profile.get("kind", "")) == "town_npc"
+		if town: movement_profile = movement_profile.merged(_read_manifest("res://assets/levels/%s/scripted_actors.json" % str(entry.get("stage", ""))).get("native_town_npc", {})); movement_profile["collision_bounds_raw"] = hitbox.get("bounds_raw", [])
+		var behavior: Node = (preload("res://scripts/world/actors/native_town_npc.gd") if town else preload("res://scripts/world/actors/native_npc_behavior.gd")).new(); behavior.name = "NativeNpcBehavior"; node.add_child(behavior); behavior.configure(node, movement_profile, native_context)
 	var interaction: Dictionary = entry.get("native_interaction", {})
 	if int(entry.get("actor_class", -1)) == 0 and int(interaction.get("actor_state", -1)) == 1 and ((str(entry.get("stage", "")) == "ST08" and str(entry.get("source_record_ram", "")) == "0x800f5284" and str(interaction.get("actor_callback", "")).to_lower() == "0x800e93ec") or (str(entry.get("stage", "")) == "ST09" and str(entry.get("source_record_ram", "")) == "0x800f2d00" and str(interaction.get("actor_callback", "")).to_lower() == "0x800e9d0c")):
 		var follower := preload("res://scripts/world/actors/native_follower.gd").new(); follower.name = "NativeFollower"; node.add_child(follower)

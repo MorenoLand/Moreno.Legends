@@ -6,6 +6,7 @@ const FLAG_ERROR_MASK := 0x7F87E000
 var d := PackedInt32Array()
 var c := PackedInt32Array()
 var unr := PackedInt32Array()
+var trace: Variant = null
 
 
 func _init() -> void:
@@ -301,6 +302,16 @@ func _mvmva_special(sf: int, mx: int, vx: int, cv: int, lm: bool) -> void:
 
 
 func cmd(command: int) -> void:
+	if trace == null:
+		_execute(command)
+		return
+	var before_d := d.duplicate()
+	var before_c := c.duplicate()
+	_execute(command)
+	trace.append([command, before_d, before_c, d.duplicate(), c[31]])
+
+
+func _execute(command: int) -> void:
 	var op := command & 0x3F
 	var sf := (command >> 19) & 1
 	var lm := ((command >> 10) & 1) == 1

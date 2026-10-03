@@ -526,6 +526,9 @@ NATIVE_INTERACTION_TARGETS.setdefault("ST3F", {})[(1, 0)] = (0x800F0288, 0x800F0
 NATIVE_SCRIPTED_INTERACTIONS["ST40"] = {(0, 0): (0x800E84E4, 0x800E8964, 0, False), (1, 0): (0x800EA004, 0x800EA338, 2, False)}
 NATIVE_INTERACTION_TARGETS["ST40"] = {(0, 0): (0x800FD564, 0x800FD570), (1, 0): (0x800FDEA4, 0x800FDEA4)}
 for _stage, _callback, _target in (("ST14", 0x800E7D84, 0x80106720), ("ST23", 0x800E7708, 0x800F05F8), ("ST35", 0x800E7994, 0x800FA274), ("ST48", 0x800E7844, 0x800F9AAC), ("ST2F", 0x800E8064, 0x8010360C), ("ST4C", 0x800E77E8, 0x800FB364)): NATIVE_SCRIPTED_INTERACTIONS[_stage] = {(1, 0): (_callback, _callback + 0x334, 2, False)}; NATIVE_INTERACTION_TARGETS[_stage] = {(1, 0): (_target, _target)}
+NATIVE_SCRIPTED_INTERACTIONS["ST29"][(1, 0)] = (0x800E97D4, 0x800E9B08, 2, False); NATIVE_INTERACTION_TARGETS["ST29"][(1, 0)] = (0x800F79E8, 0x800F79E8)
+for _class in (88, 95, 130): NATIVE_SCRIPTED_INTERACTIONS.setdefault("ST32", {})[(_class, 0)] = (0x800E74F4, 0x800E7A18, 0x12, False); NATIVE_INTERACTION_TARGETS.setdefault("ST32", {})[(_class, 0)] = (0x800EB09C, 0x800EB09C)
+NATIVE_SCRIPTED_INTERACTIONS["ST4A"] = {(0, 0): (0x800E7850, 0x800E7CD0, 2, False)}; NATIVE_INTERACTION_TARGETS["ST4A"] = {(0, 0): (0x800EFF54, 0x800EFF60)}
 NATIVE_SCRIPTED_INTERACTIONS["ST24"][(11, 0)] = (0x800EB2BC, 0x800EB318, 0, False); NATIVE_INTERACTION_TARGETS["ST24"][(11, 0)] = (0x800F4CD0, 0x800F4CDC)
 NATIVE_SCRIPTED_INTERACTIONS["ST3B"][(11, 1)] = (0x800ECAE8, 0x800ECB44, 0, False); NATIVE_INTERACTION_TARGETS["ST3B"][(11, 1)] = (0x800FE8E8, 0x800FE8F4)
 for _stage, _callback, _target in (("ST4F", 0x800F2AF4, 0x800FEC78), ("ST50", 0x800EFE68, 0x800FF2DC), ("ST51", 0x800EA190, 0x800EEE80)): NATIVE_SCRIPTED_INTERACTIONS[_stage] = {(111, 0): (_callback, _callback + 0x304, 0x12, False)}; NATIVE_INTERACTION_TARGETS[_stage] = {(111, 0): (_target, _target)}
@@ -544,6 +547,29 @@ def bind_scripted_interactions(stage, records, overlay, source_key="source_bytes
 			pointer = targets[bool(raw[9] & 8)]; descriptor = list(struct.unpack_from("<6h", overlay, 48 + pointer - base)); record["native_interaction"].update(target_descriptor_raw=descriptor, target_descriptor_source=hex(pointer), target_flags60=1, target_selector_source="GAME0x800CC2F0/0x800CC5B4", target_criteria={"range_extra_raw": 192, "yaw_half_cone_raw": 512, "strict_bounds": True, "descriptor_xyz_rotated": False, "score": "integer3Ddistance+(absYawDelta>>2)", "line_of_sight": False})
 	return records
 
+EXAMINE_TARGETS = {"ST1D": {"callback": 0x800F65C0, "descriptor": 0x800FCE94, "class": 1, "type": 0x60, "variant": 1}}
+def bind_examine_targets(stage, records, overlay):
+	if stage not in EXAMINE_TARGETS: return records
+	binding = EXAMINE_TARGETS[stage]; base = read_u32(overlay, 12); offset = 48 + binding["callback"] - base
+	if read_u32(overlay, offset + 0x20) != 0x0C034055 or read_u32(overlay, offset + 0x30) != 0x0C030156 or read_u32(overlay, offset + 0x34) >> 16 != 0x2404: raise ValueError(f"{stage} examine callback differs at {binding['callback']:#x}")
+	flag = read_u32(overlay, offset + 0x34) & 65535
+	for record in records:
+		raw = bytes.fromhex(record["source_bytes_hex"])
+		if raw[2] != binding["type"] or raw[4] != binding["class"] or raw[6] != binding["variant"]: continue
+		record["native_interaction"] = {"stage": stage, "actor_class": raw[4], "actor_state": raw[5], "actor_callback": hex(binding["callback"]), "examine_event_flag": flag, "selected_actor_gate": "GAME0x800D0154 requires player+1D0 low24bits equal actor and bit24 set", "after": "set event flag, state 2 frees the actor (SLES0x8003EB28)", "target_descriptor_raw": list(struct.unpack_from("<6h", overlay, 48 + binding["descriptor"] - base)), "target_descriptor_source": hex(binding["descriptor"]), "target_flags60": 1, "target_selector_source": "GAME0x800CC2F0/0x800CC5B4", "target_criteria": {"range_extra_raw": 192, "yaw_half_cone_raw": 512, "strict_bounds": True, "descriptor_xyz_rotated": False, "score": "integer3Ddistance+(absYawDelta>>2)", "line_of_sight": False}}
+	return records
+
+PROXIMITY_MESSAGES = {"ST2B": (0x800ED4D4, 0x800ED5C0, 0x800F3F80), "ST3B": (0x800F2DE0, 0x800F2ECC, 0x800FEBB4)}
+def bind_proximity_messages(stage, records, overlay):
+	if stage not in PROXIMITY_MESSAGES: return records
+	function, request, table = PROXIMITY_MESSAGES[stage]; base = read_u32(overlay, 12); offset = 48 + request - base
+	if read_u32(overlay, offset) != 0x0C02F8B8 or read_u32(overlay, offset - 8) != 0x3C050002 or read_u32(overlay, offset - 4) != 0x8227000F: raise ValueError(f"{stage} proximity message request differs at {request:#x}")
+	for record in records:
+		raw = bytes.fromhex(record["source_bytes_hex"])
+		if raw[2] != 0x60 or raw[4] != 8: continue
+		radius, y_offset = struct.unpack_from("<hH", overlay, 48 + table + raw[6] * 4 - base)
+		record["native_proximity_message"] = {"stage": stage, "function": hex(function), "request_call": hex(request), "request_api": "0x800BE2E0", "request_argument": 0x20000, "message_call": "0x800BDCF8", "bank_id": "0x8010C000", "message_index": raw[11] - 256 if raw[11] & 128 else raw[11], "event_flag": raw[8] | raw[9] << 8, "radius_raw": radius, "y_offset_raw": y_offset, "table_ram": hex(table), "gate": "player+0x140 == 0 and player+0x50 | player+0x51 == 0", "distance": "SLES0x80041C7C(actor position with y+y_offset, player+0x10) < radius", "after": "set event flag, request message, free the actor (SLES0x8003EB28)"}
+	return records
 STAGE_NAMES = {"ST00": "Debug area", "ST01": "World map", "ST02": "Sulphur-Bottom opening", "ST03": "Flutter opening", **dict.fromkeys(["ST04", "ST05", "ST06", "ST07"], "Flutter"), **dict.fromkeys(["ST08", "ST09", "ST0A", "ST0B", "ST0C", "ST47"], "Yosyonke City"), **dict.fromkeys(["ST0D", "ST0E"], "Calinca Tundra"), "ST0F": "Abandoned Mine", **dict.fromkeys(["ST10", "ST11", "ST1D"], "Forbidden Island"), **dict.fromkeys(["ST12", "ST13", "ST14"], "Manda Ruins"), **dict.fromkeys(["ST15", "ST16", "ST18", "ST19"], "Nino Island"), "ST17": "King Glydon", **dict.fromkeys(["ST1A", "ST1B"], "Ruminoa City"), "ST1C": "Forbidden Island / Sulphur-Bottom scenes", "ST1E": "Flutter fire", **dict.fromkeys(["ST1F", "ST30", "ST31"], "Glyde's Base"), "ST20": "Kito Village", **dict.fromkeys(["ST21", "ST22", "ST23"], "Calbania Plains"), "ST24": "Pokte Plains", "ST25": "Pokte Village", **dict.fromkeys(["ST26", "ST27", "ST28", "ST33", "ST34"], "Saul Kada Ruins"), **dict.fromkeys(["ST29", "ST2A", "ST2B", "ST2C", "ST3B", "ST3C"], "Kimotoma City"), **dict.fromkeys(["ST2D", "ST2E", "ST2F"], "Calinca Ruins"), "ST32": "Pokte Mayor's Home", **dict.fromkeys(["ST35", "ST36", "ST37", "ST38"], "Nino Ruins"), "ST39": "Flutter new-game scene", "ST3A": "Sulphur-Bottom / Forbidden Island scenes", **dict.fromkeys(["ST3D", "ST3E", "ST3F", "ST4B"], "Sulphur-Bottom"), "ST40": "Elysium", **dict.fromkeys(["ST41", "ST42"], "Defense Area"), **dict.fromkeys(["ST43", "ST44", "ST45", "ST4C", "ST58", "ST5C"], "Mother Zone"), "ST46": "Nino Island / Flutter scenes", "ST48": "Saul Kada Desert", "ST49": "Flutter / Dropship scenes", "ST4A": "Tutorial", "ST4D": "Guild Ruins", **dict.fromkeys(["ST4E", "ST51"], "Pokte Caverns"), "ST4F": "Kito Caverns", "ST50": "Kimotoma Caverns", "ST52": "Sera / Master scenes", "ST53": "Calinca Tundra scenes", "ST54": "Rocket launch ending", "ST55": "License Test Ruins", "ST56": "Master's Room", "ST57": "Game credits", "ST59": "Manda Circuit", "ST5A": "Calinca Circuit", "ST5B": "Saul Kada Circuit"}
 LOCATIONS = (("ST04", 0, "Flutter Bridge"), ("ST04", 1, "Flutter Deck 1"), ("ST04", 2, "Flutter Lab"), ("ST05", 0, "Flutter MegaMan's Room"), ("ST05", 1, "Flutter Roll's Room"), ("ST05", 2, "Flutter Barrell's Room"), ("ST06", 0, "Flutter Deck 2"), ("ST06", 1, "Flutter Toilet"), ("ST06", 2, "Flutter Storage"), ("ST06", 3, "Flutter Living Room"), ("ST06", 4, "Flutter Kitchen"), ("ST06", 5, "Flutter Bathroom"), ("ST07", 0, "Flutter Deck 3"), ("ST07", 1, "Flutter Hangar"), ("ST07", 2, "Flutter Engine Room"))
 def location_name(stage, area):
@@ -798,6 +824,7 @@ def export_routes(dat_dir, output_dir, stages):
 		for route in routes:
 			old = next((candidate for candidate in previous.get("area_transitions", []) if candidate.get("source_area") == route["source_area"] and candidate.get("bytes_hex") == route["bytes_hex"]), {})
 			for key, value in old.items(): route.setdefault(key, value)
+		story_route_patches(stage, data, routes)
 		floor_manifest = floor_collision_manifest(dat_dir / (stage + ".BIN")); bind_route_contacts(routes, floor_manifest)
 		map_interactions = [{"source_area": int(area), "native_contacts": [{**contact, "type": 16, "automatic": False, "probe_forward_raw": -64 if contact["mask"] & 0x8000 else 0}], "runtime_index": contact["mask"] & 255, "message_kind": 0, "window": 0, "source_function": "GAME0x800B81CC/0x800BE330", "source_bank_pointer": "0x8010C000", "action_required": True} for area, collision in floor_manifest.items() for contact in collision.get("boxes", []) if contact["kind"] == 0x1000 and contact["mask"] & 0x4000]
 		for area, collision in floor_manifest.items():
@@ -943,10 +970,59 @@ def export_scene_door_records(stage, overlay, metadata, dat_dir):
 	write_output(ROOT / "assets/levels" / stage / f"scene_{binding['scene']:02x}_doors.json", json.dumps({"stage": stage, "scene": binding["scene"], "groups": groups}, indent=2) + "\n", encoding="utf-8")
 	cinematics.scenes_export_church(dat_dir, ROOT / "assets/levels" / stage)
 
+LIFT_CODE = {"pad": ("802f388852", 612), "setup": ("9ca94770dd", 860), "run": ("8f14ca3cdf", 92), "finish": ("03bb72d961", 140), "ride": ("8f29f3413e", 520)}
+def export_stage_lifts(stage, overlay, instances):
+	import models
+	reference_path = ROOT / "assets/levels/ST0F/mine_lifts.json"
+	if stage == "ST0F" or not reference_path.is_file() or not any(entry["class"] == 0x19 for entry in instances): return None
+	base, count, words, word = models.overlay_words(overlay); starts = [base + index * 4 for index in range(count) if words[index] >> 16 == 0x27BD and words[index] & 0x8000]; found = {}
+	for number, start in enumerate(starts):
+		end = starts[number + 1] if number + 1 < len(starts) else base + count * 4
+		for name, (digest, length) in LIFT_CODE.items():
+			if end - start == length and models.overlay_code_hash(overlay, start, end) == digest: found[name] = start
+	if set(found) != set(LIFT_CODE): return None
+	reference = json.loads(reference_path.read_text(encoding="utf-8")); constants = [value for _, value in models.overlay_constants(overlay, found["pad"], LIFT_CODE["pad"][1] // 4) if word(value) is not None]
+	if len(constants) != 6 or constants[1] != constants[2] or constants[2] != constants[3] or constants[4] != constants[1] + 12 or constants[5] != constants[1] + 24: return None
+	descriptors = {str(yaw): list(struct.unpack_from("<6h", overlay, 48 + constants[1] + step * 12 - base)) for yaw, step in ((0, 0), (0x400, 1), (0x800, 2), (0xC00, 3))}; lifts = []
+	for entry in instances:
+		if entry["class"] != 0x19: continue
+		raw = bytes.fromhex(entry["source_bytes"]); lifts.append({"area": entry["area"], "source_ram": entry["source_ram"], "source_bytes_hex": entry["source_bytes"], "position_raw": entry["position_raw"], "yaw_raw": entry["yaw_raw"], "message_index": raw[8], "direction": raw[9], "lock_flag_offset": raw[10], "locked_message_index": raw[11]})
+	pad = {**reference["pad"], "model_index": next(entry["model_index"] for entry in instances if entry["class"] == 0x19), "hitbox_raw": list(struct.unpack_from("<6h", overlay, 48 + constants[0] - base)), "hitbox_source": hex(constants[0]), "target_descriptors_by_yaw": descriptors, "target_descriptor_source": "%s/%s/%s/%s selected by actor yaw 0/0x400/0x800/else" % tuple(hex(constants[1] + step * 12) for step in range(4))}
+	document = {"stage": stage, "source": {"script": "tools/world.py", "pad_callback": f"{stage}T{found['pad']:#x} (class 0x19)", "shared_with": "ST0F: pad, setup, run, finish and ride hash-identical after masking overlay addresses", "scene_callbacks": {name: hex(found[name]) for name in ("setup", "run", "finish", "ride")}}, "pad": pad, "ride": {**reference["ride"], "source": f"{stage}T{found['ride']:#x}"}, "lifts": lifts}
+	write_output(ROOT / "assets/levels" / stage / "mine_lifts.json", json.dumps(document, indent=1) + "\n", encoding="utf-8"); return document
+def export_dungeon_lifts(dat_dir=None, stages=None):
+	dat_dir = Path(dat_dir or ROOT / "build/disc-assets/DAT"); manifest = json.loads((ROOT / "assets/stage_props/manifest.json").read_text(encoding="utf-8"))["stages"]; written = {}
+	for stage, entry in manifest.items():
+		if stages and stage not in stages: continue
+		overlay_path = dat_dir / (stage + "T.BIN")
+		if overlay_path.is_file() and any(item["class"] == 0x19 for item in entry.get("instances", [])) and export_stage_lifts(stage, overlay_path.read_bytes(), entry["instances"]) is not None: written[stage] = sum(item["class"] == 0x19 for item in entry["instances"])
+	return {"stages": written}
+ICE_CODE = (("update", "28b71d3cf2", 56), ("init", "9643656817", 88), ("idle", "3bac00d6c7", 300), ("fall", "669c335ba4", 48), ("free", "b6ada52ddf", 8), ("sparkle", "12f6f1fbf5", 112), ("break_cracked", "645b85718a", 109), ("break_large", "58a12fe923", 172), ("break_ice", "8e944bac95", 107))
+def ice_block_profile(stage, overlay, actor_class, state):
+	import models
+	base, count, words, word = models.overlay_words(overlay); table = overlay_global_table(overlay, 0x8DE0)
+	if table is None: return None
+	cell = word(table + 4 * actor_class); callback = word(cell + 4 * state) if cell is not None else None
+	starts = [base + index * 4 for index in range(count) if words[index] >> 16 == 0x27BD and words[index] & 0x8000]
+	if callback not in starts: return None
+	first = starts.index(callback); found = {}
+	for number, (name, digest, length) in enumerate(ICE_CODE):
+		if first + number + 1 >= len(starts): return None
+		start, end = starts[first + number], starts[first + number + 1]
+		if (end - start) // 4 != length or models.overlay_code_hash(overlay, start, end)[:10] != digest: return None
+		found[name] = start
+	constants = {name: [value for _, value in models.overlay_constants(overlay, found[name], length)] for name, _, length in ICE_CODE}
+	if len(constants["init"]) != 5 or len(constants["idle"]) != 6 or len(constants["break_cracked"]) != 1: return None
+	read = lambda address, fmt, size: list(struct.unpack_from(fmt, overlay, 48 + address - base)) if size else []
+	sounds = {}
+	for name in ("idle", "break_cracked", "break_large", "break_ice"):
+		start = found[name]; length = next(item[2] for item in ICE_CODE if item[0] == name); sounds[name] = [(words[(start - base) // 4 + at] & 0xFFFF) for at in range(length - 1) if words[(start - base) // 4 + at] >> 16 == 0x2404 and words[(start - base) // 4 + at] & 0xFFFF >= 0x100]
+	if len(sounds["idle"]) != 4 or any(len(sounds[name]) != 1 for name in ("break_cracked", "break_large", "break_ice")): return None
+	return {"callback": hex(callback), "functions": {name: hex(address) for name, address in found.items()}, "variant_keys": read(constants["init"][0], "<8B", 8), "piece_keys": read(constants["init"][2], "<8B", 8), "bounds_raw": {"slab": read(constants["init"][1], "<6h", 6), "piece": read(constants["init"][3], "<6h", 6), "shard": read(constants["init"][3] + 12, "<6h", 6)}, "crack_key": read(constants["idle"][2], "<B", 1)[0], "intact_key": read(constants["idle"][4], "<B", 1)[0], "respawn_ticks": read(constants["idle"][3], "<4H", 4), "piece_offsets": read(constants["break_cracked"][0], "<6h", 6), "sounds": {"crack": sounds["idle"][0], "trigger": sounds["idle"][1], "reappear": sounds["idle"][2] if stage == "ST58" else sounds["idle"][3], "break_cracked": sounds["break_cracked"][0], "break_large": sounds["break_large"][0], "break_ice": sounds["break_ice"][0]}, "source": {"state_table": hex(constants["update"][0]), "reappear_sound_stage_58_only": hex(sounds["idle"][2]), "reappear_sound": hex(sounds["idle"][3])}}
 def export_props(dat_dir, output_dir, stages):
 	output_dir.mkdir(parents=True, exist_ok=True); work = ROOT / "build/stages"; work.mkdir(parents=True, exist_ok=True); target = output_dir / "manifest.json"; manifest = json.loads(target.read_text()) if target.exists() else {"stages": {}}
 	for stage in stages:
-		manual = STAGE_BINDINGS.get(stage, {}); overlay_path = dat_dir / (stage + "T.BIN"); root_path = dat_dir / (stage + ".BIN"); instances = []; models = {}; native_doors = []; unresolved = []; weather_records = []; section = None; uploads = []; source = root_path.read_bytes()
+		manual = STAGE_BINDINGS.get(stage, {}); ice_profiles = {}; ice_models = {}; overlay_path = dat_dir / (stage + "T.BIN"); root_path = dat_dir / (stage + ".BIN"); instances = []; models = {}; native_doors = []; unresolved = []; weather_records = []; section = None; uploads = []; source = root_path.read_bytes()
 		if not overlay_path.is_file(): manifest["stages"][stage] = {"binding_status": "unbound", "source": {"archive": root_path.name, "overlay": overlay_path.name}, "models": [], "native_doors": [], "instances": []}; continue
 		overlay = overlay_path.read_bytes(); area_count = len(Stage(source).grids); table_area_count = area_count; detections = native_actor_lists(overlay, table_area_count); detected = detections[0] if detections else None
 		if detected: actor_pointer_table = detected["address"]; actor_caller = hex(detected["call_pc"]); raw_records = detected["records"]
@@ -959,12 +1035,14 @@ def export_props(dat_dir, output_dir, stages):
 				bank_path = dat_dir.parent / bank
 				if bank_path.is_file(): uploads.extend(texture_uploads(bank_path.read_bytes(), vram, bank))
 			uploads.extend(texture_uploads(overlay, vram, "DAT/" + overlay_path.name)); uploads.extend(texture_uploads(source, vram, f"DAT/{stage}.BIN")); texture_header = bytearray(48); struct.pack_into("<3I", texture_header, 0, 2, len(vram), 1); struct.pack_into("<8H", texture_header, 12, 0, 0, 0, 0, 0, 0, 1024, 512); texture_path = work / (stage + "_vram.bin"); write_output(texture_path, texture_header + vram)
-			chest = chest_profile(stage, overlay); resource_keys = actor_resource_keys(stage, overlay); class_callbacks = actor_class_callbacks(stage, overlay)
+			chest = chest_profile(stage, overlay); resource_keys = actor_resource_keys(stage, overlay); class_callbacks = actor_class_callbacks(stage, overlay); prop_variants = {}
 			for item in raw_records:
 				area = item["area"]; record = item["record"]; pointer = item["pointer"]; offset = item["offset"]; raw = item["raw"]
 				if raw[2] == 0x60 and raw[4] == 2 and raw[5] == 0: continue
 				if raw[2] not in (0x20, 0x60, 0x61): continue
 				kickable = kickable_profile(stage, raw); resource_variant = kickable["resource_variant"] if kickable else 0 if chest and raw[2] == 0x20 and raw[4] == 21 else raw[6]; resource_flags = raw[2] | (raw[4] << 8) | (resource_variant << 16); matches = [model for model in archive["models"] if model["flags"] & 0xFFFFFF == resource_flags]
+				variants = None if kickable or raw[2] != 0x60 else prop_variants.setdefault((raw[4], raw[5]), prop_resource_variant(stage, overlay, raw[4], raw[5]))
+				if variants and raw[6] < len(variants): resource_variant = variants[raw[6]]; resource_flags = raw[2] | (raw[4] << 8) | (resource_variant << 16); matches = [model for model in archive["models"] if model["flags"] & 0xFFFFFF == resource_flags]
 				if len(matches) != 1 and raw[2] in (0x20, 0x60) and raw[4] in resource_keys:
 					alternate = raw[resource_keys[raw[4]]] if resource_keys[raw[4]] is not None else 0; alternate_flags = raw[2] | (raw[4] << 8) | (alternate << 16); alternate_matches = [model for model in archive["models"] if model["flags"] & 0xFFFFFF == alternate_flags]
 					if len(alternate_matches) == 1: resource_variant, resource_flags, matches = alternate, alternate_flags, alternate_matches
@@ -976,6 +1054,9 @@ def export_props(dat_dir, output_dir, stages):
 				if stage == "ST09" and raw[2] == 0x60 and raw[4] == 1 and raw[5] == 0 and raw[6] in [2, 3, 4]: instances[-1]["pc_source_mesh_collision"] = {"layers": [1, 4], "source_constructor": "ST09T0x800EBA8C/0x800EBB30", "native_role": "render_only_statue_part", "adapter": "Solid collision from the original statue triangles"}
 				if raw[2] == 0x20 and (stage, raw[4]) in DUNGEON_ENEMIES: instances[-1].update(dungeon_enemy_entry(stage, raw[4], instances[-1], class_callbacks, output_dir)); instances[-1]["role"] = "dungeon_enemy"
 				if chest and raw[2] == 0x20 and raw[4] == 21: instances[-1].update(chest_entry(stage, chest, raw)); instances[-1]["role"] = "dungeon_chest"; instances[-1]["source_bytes_hex"] = raw.hex()
+				if raw[2] == 0x60 and raw[4] == 31:
+					ice = ice_profiles.setdefault(raw[5], ice_block_profile(stage, overlay, 31, raw[5]))
+					if ice: instances[-1]["native_ice_block"] = {"state": raw[5], "variant": raw[6], "key": resource_variant};
 				if kickable: instances[-1]["native_kickable"] = kickable; instances[-1]["native_animation_startup"] = {"control": 0, "start_record": 0}; instances[-1]["role"] = "source_kickable_" + kickable["kind"]
 			for model in archive["models"]:
 				if model["flags"] & 0xFFFF not in (0x161, 0x261, 0x361): continue
@@ -983,10 +1064,17 @@ def export_props(dat_dir, output_dir, stages):
 				if index not in models:
 					path = output_dir / stage / f"model_{index:02d}.glb"; path.parent.mkdir(parents=True, exist_ok=True); metadata = export_static_actor(payload, index, texture_path, path, archive_source); metadata["model_file"] = path.relative_to(output_dir).as_posix(); metadata["native_scale_raw"] = list(struct.unpack_from("<3h", payload, model["mesh_offset"] + 0x30)); models[index] = metadata
 				native_doors.append({"variant": (model["flags"] >> 16) & 255, "controller_class": (model["flags"] >> 8) & 255, "model_index": index, "model_file": models[index]["model_file"], "native_scale_raw": models[index]["native_scale_raw"], "source_flags": hex(model["flags"]), "resource_loader": "SLES0x8003DFC8", "constructor": "GAME0x800D1F1C" if model["flags"] & 0xFFFF == 0x361 else "GAME0x800D1B10" if model["flags"] & 0xFFFF == 0x261 else "GAME0x800D17A4"})
-		if any(key[0] == stage for key in DUNGEON_ENEMIES) and archive_info: export_dungeon_effects(stage, vram)
+			if ice_profiles.get(0):
+				for model in archive["models"]:
+					if model["flags"] & 0xFFFF != 0x1F60: continue
+					index = model["index"]
+					if index not in models:
+						path = output_dir / stage / f"model_{index:02d}.glb"; path.parent.mkdir(parents=True, exist_ok=True); metadata = export_static_actor(payload, index, texture_path, path, archive_source); metadata["model_file"] = path.relative_to(output_dir).as_posix(); metadata["native_scale_raw"] = list(struct.unpack_from("<3h", payload, model["mesh_offset"] + 0x30)); models[index] = metadata
+					ice_models[(model["flags"] >> 16) & 255] = index
+		if any(key[0] == stage and key[1] != 97 for key in DUNGEON_ENEMIES) and archive_info: export_dungeon_effects(stage, vram)
 		bind_scripted_interactions(stage, instances, overlay, source_key="source_bytes", address_key="source_ram")
 		for index, metadata in models.items(): metadata["model_index"] = index
-		status = "bound" if actor_pointer_table is not None and (archive_info is not None or not mesh_records) else "partial" if actor_pointer_table is not None else "unbound"; manifest["stages"][stage] = {"binding_status": status, "source": {"archive": stage + ".BIN", "actor_archive": archive_info["archive_file"] if archive_info else None, "overlay": stage + "T.BIN", "sha256": digest(source), "decoded_section": section, "actor_pointer_table": hex(actor_pointer_table) if actor_pointer_table else None, "actor_list_area_count": len(detected["pointers"]) if detected else table_area_count if actor_pointer_table is not None else None, "caller": actor_caller, "consumer": "SLES0x8003D3F8; 20-byte object records", "actor_archive_section": archive_info["offset"] if archive_info else None, "texture_uploads": uploads, "coordinate_basis": "(-nativeX,-nativeY,+nativeZ)/256; room stream offset is separate"}, "models": list(models.values()), "native_doors": native_doors, "instances": instances, "procedural_records": weather_records, "unresolved_instances": unresolved}
+		status = "bound" if actor_pointer_table is not None and (archive_info is not None or not mesh_records) else "partial" if actor_pointer_table is not None else "unbound"; manifest["stages"][stage] = {"binding_status": status, "source": {"archive": stage + ".BIN", "actor_archive": archive_info["archive_file"] if archive_info else None, "overlay": stage + "T.BIN", "sha256": digest(source), "decoded_section": section, "actor_pointer_table": hex(actor_pointer_table) if actor_pointer_table else None, "actor_list_area_count": len(detected["pointers"]) if detected else table_area_count if actor_pointer_table is not None else None, "caller": actor_caller, "consumer": "SLES0x8003D3F8; 20-byte object records", "actor_archive_section": archive_info["offset"] if archive_info else None, "texture_uploads": uploads, "coordinate_basis": "(-nativeX,-nativeY,+nativeZ)/256; room stream offset is separate"}, "models": list(models.values()), "native_doors": native_doors, **({"native_ice_block": {**ice_profiles[0], "models": {str(key): index for key, index in ice_models.items()}}} if ice_profiles.get(0) and ice_models else {}), "instances": instances, "procedural_records": weather_records, "unresolved_instances": unresolved}
 		if stage == "ST0B": export_scene_door_records(stage, overlay, manifest["stages"][stage], dat_dir)
 	manifest["exterior"] = {"asset_source": "Original ST02 atmosphere assets", "effects_manifest": "res://assets/opening/effects/manifest.json", "native_effect_class": 18, "native_effect_variant": 3, "bank": "ST02", "parameter": 0x01000001, "source_renderer": "ST02T0x800EC0A4", "stage_native_selection": "Unbound; original atmosphere reuse is selected by the runtime"}; manifest["map_blending"] = {"source": "SLES0x8002FA14-0x8002FA44", "packed_status": "first vertex flag&3", "semi_enabled": "status!=0", "tpage": "baseTPAGE|((status-1)<<5) when semi enabled"}; write_output(target, json.dumps(manifest, indent=2) + "\n", encoding="utf-8"); return manifest
 def export_weather_fields(dat_dir, output_dir):
@@ -1215,9 +1303,8 @@ def select_panel(faces, center, axis):
 	return {"center": face_center, "axis": axis, "bounds": bounds, "placement_id": int(match.group(1)), "model_id": int(match.group(2)), "node": node, "mesh_index": mesh_index, "primitive_index": primitive_index, "material_index": material_index, "quads": [{"quad_index": face["quad_index"], "primitive_index": face["primitive_index"], "first_vertex": face["quad_index"] * 6, "first_triangle": face["quad_index"] * 2, "triangle_count": 2, "triangles_local": face["triangles_local"]} for face in selected_quads], "score": best[0]}
 
 FLUTTER_LADDER_STAGES = {"ST04", "ST05", "ST06", "ST07"}
-TOWN_STAGES = {"ST09", "ST19"}
-TOWN_AREAS = {"ST47": {0}, "ST19": {1}, "ST1B": {0, 1, 2, 3}}
-TOWN_EXTERIORS = {("ST09", 0), ("ST19", 1)}
+TOWN_LAYOUTS = {"town": {"ST09": None, "ST0A": None, "ST0C": None, "ST47": {0}}, "ruminoa": {"ST19": {1}, "ST1A": None, "ST1B": {0, 1, 2, 3}}, "pokte": {"ST25": {0, 1, 2, 3, 4}}, "pokte_mayor": {"ST24": {1, 2}, "ST32": None}, "kito": {"ST20": {0, 1}}, "kimotoma": {"ST29": None, "ST2A": None, "ST2B": None, "ST2C": None, "ST3B": None, "ST3C": None}, "manda": {"ST12": None, "ST13": None, "ST14": None}, "saul_kada": {"ST26": None, "ST27": None, "ST28": None, "ST33": None, "ST34": None}, "calinca_ruins": {"ST2D": None, "ST2E": None, "ST2F": None}, "nino_ruins": {"ST35": None, "ST36": None, "ST37": None, "ST38": None}, "defense": {"ST41": None, "ST42": None}, "mother_zone": {"ST43": None, "ST44": None, "ST45": None, "ST4C": None, "ST58": None}, "guild_ruins": {"ST4D": None}, "pokte_caverns": {"ST4E": None, "ST51": None}, "kito_caverns": {"ST4F": None}, "kimotoma_caverns": {"ST50": None}, "license_test": {"ST55": None}, "glyde": {"ST1F": {0}, "ST30": {0, 1, 2}, "ST31": {0}}, "sulphur": {"ST3D": {0, 1, 2, 3}, "ST3E": {0, 1, 2, 3, 4, 5}, "ST3F": None}}
+TOWN_EXTERIORS = {("ST09", 0), ("ST19", 1), ("ST25", 0), ("ST24", 1), ("ST20", 0), ("ST1F", 0)}
 
 def ladder_link(assets_dir, room_catalog, route, reverse, a, b):
 	"""Stack the two rooms of a ladder pair: the lower room's ceiling hatch (its black-out loop height) meets the bottom of the upper room's ladder pit, with the two ladder foot points (each route's source transform) on one vertical line."""
@@ -1231,29 +1318,41 @@ def ladder_link(assets_dir, room_catalog, route, reverse, a, b):
 	return {"delta": [source[0] - arrival[0], -rise if down else rise, source[2] - arrival[2]], "upper": {"stage": upper[0], "area": upper[1]}, "lower": {"stage": lower[0], "area": lower[1]}, "hatch_height": hatch, "pit_depth": pit}
 
 def export_room_layout(assets_dir, output_path, stages=STAGES):
-	STAGES = stages; town = bool(TOWN_STAGES & set(stages))
+	STAGES = tuple(stages); town = isinstance(stages, dict)
 	room_catalog = {}; route_data = {}; route_hashes = {}; external = []
 	for stage in STAGES:
 		manifest_path = assets_dir / stage / "manifest.json"; manifest = json.loads(manifest_path.read_text(encoding="utf-8")); stage_areas = {area["index"]: area for area in manifest["areas"]}; route_path = assets_dir / stage / "doors.json"; route_file = json.loads(route_path.read_text(encoding="utf-8")); route_data[stage] = route_file["area_transitions"]; route_hashes[stage] = hashlib.sha256(route_path.read_bytes()).hexdigest()
 		for index, area in stage_areas.items():
-			if town and index not in TOWN_AREAS.get(stage, {index}): continue
+			if town and stages[stage] is not None and index not in stages[stage]: continue
 			room_catalog[(stage, index)] = {"manifest": f"assets/levels/{stage}/manifest.json", "file": area["file"], "bounds": area["bounds"]}
 	all_routes = [(stage, route) for stage, routes in route_data.items() for route in routes]; edges = []; ladder_transitions = []; ladder_edges = []; paired = set()
+	def external_entry(stage, route, reason=None): return {"source_stage": stage, "source_area": route["source_area"], "destination_stage": route["destination_stage"], "destination_area": route["destination_area"], "door_id": route["door_id"], "source_transform_raw": route["source_transform_raw"], "destination_transform_raw": route["destination_transform_raw"], "file_offset": route["file_offset"], **({"reason": reason} if reason else {})}
+	lifts = {}
+	for stage in STAGES:
+		lift_path = assets_dir / stage / "mine_lifts.json"
+		if lift_path.is_file(): lifts[stage] = {(lift["area"], *lift["position_raw"][:3]) for lift in json.loads(lift_path.read_text(encoding="utf-8"))["lifts"]}
+	def is_lift(stage, route): return town and (route["source_area"], *route["source_transform_raw"][:3]) in lifts.get(stage, ())
 	for stage, route in all_routes:
 		a = (stage, route["source_area"]); b = (route["destination_stage"], route["destination_area"])
 		if a not in room_catalog: continue
-		if b not in room_catalog or (town and not route.get("native_door", {}).get("style", "").startswith("hinged")):
-			external.append({"source_stage": stage, "source_area": a[1], "destination_stage": b[0], "destination_area": b[1], "door_id": route["door_id"], "source_transform_raw": route["source_transform_raw"], "destination_transform_raw": route["destination_transform_raw"], "file_offset": route["file_offset"]}); continue
-		if (a, b) in paired or (b, a) in paired: continue
-		reverses = [other for other in route_data[b[0]] if other["source_area"] == b[1] and other["destination_stage"] == a[0] and other["destination_area"] == a[1]]
-		if len(reverses) != 1: raise ValueError(f"{a} to {b} has {len(reverses)} reciprocal routes")
-		reverse = reverses[0]; paired.update(((a, b), (b, a)))
+		if is_lift(stage, route): external.append(external_entry(stage, route, "lift")); continue
+		if b not in room_catalog or (town and not route.get("native_door", {}).get("style", "").startswith(("hinged", "sliding"))):
+			external.append(external_entry(stage, route)); continue
+		if (stage, route["file_offset"]) in paired: continue
+		reverses = [other for other in route_data[b[0]] if other["source_area"] == b[1] and other["destination_stage"] == a[0] and other["destination_area"] == a[1] and (b[0], other["file_offset"]) not in paired]
+		if town and (not reverses or any(is_lift(b[0], other) for other in reverses)): external.append(external_entry(stage, route)); continue
+		if not reverses: raise ValueError(f"{a} to {b} has no reciprocal route")
+		reverse = min(reverses, key=lambda other: (other["source_transform_raw"][0] - route["destination_transform_raw"][0]) ** 2 + (other["source_transform_raw"][2] - route["destination_transform_raw"][2]) ** 2)
+		if town and not reverse.get("native_door", {}).get("style", "").startswith(("hinged", "sliding")): external.append(external_entry(stage, route)); continue
+		paired.update(((stage, route["file_offset"]), (b[0], reverse["file_offset"])))
 		if frozenset((a, b)) in LADDER_PAIRS:
 			link = ladder_link(assets_dir, room_catalog, route, reverse, a, b) if a[0] in FLUTTER_LADDER_STAGES and b[0] in FLUTTER_LADDER_STAGES else None
 			ladder_transitions.append({"source": {"stage": a[0], "area": a[1]}, "destination": {"stage": b[0], "area": b[1]}, "door_id": route["door_id"], "door_mode": route["door_mode"], "reverse_door_mode": reverse["door_mode"], "source_route_file_offset": route["file_offset"], "reverse_route_file_offset": reverse["file_offset"], "source_transform_raw": route["source_transform_raw"], "destination_transform_raw": route["destination_transform_raw"], "seamless": link is not None, **(link or {})})
 			if link: ladder_edges.append({"a": a, "b": b, "delta": tuple(link["delta"])})
 			continue
 		native_a = route.get("native_door", {}).get("source_panel"); native_b = reverse.get("native_door", {}).get("source_panel")
+		if town: native_a = native_a if native_a and "axis" in native_a else None; native_b = native_b if native_b and "axis" in native_b else None
+		if town and not (native_a and native_b): external.extend((external_entry(stage, route), external_entry(b[0], reverse))); continue
 		if not (native_a and native_b): center_a, axis_a = route_center(route, reverse, True); center_b, axis_b = route_center(route, reverse, False)
 		if not (native_a and native_b) and axis_a != axis_b: raise ValueError(f"{a} to {b} uses different local portal axes")
 		path_a = assets_dir / a[0] / f"area_{a[1]:02d}.glb"; path_b = assets_dir / b[0] / f"area_{b[1]:02d}.glb"; face_a = native_a or select_panel(room_faces(assets_dir, *a)[1], center_a, axis_a); face_b = native_b or select_panel(room_faces(assets_dir, *b)[1], center_b, axis_b)
@@ -1261,18 +1360,22 @@ def export_room_layout(assets_dir, output_path, stages=STAGES):
 		translation = tuple((-route["source_transform_raw"][1] + reverse["source_transform_raw"][1]) / 256 if town and i == 1 else face_a["center"][i] - face_b["center"][i] for i in range(3)); edges.append({"a": a, "b": b, "route": route, "reverse": reverse, "panel_a": face_a, "panel_b": face_b, "delta": translation, "glb_a": path_a, "glb_b": path_b})
 	adjacency = {}
 	for edge in edges + ladder_edges:
-		adjacency.setdefault(edge["a"], []).append((edge["b"], edge["delta"])); adjacency.setdefault(edge["b"], []).append((edge["a"], tuple(-value for value in edge["delta"])))
-	offsets = {}; components = []; residuals = []
+		adjacency.setdefault(edge["a"], []).append((edge["b"], edge["delta"], edge)); adjacency.setdefault(edge["b"], []).append((edge["a"], tuple(-value for value in edge["delta"]), edge))
+	offsets = {}; components = []; residuals = []; tree = set(); unaligned = []
 	for anchor in sorted(room_catalog):
 		if anchor in offsets: continue
 		offsets[anchor] = (0.0, 0.0, 0.0); stack = [anchor]; component = []
 		while stack:
 			node = stack.pop(); component.append(node)
-			for other, delta in adjacency.get(node, []):
+			for other, delta, edge in adjacency.get(node, []):
 				proposal = tuple(offsets[node][axis] + delta[axis] for axis in range(3))
-				if other not in offsets: offsets[other] = proposal; stack.append(other)
-				elif max(abs(offsets[other][axis] - proposal[axis]) for axis in range(3)) > 1e-5: residuals.append({"from": list(node), "to": list(other), "residual": [offsets[other][axis] - proposal[axis] for axis in range(3)]})
+				if other not in offsets: offsets[other] = proposal; stack.append(other); tree.add(id(edge))
+				elif id(edge) not in tree and max(abs(offsets[other][axis] - proposal[axis]) for axis in range(3)) > 1e-5:
+					if "route" in edge: unaligned.append(edge)
+					else: residuals.append({"from": list(node), "to": list(other), "residual": [offsets[other][axis] - proposal[axis] for axis in range(3)]})
 		components.append(sorted(component))
+	for edge in unaligned:
+		if edge in edges: edges.remove(edge); external.extend((external_entry(edge["a"][0], edge["route"], "closes a loop"), external_entry(edge["b"][0], edge["reverse"], "closes a loop")))
 	if len(offsets) != len(room_catalog) or residuals: raise ValueError(f"room layout does not close: reached {len(offsets)}/{len(room_catalog)} rooms with {len(residuals)} residuals")
 	rooms = [{"stage": stage, "area": area, "manifest": data["manifest"], "file": data["file"], "world_offset": offsets[(stage, area)], "rotation_y": 0.0, "local_bounds": data["bounds"], "routes_remain_area_local": True, "exterior": (town and (stage, area) in TOWN_EXTERIORS) or (stage, area) == ("ST08", 0)} for (stage, area), data in sorted(room_catalog.items())]
 	portals = []
@@ -1632,9 +1735,10 @@ def close_raised_roof(triangles, roof):
 		if ear is None: return
 		remaining.pop(ear)
 	faces.append(remaining)
+	recess = [[[vertex[0], vertex[2]] for vertex in triangle["vertices"]] for triangle in triangles if triangle["normal_y"] < -0.999 and triangle["vertices"][0][1] < height - 0.01]
 	for start in range(0, len(roof["vertices"]), 3):
 		uncovered = [[[point[0], point[2]] for point in roof["vertices"][start:start + 3]]]
-		for face in faces:
+		for face in faces + recess:
 			uncovered = [piece for part in uncovered for piece in subtract(part, face)]
 			if not uncovered: break
 		uncovered_area = sum(abs(sum(point[0] * part[(index + 1) % len(part)][1] - part[(index + 1) % len(part)][0] * point[1] for index, point in enumerate(part))) / 2 for part in uncovered)
@@ -1748,11 +1852,36 @@ def st10_arrival_craft():
 	if len(matches) != 1: raise ValueError("ST10 arrival craft model is not uniquely exported")
 	model_file = ROOT / "assets/levels/ST10/arrival_craft.glb"; write_output(model_file, matches[0].read_bytes()); pose = list(struct.unpack_from("<4h", raw, 12))
 	return {"minimum_save_byte14": hull_stories[0], "arrival_craft": {"record": "0x800f7a7c", "save_byte14": craft_stories, "position_raw": pose[:3], "yaw_raw": pose[3], "model_file": "res://" + model_file.relative_to(ROOT).as_posix()}}
-def st01_destination_redirects():
-	"""ST01T destination callback table 0x800E94FC[slot] (slot 1 = Forbidden Island, 0x800E8788): while flag 0x5C0 is clear it sets the flag and rewrites the request to stage 0x49 area 2 at (0, -1, 0) facing 0 (0x800E87B0..0x800E87E8)."""
-	overlay = (ROOT / "build/disc-assets/DAT/ST01T.BIN").read_bytes(); base = struct.unpack_from("<I", overlay, 12)[0]; word = lambda address: struct.unpack_from("<I", overlay, 48 + address - base)[0]
-	if word(0x800E94FC + 4) != 0x800E8788 or [word(address) & 0xFFFF for address in (0x800E87B4, 0x800E87C4, 0x800E87C8, 0x800E87D0)] != [0x5C0, 0x5C0, 0x49, 2] or [word(address) for address in (0x800E87D8, 0x800E87DC, 0x800E87E0, 0x800E87E4, 0x800E87E8)] != [0x2402FFFF, 0xA6000004, 0xA6020006, 0xA6000008, 0xA600000A]: raise ValueError("ST01 Forbidden Island destination callback differs")
-	return {"ST10": {"event_flag": 0x5C0, "stage": "ST49", "area": 2, "position_raw": [0, -1, 0], "facing_raw": 0}}
+def flutter_landing_scene(stage, address):
+	"""Scene id the stage's area handler starts right after spawning the docked Flutter hull record (GAME 0x800C0B0C with an immediate argument within 14 instructions of the pointer load): the island's own landing scene, which the port plays as its generic landing."""
+	overlay = (ROOT / "build/disc-assets/DAT" / (stage + "T.BIN")).read_bytes(); words = struct.unpack_from("<%dI" % ((len(overlay) - 48) // 4), overlay, 48); high = ((address + 0x8000) >> 16) & 0xFFFF
+	for index, word in enumerate(words):
+		if word >> 26 != 0xF or word & 0xFFFF != high: continue
+		for follow in range(index + 1, index + 8):
+			if words[follow] >> 26 != 9 or words[follow] & 0xFFFF != address & 0xFFFF: continue
+			for call in range(follow, min(follow + 14, len(words))):
+				if words[call] >> 26 != 3 or ((words[call] & 0x3FFFFFF) << 2 | 0x80000000) != 0x800C0B0C: continue
+				for neighbour in (call + 1, call - 1):
+					if words[neighbour] >> 26 == 9 and (words[neighbour] >> 16) & 31 == 4 and (words[neighbour] >> 21) & 31 == 0: return {"landing_scene": words[neighbour] & 0xFFFF}
+	return {}
+def story_route_patches(stage, overlay, routes):
+	"""Stage initialisers rewrite route records in memory after the table is chosen. ST24T 0x800E7438..0x800E74A8: area 0 record 0 (0x800F1914) goes to area 5 while save byte14 is 3, and area 2 record 0 (0x800F19D4) goes to ST24 area 1 while byte14 is 4 and flag 0x581 is clear. ST3ET 0x800E72A0..0x800E7440: area 0 record 0 (0x800ECFE8) is replaced by a 24-byte record from 0x800ED4F4 (Bluecher's room copy, area 6) at byte14 2 while flag 0x5A0 is clear (the Bluecher and Barrel scene 0x64), and at byte14 4, 10 or 13 once flag 0x3D0, 0x3D1 or 0x3D2 is set, or from 0x800ED50C (ST4B area 0) at byte14 16 with flag 0x3D3."""
+	word = lambda address: struct.unpack_from("<I", overlay, 48 + address - 0x800E7000)[0]
+	if stage == "ST24":
+		expected = {0x800E7448: 0x24020005, 0x800E7450: 0xA062191B, 0x800E7454: 0xA040191B, 0x800E7468: 0x24020004, 0x800E7488: 0x24030024, 0x800E748C: 0xA0430006, 0x800E7490: 0x24030001, 0x800E7498: 0xA0430007, 0x800E74A0: 0x24030012, 0x800E74A4: 0xA0430006, 0x800E74A8: 0xA0400007}
+		if any(word(address) != value for address, value in expected.items()) or word(0x800E7478) & 0xFFFF != 0x581 or word(0x800F1A1C) != 0x800F1914 or word(0x800F1A24) != 0x800F19D4: raise ValueError("ST24 route patch code differs")
+		for route in routes:
+			if route["source_area"] == 0 and route["record_index"] == 0: route["story_destinations"] = [{"native_save_byte14": 3, "destination_area": 5, "source": "ST24T 0x800E7438..0x800E7454"}]
+			if route["source_area"] == 2 and route["record_index"] == 0: route["story_destinations"] = [{"native_save_byte14": 4, "requires_event_flags_clear": [0x581], "destination_stage": "ST24", "destination_area": 1, "source": "ST24T 0x800E7464..0x800E74A8"}]
+	if stage == "ST3E":
+		expected = {0x800E7288: 0x24020002, 0x800E7298: 0x240405A0, 0x800E729C: 0x1040001B, 0x800E72A8: 0x24020004, 0x800E72B8: 0x240403D0, 0x800E72CC: 0x2402000A, 0x800E72DC: 0x240403D1, 0x800E72F0: 0x2402000D, 0x800E7300: 0x240403D2, 0x800E7388: 0x24020010, 0x800E7398: 0x240403D3, 0x800E7314: 0x244AD4F4, 0x800E73A8: 0x244AD50C, 0x800E7318: 0x2469CFE8}
+		if any(word(address) != value for address, value in expected.items()): raise ValueError("ST3E route patch code differs")
+		record = lambda address: bytes(byte for index in range(6) for byte in struct.pack("<I", word(address + 4 * index)))
+		def patch(story, flag, address, clear=False):
+			raw = record(address); dx, dy, dz, arrival = struct.unpack_from("<hhhH", raw, 8 + 8)
+			return {"native_save_byte14": story, "requires_event_flags_clear" if clear else "requires_event_flags_set": [flag], "destination_stage": "ST%02X" % raw[6], "destination_area": raw[7], "destination_transform_raw": [dx, dy, dz, arrival], "source": "ST3ET 0x800E72A0..0x800E7440 record 0x%08X" % address}
+		for route in routes:
+			if route["source_area"] == 0 and route["record_index"] == 0: route["story_destinations"] = [patch(2, 0x5A0, 0x800ED4F4, True), patch(4, 0x3D0, 0x800ED4F4), patch(10, 0x3D1, 0x800ED4F4), patch(13, 0x3D2, 0x800ED4F4), patch(16, 0x3D3, 0x800ED50C)]
 def export_flutter_travel():
 	data = (ROOT / "build/disc-assets/DAT/ST01T.BIN").read_bytes(); base = struct.unpack_from("<I", data, 12)[0]; offset = lambda address: 48 + address - base; records = {}
 	for index in range(10):
@@ -1776,6 +1905,7 @@ def export_flutter_travel():
 				if model.get("flags") == 0x3020: matches.append(ROOT / model["file"])
 		if len(matches) != 1: raise ValueError(stage + " native Flutter hull model is not uniquely exported")
 		model_file = ROOT / "assets/levels" / stage / "flutter_hull.glb"; write_output(model_file, matches[0].read_bytes()); pose = list(struct.unpack_from("<4h", raw, 12)); doors = json.loads((ROOT / "assets/levels" / stage / "doors.json").read_text()); boarding = next(route for route in doors["area_transitions"] if int(route["source_area"]) == area and route["destination_stage"] == "ST04" and int(route["destination_area"]) == 1); docks[stage] = {"area": area, "record": hex(address), "position_raw": pose[:3], "yaw_raw": pose[3], "boarding_raw": boarding["source_transform_raw"], "model_file": "res://" + model_file.relative_to(ROOT).as_posix()}
+	for stage, (address, area) in hull_records.items(): docks[stage].update(flutter_landing_scene(stage, address))
 	docks["ST10"].update(st10_arrival_craft())
 	landing = json.loads((ROOT / "assets/levels/ST08/scene_55.json").read_text()); contract = json.loads((ROOT / "assets/levels/ST08/scene_55_callbacks.json").read_text()); landing["callback_contract_file"] = "landing_callbacks.json"; landing["actors"][0]["entry"]["model_file"] = docks["ST08"]["model_file"]; contract["initialization"] = {"player_keep_transform": True, "spawn_records": ["0x800f2670"], "init_ops": [{"op": "player_render_flag", "set": False}]}; contract["finish"] = {"ops": [{"op": "player_render_flag", "set": True}]}; contract.pop("xa", None); write_output(ROOT / "assets/levels/ST01/landing.json", json.dumps(landing, indent=2) + "\n", encoding="utf-8"); write_output(ROOT / "assets/levels/ST01/landing_callbacks.json", json.dumps(contract, indent=2) + "\n", encoding="utf-8")
 	vram, _ = texture_vram([ROOT / "build/disc-assets/COMMON/INIT.BIN", ROOT / "build/disc-assets/COMMON/GAME.BIN", ROOT / "build/disc-assets/DAT/ST01T.BIN"]); pixels = bytearray(512 * 512 * 4)
@@ -1784,7 +1914,8 @@ def export_flutter_travel():
 		for y in range(256):
 			for x in range(256):
 				word = disc.read_u16(vram, (((y + ((tpage >> 4) & 1) * 256) * 1024) + (tpage & 15) * 64 + x // 2) * 2); palette_index = (word >> ((x & 1) * 8)) & 255; palette = disc.read_u16(vram, ((clut >> 6) * 1024 + (clut & 63) * 16 + palette_index) * 2); target = ((y + (quadrant // 2) * 256) * 512 + x + (quadrant & 1) * 256) * 4; pixels[target:target + 4] = bytes(ui.color(palette, True))
-	output = ROOT / "assets/levels/ST01"; write_output(output / "flutter.glb", (output / "models/ST01_00800/model_000.glb").read_bytes()); write_output(output / "world_map.png", png(512, 512, pixels)); write_output(output / "flutter_travel.json", json.dumps({"source": "ST01 800E92E4 destination records;800E94A4 scenario lists;800E8D50 map;800E7378 aircraft;800E8AAC pins;800E7B88 targets", "list_override": {"7": [6, 0x582, 7]}, "targets": {"0": [255], "1": [1], "2": [3], "3": [3], "4": [3, 0x3D0, 2], "5": [4], "6": [255], "7": [4, 0x582, 5], "8": [5], "9": [4], "10": [4, 0x3D1, 2], "11": [6], "12": [6], "13": [6, 0x3D2, 2], "14": [0], "15": [0], "16": [0, 0x3D3, 2], "17": [5], "18": [5]}, "launch_ticks": 20, "landing_ticks": 20, "tick_rate": 25, "scenarios": scenarios, "docks": docks, "redirects": st01_destination_redirects()}, indent=2) + "\n", encoding="utf-8")
+	rules = cinematics.flutter_arrival_rules()
+	output = ROOT / "assets/levels/ST01"; write_output(output / "flutter.glb", (output / "models/ST01_00800/model_000.glb").read_bytes()); write_output(output / "world_map.png", png(512, 512, pixels)); write_output(output / "flutter_travel.json", json.dumps({"source": "ST01 800E92E4 destination records;800E94A4 scenario lists;800E8D50 map;800E7378 aircraft;800E8AAC pins;800E7B88 targets", "list_override": {"7": [6, 0x582, 7]}, "targets": {"0": [255], "1": [1], "2": [3], "3": [3], "4": [3, 0x3D0, 2], "5": [4], "6": [255], "7": [4, 0x582, 5], "8": [5], "9": [4], "10": [4, 0x3D1, 2], "11": [6], "12": [6], "13": [6, 0x3D2, 2], "14": [0], "15": [0], "16": [0, 0x3D3, 2], "17": [5], "18": [5]}, "launch_ticks": 20, "landing_ticks": 20, "tick_rate": 25, "scenarios": scenarios, "docks": docks, "arrival_rules": rules}, indent=2) + "\n", encoding="utf-8")
 
 # ---- tundra_follower ----
 def add_tundra_follower(manifest, dat_dir, output_dir):
@@ -1910,9 +2041,9 @@ def export_mine_quest(dat_dir, output_dir):
 	return result
 
 ACTOR_RECORD_KINDS = {0x00: "area_header", 0x20: "actor", 0x40: "type40", 0x60: "prop", 0x61: "prop", 0xA0: "object_a0", 0xA1: "door", 0xE0: "controller_e0"}
-ACTOR_EXPORT_FILES = {"npcs.json": "npc", "scripted_actors.json": "scripted", "pickups.json": "pickup", "mine_actors.json": "mine"}
+ACTOR_EXPORT_FILES = {"area_controllers.json": "area_controller", "gravity_gates.json": "gravity_gate", "npcs.json": "npc", "scripted_actors.json": "scripted", "pickups.json": "pickup", "mine_actors.json": "mine"}
 ACTOR_CAPABILITIES = {"native_interaction": "talk", "native_movement": "movement", "native_enemy": "enemy", "native_follower_profile": "follower", "native_kickable": "kickable", "native_lock_on": "lock_on", "native_pose_resolver": "pose_resolver"}
-ACTOR_CLASS_ROLES = {"20/0": "talk NPC (shared class-0 template)", "20/1": "Data terminal (shared class-1 template)", "20/21": "treasure chest (shared callback)", "20/111": "Refractor", "20/48": "Flutter vehicle", "20/23": "Forbidden Island enemy", "20/41": "Forbidden Island burrower", "20/59": "Forbidden Island boss"}
+ACTOR_CLASS_ROLES = {"60/31": "ice slab", "E0/25": "ice-floor marker (player+0xBD)", "E0/37": "gravity gate", "E0/4": "palette animation", "E0/5": "texture animation", "E0/26": "water ripple animation", "E0/22": "particle spawner", "E0/30": "flame vent hazard", "E0/35": "pull-in field", "E0/19": "ambient sound trigger", "20/0": "talk NPC (shared class-0 template)", "20/1": "Data terminal (shared class-1 template)", "20/21": "treasure chest (shared callback)", "20/111": "Refractor", "20/48": "Flutter vehicle", "20/23": "Forbidden Island enemy", "20/41": "Forbidden Island burrower", "20/59": "Forbidden Island boss"}
 def actor_export_index(levels_dir, props_dir, stage):
 	index = {}
 	def visit(node, source):
@@ -1931,6 +2062,123 @@ def actor_export_index(levels_dir, props_dir, stage):
 	manifest = json.loads((props_dir / "manifest.json").read_text(encoding="utf-8")).get("stages", {}).get(stage, {}) if (props_dir / "manifest.json").is_file() else {}
 	visit(manifest.get("instances", []), "static_prop")
 	return index, manifest
+QUIZ_BASE = 0x800EBB28
+def export_quiz(dat_dir=None, output_dir=None):
+	import ui
+	dat_dir = Path(dat_dir or ROOT / "build/disc-assets/DAT"); output_dir = Path(output_dir or ROOT / "assets/levels"); overlay = (dat_dir / "ST32T.BIN").read_bytes(); base = read_u32(overlay, 12); at = lambda address: 48 + address - base
+	count = struct.unpack_from("<H", overlay, at(QUIZ_BASE))[0] // 2; offsets = struct.unpack_from("<%dH" % count, overlay, at(QUIZ_BASE)); patched = bytearray(2 * count); positions = []
+	for index in range(count):
+		start = at(QUIZ_BASE) + offsets[index]; end = at(QUIZ_BASE) + (offsets[index + 1] if index + 1 < count else offsets[index] + 400); raw = bytes(overlay[start:end]); layout = raw.find(bytes((0xFB, 6)))
+		if layout >= 0: raw = raw[:layout + 8] + bytes((0xFB, 5, 1, 8)) + raw[layout + 8:]
+		positions.append(len(patched)); patched += raw
+	for index in range(count): struct.pack_into("<H", patched, index * 2, positions[index])
+	messages = ui.record_native_message_paths(ui.native_text_messages(bytes(patched), 0, len(patched), count))
+	for message in messages: message["program_trace"] = {key: value for key, value in message["program_trace"].items() if key not in ("commands", "text_runs", "display_text_runs", "dynamic_text_runs", "display_text", "display_ready")}
+	table = lambda address, length: list(overlay[at(address):at(address) + length])
+	rows = {"0": [table(0x800EB224 + 10 * row, 10) for row in range(8)], "1": [table(0x800EB274 + 10 * row, 10) for row in range(8)], "2": [table(0x800EB2C4 + 10 * row, 10) for row in range(16)], "3": [table(0x800EB364 + 100 * row, 100) for row in range(16)]}
+	document = {"stage": "ST32", "source": {"script": "tools/world.py", "overlay": "DAT/ST32T.BIN", "question_bank": hex(QUIZ_BASE), "runner": "0x800E8C64", "setup": "0x800E8A1C", "finish": "0x800E9AB0", "note": "question bank strings get the FB 05 01 08 text run opcode inserted after the window layout (the native reader opens the run implicitly)"}, "bank": {"source": {"runtime_message_base": hex(QUIZ_BASE)}, "messages": messages}, "rows": rows, "answers": table(0x800EBA44, 212), "prompts": [table(0x800EB9A4 + 4 * group, 4) for group in range(40)], "teacher_prize_flags": list(struct.unpack_from("<8H", overlay, at(0x800EBB18))), "message_bases": {"0": 180, "1": 170, "2": 160, "3": 40}, "totals": {"0": 10, "1": 10, "2": 10, "3": 100}, "start_flags": {"0": 0x681, "1": 0x682, "2": 0x683, "3": 0x684}, "scene_flag": 0x680}
+	import ui
+	page = texture_page(ui.textures(dat_dir.parent / "COMMON/GAME.BIN")[0], 0x7F11, 0x0D, True, True); sheet = b"".join(bytes(page[((0x6C + row) * 256 + 0x80) * 4:((0x6C + row) * 256 + 0x80 + 80) * 4]) for row in range(12)); write_output(output_dir / "ST32" / "quiz_digits.png", png(80, 12, sheet))
+	document["counter"] = {"file": "quiz_digits.png", "digit_size": [8, 12], "origin": [0x40, 0x1A], "pitch": 9, "window": [17, 19, 79, 23], "label": 8, "source": "ST32T 0x800E98C4 draws up to three 8x12 sprites (GP0 0x64) from tpage 0x0D, CLUT 0x7F11, u = 0x80 + 8 * digit, v = 0x6C; the window is message 8 (Left:)"}
+	write_output(output_dir / "ST32" / "quiz.json", json.dumps(document, ensure_ascii=False) + chr(10), encoding="utf-8"); return {"messages": len(messages)}
+AREA_CONTROLLER_CODE = {"ST2D": (25, "54c40d2bde", 75), "ST2E": (25, "54c40d2bde", 75), "ST2F": (25, "54c40d2bde", 75), "ST14": (19, "9c3aa24e78", 57), "ST28": (30, "ed0e3ef509", 19), "ST48": (35, "59320cf1a6", 131), "ST5B": (35, "59320cf1a6", 131)}
+def export_area_controllers(dat_dir=None, stages=None):
+	import models
+	dat_dir = Path(dat_dir or ROOT / "build/disc-assets/DAT"); written = {}
+	for stage, (actor_class, digest, length) in AREA_CONTROLLER_CODE.items():
+		if stages and stage not in stages: continue
+		source = (dat_dir / (stage + ".BIN")).read_bytes(); overlay = (dat_dir / (stage + "T.BIN")).read_bytes(); detected = native_actor_lists(overlay, len(Stage(source).grids)); table = actor_controller_callbacks(overlay)
+		if not detected or actor_class not in table: continue
+		base, count, words, word = models.overlay_words(overlay); callback = int(table[actor_class]["callback"], 16); starts = [base + index * 4 for index in range(count) if words[index] >> 16 == 0x27BD and words[index] & 0x8000]; end = starts[starts.index(callback) + 1]
+		if (end - callback) // 4 != length or models.overlay_code_hash(overlay, callback, end)[:10] != digest: continue
+		controllers = []
+		for item in detected[0]["records"]:
+			raw = item["raw"]
+			if raw[0] == 0xFF or raw[2] != 0xE0 or raw[4] != actor_class: continue
+			x, y, z = struct.unpack_from("<3h", raw, 12); controllers.append({"class": actor_class, "area": item["area"], "source_ram": hex(item["pointer"] + item["record"] * 20), "source_bytes_hex": raw.hex(), "position_raw": [x, y, z], "position": [-x / 256, -y / 256, z / 256], "variant": raw[6], "bytes": list(raw[8:12]), "halfwords": list(struct.unpack_from("<2H", raw, 8))})
+		document = {"stage": stage, "source": {"script": "tools/world.py", "class": actor_class, "callback": hex(callback), "code_hash": digest}, "controllers": controllers}
+		if actor_class == 30:
+			spawn = starts[starts.index(callback) + 1]; points = next(value for _, value in models.overlay_constants(overlay, spawn, 67)); document["flame_vent"] = {"points_raw": [list(struct.unpack_from("<3h", overlay, 48 + points + 8 * index - base)) for index in range(2)], "points_ram": hex(points), "source": "state 1 function " + hex(spawn) + " copies two (x, y, z, pad) halfword rows and spawns class 68 objects when (tick counter & 0x13) == 0x10; flame life 15 ticks, hit radius 0x30 + 6 per tick, rise 0x100 raw per tick, fade 0x10 per tick from 0x80, damage obj+0xC = 8"}
+		if actor_class == 25: document["ice_floor"] = {"slab_only_area": {"ST2D": 0, "ST2F": 7}.get(stage), "cleated_shoes": 4, "source": "callback switches on the stage byte (0x2D, 0x2E, 0x2F) and the area byte; GAME 0x800CD7C4 sets player+0xBD unless shoes (player+0x1A3) == 4"}
+		if actor_class == 30:
+			import ui
+			area_vram = ui.textures(dat_dir.parent / "COMMON/GAME.BIN")[0]; page = texture_page(area_vram, 0x7CD2, 0x2F, True, True)
+			write_output(ROOT / "assets/levels" / stage / "flame_sprites.png", png(256, 32, bytes(page[(0x40 * 256) * 4:(0x60 * 256) * 4]))); document["flame_vent"]["sprite"] = {"file": "flame_sprites.png", "frames": 8, "frame_width": 32, "clut": 0x7CD2, "tpage": 0x2F, "rows": [0x40, 0x5F], "blend": "additive (tpage bits 5-6 = 1, GP0 command 0x2E)", "frame": "u = (tick * 0x20) & 0xFF, the draw at 0x800F8128 adds 0x20 to obj+0xE each tick"}
+		if actor_class == 35:
+			import models
+			puff = models.capture_effect(None, 0x800D9128, 0x800D91A0, ((6, 0x1C, 1),), range(1, 5), 0x18, maximum=64); pages = models.export_effect_pages([puff], ROOT / "assets/player/weapons")
+			document["sand_puff"] = {"source": "E0/35 callback " + hex(callback) + " spawns SLES 0x8003E918 objects (class 3, variant 0x1C, flags |= 5) at the player joints (+0x490 + (count * 3 + 0xB) * 8); class 3 is GAME 0x800D90EC (states 0x800D9128 init, 0x800D91A0 update) run unchanged in NativeMachine", "joints": [14, 17], "variants": puff, "pages": pages, "tick_rate": 25, "count": "speed = distance moved per tick in raw units; speed >= 9 or player state byte +9 in (2, 3): (tick & 1) + 1 puffs; speed < 5: none; 5..8: on odd ticks (rnd & 1) + 1"}
+		write_output(ROOT / "assets/levels" / stage / "area_controllers.json", json.dumps(document, indent=1) + chr(10), encoding="utf-8"); written[stage] = len(controllers)
+	return {"stages": written}
+VRAM_ANIMATION_CLASSES = {5: "texture frames", 26: "texture scroll"}
+def vram_animation_trace(game, sles, overlay, callback, raw, ticks, player=None):
+	import unicorn
+	from unicorn import mips_const as mc
+	uc = unicorn.Uc(unicorn.UC_ARCH_MIPS, unicorn.UC_MODE_MIPS32 | unicorn.UC_MODE_LITTLE_ENDIAN); uc.mem_map(0, 0x1000000); uc.mem_map(0x1F800000, 0x1000); base = read_u32(overlay, 12)
+	uc.mem_write(0x10000, sles[0x800:]); uc.mem_write(0xAD000, game[0x30:]); uc.mem_write(base & 0x1FFFFFFF, overlay[0x30:]); copies = []; obj = 0x80120000
+	def move_image(u, address, size, data):
+		a = [u.reg_read(r) for r in (mc.UC_MIPS_REG_A1, mc.UC_MIPS_REG_A2, mc.UC_MIPS_REG_A3)]; rect = struct.unpack("<4h", bytes(u.mem_read(a[0] & 0x1FFFFFFF, 8))); copies.append(list(rect) + [a[1], a[2]]); u.reg_write(mc.UC_MIPS_REG_PC, u.reg_read(mc.UC_MIPS_REG_RA))
+	uc.hook_add(unicorn.UC_HOOK_CODE, move_image, begin=0x80063D74, end=0x80063D74)
+	record = struct.pack("<4B", 0, 0, 0, 0) + raw[4:8] + raw[8:12] + struct.pack("<3i", *[value << 16 for value in struct.unpack_from("<3h", raw, 12)]); uc.mem_write(obj & 0x1FFFFFFF, bytes(0x100)); uc.mem_write(obj & 0x1FFFFFFF, record)
+	uc.mem_write(0x78DDC, struct.pack("<I", 0x80130000)); uc.mem_write(0x8C0A0 & 0xFFFFFF, bytes(0x300))
+	if player: uc.mem_write(0x8C0A0 + 0x12, struct.pack("<hhh", player[0], player[1], player[2]))
+	uc.mem_write(0x1F800000, struct.pack("<I", 1)); sequence = []; ra = 0x800FF000; uc.mem_write(ra & 0x1FFFFFFF, struct.pack("<I", 0x1000FFFF) + bytes(4))
+	for tick in range(ticks):
+		copies.clear(); uc.mem_write(0x1F800006, struct.pack("<H", tick & 0xFFFF)); uc.mem_write(0x1F80004C, struct.pack("<I", 0x801C0000)); uc.reg_write(mc.UC_MIPS_REG_SP, 0x801F0000); uc.reg_write(mc.UC_MIPS_REG_RA, ra); uc.reg_write(mc.UC_MIPS_REG_A0, obj)
+		try: uc.emu_start(callback, ra, count=200000)
+		except unicorn.UcError: return None
+		sequence.append([list(item) for item in copies])
+	return sequence
+def vram_animation_period(sequence):
+	for start in range(0, 16):
+		for period in range(1, len(sequence) // 2 - start):
+			if all(sequence[index] == sequence[index + period] for index in range(start, len(sequence) - period)): return start, period
+	return None
+def export_vram_animations(dat_dir=None, stages=None):
+	dat_dir = Path(dat_dir or ROOT / "build/disc-assets/DAT"); game = (dat_dir.parent / "COMMON/GAME.BIN").read_bytes(); sles = (dat_dir.parent / "SLES_035.56").read_bytes(); written = {}
+	for overlay_path in sorted(dat_dir.glob("ST??T.BIN")):
+		stage = overlay_path.name[:4]
+		if stages and stage not in stages: continue
+		source = (dat_dir / (stage + ".BIN")).read_bytes(); overlay = overlay_path.read_bytes()
+		try: detected = native_actor_lists(overlay, len(Stage(source).grids))
+		except (ValueError, IndexError, KeyError, struct.error): continue
+		if not detected: continue
+		table = actor_controller_callbacks(overlay); animations = []; areas = set()
+		for item in detected[0]["records"]:
+			raw = item["raw"]
+			if raw[0] == 0xFF or raw[2] != 0xE0 or raw[4] not in VRAM_ANIMATION_CLASSES or raw[4] not in table: continue
+			x, y, z = struct.unpack_from("<3h", raw, 12); sequence = vram_animation_trace(game, sles, overlay, int(table[raw[4]]["callback"], 16), raw, 1600, (x, y, z))
+			if sequence is None or not any(sequence): continue
+			cycle = vram_animation_period(sequence)
+			if cycle is None: continue
+			start, period = cycle; animations.append({"class": raw[4], "kind": VRAM_ANIMATION_CLASSES[raw[4]], "area": item["area"], "source_ram": hex(item["pointer"] + item["record"] * 20), "source_bytes_hex": raw.hex(), "callback": table[raw[4]]["callback"], "prefix": sequence[:start], "period": sequence[start:start + period]}); areas.add(item["area"])
+		if not animations: continue
+		texture_path = dat_dir / (stage + "T.BIN"); texture_bytes = texture_path.read_bytes(); base_vram, _ = textures(texture_path)
+		for area in sorted(areas):
+			banks = AREA_TEXTURE_BANKS.get((stage, area), []); area_vram = texture_vram([texture_path, *[dat_dir / bank["file"] for bank in banks]])[0] if banks else base_vram
+			write_output(ROOT / "assets/levels" / stage / ("vram_area_%02d.bin" % area), bytes(area_vram))
+		document = {"stage": stage, "source": {"script": "tools/world.py", "method": "the E0 callback runs unchanged in Unicorn against SLES and GAME with SLES 0x80063D74 (the GPU VRAM-to-VRAM copy builder) recorded per tick; global tick counter 0x1F800006 counts up from 0", "copy": "[source x, source y, width, height, destination x, destination y] in VRAM halfwords", "ticks_per_second": 25}, "animations": animations}
+		write_output(ROOT / "assets/levels" / stage / "vram_animations.json", json.dumps(document) + chr(10), encoding="utf-8"); written[stage] = len(animations)
+	return {"stages": written}
+GRAVITY_GATE_CODE = ("3eefa0df42", 99)
+def export_gravity_gates(dat_dir=None, stages=None):
+	import models
+	dat_dir = Path(dat_dir or ROOT / "build/disc-assets/DAT"); written = {}
+	for stage in ("ST41", "ST42"):
+		if stages and stage not in stages: continue
+		source = (dat_dir / (stage + ".BIN")).read_bytes(); overlay = (dat_dir / (stage + "T.BIN")).read_bytes(); detected = native_actor_lists(overlay, len(Stage(source).grids)); table = actor_controller_callbacks(overlay)
+		if not detected or 37 not in table: continue
+		base, count, words, word = models.overlay_words(overlay); callback = int(table[37]["callback"], 16); starts = [base + index * 4 for index in range(count) if words[index] >> 16 == 0x27BD and words[index] & 0x8000]; first = starts.index(callback); end = starts[first + 1]
+		if (end - callback) // 4 != GRAVITY_GATE_CODE[1] or models.overlay_code_hash(overlay, callback, end)[:10] != GRAVITY_GATE_CODE[0]: continue
+		immediates = [word(callback + 4 * at) & 0xFFFF for at in range(GRAVITY_GATE_CODE[1]) if word(callback + 4 * at) >> 16 == 0x2404]
+		gates = []
+		for item in detected[0]["records"]:
+			raw = item["raw"]
+			if raw[0] == 0xFF or raw[2] != 0xE0 or raw[4] != 37: continue
+			x, y, z = struct.unpack_from("<3h", raw, 12); gates.append({"area": item["area"], "source_ram": hex(item["pointer"] + item["record"] * 20), "source_bytes_hex": raw.hex(), "position_raw": [x, y, z], "position": [-x / 256, -y / 256, z / 256], "angle_raw": (raw[6] << 8) + 0x400, "radius_raw": 0x200})
+		document = {"stage": stage, "source": {"callback": hex(callback), "script": "tools/world.py", "tripwire": "line through the record at angle_raw: fires when the sign of the bearing difference changes within radius_raw of the record (previous sign starts at 0)", "clear_flags": [hex(immediates[-4]), hex(immediates[-3])], "set_flag": hex(immediates[-2]), "sound": hex(immediates[-1])}, "gates": gates}
+		write_output(ROOT / "assets/levels" / stage / "gravity_gates.json", json.dumps(document, indent=1) + chr(10), encoding="utf-8"); written[stage] = len(gates)
+	return {"stages": written}
 def actor_class_callbacks(stage, overlay):
 	chest = chest_profile(stage, overlay, True)
 	if chest is None: return {}
@@ -1968,7 +2216,7 @@ def actor_resource_keys(stage, overlay):
 					if value is not None and value >> 26 == 9 and (value >> 16) & 31 == 5 and (value >> 21) & 31 in (16, 17, 18): offset = value & 0xFFFF
 				keys[actor_class] = offset if call == 0x0C00F7F2 else None; break
 	return keys
-DUNGEON_ENEMIES = {("ST13", 38): "res://scripts/world/enemies/native_dungeon_turret.gd", ("ST13", 32): "res://scripts/world/enemies/native_dungeon_blade.gd"}
+DUNGEON_ENEMIES = {("ST13", 38): "res://scripts/world/enemies/native_dungeon_turret.gd", ("ST13", 32): "res://scripts/world/enemies/native_dungeon_blade.gd", ("ST41", 97): "res://scripts/world/enemies/native_dungeon_grabber.gd", ("ST42", 97): "res://scripts/world/enemies/native_dungeon_grabber.gd"}
 def export_dungeon_effects(stage, vram):
 	game_vram, _ = ui.textures(ROOT / "build/disc-assets/COMMON/GAME.BIN"); output = ROOT / "assets/levels" / stage
 	write_output(output / "effect_burst.png", ui.png(192, 96, ui.hud_crop(ui.decode_page(game_vram, 0x2E, 0x7C10), 0, 0, 192, 96)))
@@ -1979,15 +2227,78 @@ def export_dungeon_effects(stage, vram):
 	write_output(output / "effect_projectile.png", png(24, 24, bytes(pixels)))
 def dungeon_enemy_entry(stage, actor_class, instance, callbacks, output_dir):
 	import models
-	game = (ROOT / "build/disc-assets/COMMON/GAME.BIN").read_bytes(); combat = models.source_combat_attributes(game, actor_class, 0); models.export_pickup_data(game, ROOT / "assets/levels" / stage)
-	return {"stage": stage, "actor_class": actor_class, "resource_key": 0, "source_attributes": combat["normal"]["attributes"], "combat": combat, "native_enemy": {"callback": callbacks.get(actor_class), "script": DUNGEON_ENEMIES[(stage, actor_class)]}, "native_hitbox": {"bounds_raw": [0, 0, 0, 0, 0, 0]}, "transform": {"position": instance["position"], "yaw_raw": instance["yaw_raw"], "yaw_turns": instance["yaw_turns"]}}
+	game = (ROOT / "build/disc-assets/COMMON/GAME.BIN").read_bytes(); combat = models.source_combat_attributes(game, actor_class, 0) if actor_class != 97 else None; models.export_pickup_data(game, ROOT / "assets/levels" / stage)
+	return {"stage": stage, "actor_class": actor_class, "resource_key": 0, "source_attributes": combat["normal"]["attributes"] if combat else [], "combat": combat, "native_enemy": {"callback": callbacks.get(actor_class), "script": DUNGEON_ENEMIES[(stage, actor_class)]}, "native_hitbox": {"bounds_raw": [0, 0, 0, 0, 0, 0]}, "transform": {"position": instance["position"], "yaw_raw": instance["yaw_raw"], "yaw_turns": instance["yaw_turns"]}}
 def actor_talk_sites(stage, overlay):
-	base = read_u32(overlay, 12) or BASE; count = (len(overlay) - 0x30) // 4; words = struct.unpack_from("<%dI" % count, overlay, 0x30); bound = {profile[1] for profile in NATIVE_SCRIPTED_INTERACTIONS.get(stage, {}).values()}; sites = []
+	base = read_u32(overlay, 12) or BASE; count = (len(overlay) - 0x30) // 4; words = struct.unpack_from("<%dI" % count, overlay, 0x30); bound = {profile[1] for profile in NATIVE_SCRIPTED_INTERACTIONS.get(stage, {}).values()} | ({PROXIMITY_MESSAGES[stage][1]} if stage in PROXIMITY_MESSAGES else set()); sites = []
 	for index, word in enumerate(words):
 		if word != 0x0C02F8B8: continue
 		if not any((words[at] >> 26) in (0x20, 0x24) and (words[at] & 0xFFFF) == 0xF and ((words[at] >> 16) & 31) == 7 for at in range(max(0, index - 10), index)): continue
 		function = next((base + at * 4 for at in range(index, max(0, index - 4096), -1) if (words[at] >> 16) == 0x27BD and words[at] & 0x8000), None); sites.append({"request_call": hex(base + index * 4), "function": hex(function) if function else None, "bound": base + index * 4 in bound})
 	return sites
+def overlay_global_table(overlay, low):
+	import models
+	base, count, words, word = models.overlay_words(overlay)
+	for index, value in enumerate(words):
+		if value >> 26 != 0x2B or value & 0xFFFF != low: continue
+		register = (value >> 16) & 31
+		for lower in range(index - 1, index - 8, -1):
+			if words[lower] >> 26 == 9 and (words[lower] >> 16) & 31 == register:
+				for high in range(lower - 1, lower - 6, -1):
+					if words[high] >> 26 == 0x0F and (words[high] >> 16) & 31 == (words[lower] >> 21) & 31: return (((words[high] & 0xFFFF) << 16) + (words[lower] & 0xFFFF) - (0x10000 if words[lower] & 0x8000 else 0)) & 0xFFFFFFFF
+				break
+	return None
+def prop_resource_variant(stage, overlay, actor_class, state):
+	import models
+	base, count, words, word = models.overlay_words(overlay); table = overlay_global_table(overlay, 0x8DE0)
+	if table is None: return None
+	code = lambda address: address is not None and base <= address < base + count * 4 and address % 4 == 0; cell = word(table + 4 * actor_class)
+	if not code(cell) or not code(word(cell + 4 * state)): return None
+	callback = word(cell + 4 * state); entry = None
+	for at in range(callback, callback + 0x100, 4):
+		high = word(at)
+		if high is None or high >> 26 != 0x0F: continue
+		for later in range(at + 4, at + 24, 4):
+			low = word(later)
+			if low is not None and low >> 26 == 9 and (low >> 21) & 31 == (high >> 16) & 31 and (low >> 16) & 31 == (high >> 16) & 31:
+				pointer = word((((high & 0xFFFF) << 16) + (low & 0xFFFF) - (0x10000 if low & 0x8000 else 0)) & 0xFFFFFFFF)
+				if code(pointer) and word(pointer) >> 16 == 0x27BD: entry = pointer
+				break
+		if entry is not None: break
+	if entry is None: return None
+	number = int(stage[2:], 16)
+	for at in range(entry, entry + 0x200, 4):
+		value = word(at)
+		if value == 0x0C00F7E9 and any(word(near) >> 26 == 9 and (word(near) >> 21) & 31 == 0 and word(near) & 0xFFFF == number for near in range(at - 48, at, 4)): return bytes(256)
+		if value == 0x0C00F7F2:
+			for near in range(at + 4, at - 24, -4):
+				add = word(near)
+				if add >> 26 == 0 and add & 63 == 0x21 and (add >> 11) & 31 == 5 and 5 in ((add >> 21) & 31, (add >> 16) & 31):
+					for pair in range(near - 4, near - 24, -4):
+						low = word(pair)
+						if low >> 26 != 9 or (low >> 16) & 31 != 5 or (low >> 21) & 31 != 5: continue
+						for high_at in range(pair - 4, pair - 44, -4):
+							high = word(high_at)
+							if high >> 26 == 0x0F and (high >> 16) & 31 == 5: address = (((high & 0xFFFF) << 16) + (low & 0xFFFF) - (0x10000 if low & 0x8000 else 0)) & 0xFFFFFFFF; return bytes(struct.unpack_from("8B", overlay, 0x30 + address - base))
+						break
+					break
+	return bytes(256) if any(word(at) == 0x0C00F7E9 for at in range(entry, entry + 0x200, 4)) else None
+def actor_controller_callbacks(overlay):
+	import models
+	base, count, words, word = models.overlay_words(overlay); table = overlay_global_table(overlay, 0x8EA0)
+	if table is None: return {}
+	code = lambda address: address is not None and base <= address < base + count * 4 and address % 4 == 0; result = {}
+	for actor_class in range(1, 64):
+		callback = word(table + 4 * actor_class)
+		if not code(callback): continue
+		entry = {"callback": hex(callback)}
+		if actor_class == 27:
+			for _, value in models.overlay_constants(overlay, callback, 48):
+				routines = []
+				while len(routines) < 16 and code(word(value + 4 * len(routines))): routines.append(word(value + 4 * len(routines)))
+				if len(routines) >= 2: entry["variant_routines"] = [hex(address) for address in routines]; break
+		result[actor_class] = entry
+	return result
 def actor_scripted_summary(path):
 	if not path.is_file(): return None
 	data = json.loads(path.read_text(encoding="utf-8")); instances = data.get("instances", []); capabilities = Counter(label for entry in instances for key, label in ACTOR_CAPABILITIES.items() if key in entry)
@@ -2000,11 +2311,11 @@ def export_actor_coverage(dat_dir=None, levels_dir=None, props_dir=None, docs_di
 		try: area_count = len(Stage(source).grids); detected = native_actor_lists(overlay, area_count)
 		except (ValueError, IndexError, KeyError, struct.error): summary[stage] = {"name": STAGE_NAMES.get(stage, ""), "status": "no_actor_list"}; continue
 		if not detected: summary[stage] = {"name": STAGE_NAMES.get(stage, ""), "areas": area_count, "status": "no_actor_list"}; continue
-		index, manifest = actor_export_index(levels_dir, props_dir, stage); talk_sites = actor_talk_sites(stage, overlay); class_callbacks = actor_class_callbacks(stage, overlay); classes = {}; kinds = Counter(); exported = missing = 0; unresolved = {item["source_bytes"] for item in manifest.get("unresolved_instances", []) if "source_bytes" in item}
+		index, manifest = actor_export_index(levels_dir, props_dir, stage); talk_sites = actor_talk_sites(stage, overlay); class_callbacks = actor_class_callbacks(stage, overlay); controller_callbacks = actor_controller_callbacks(overlay); classes = {}; kinds = Counter(); exported = missing = 0; unresolved = {item["source_bytes"] for item in manifest.get("unresolved_instances", []) if "source_bytes" in item}
 		for record in detected[0]["records"]:
 			raw = record["raw"]; kind = ACTOR_RECORD_KINDS.get(raw[2], "type%02X" % raw[2]); kinds[kind] += 1
 			if kind == "area_header": continue
-			key = "%02X/%d/v%d" % (raw[2], raw[4], raw[6]) if kind in ("actor", "prop") else "%02X/%d" % (raw[2], raw[4]); item = classes.setdefault(key, {"kind": kind, "records": 0, "exported": 0, "sources": set(), "capabilities": set(), "callbacks": set(), "spawn_gated": False, "areas": set(), "class_callback": class_callbacks.get(raw[4]) if kind in ("actor", "prop") else None})
+			key = "%02X/%d/v%d" % (raw[2], raw[4], raw[6]) if kind in ("actor", "prop") else "%02X/%d" % (raw[2], raw[4]); item = classes.setdefault(key, {"kind": kind, "records": 0, "exported": 0, "sources": set(), "capabilities": set(), "callbacks": set(), "spawn_gated": False, "areas": set(), "class_callback": class_callbacks.get(raw[4]) if kind in ("actor", "prop") else controller_callbacks.get(raw[4], {}).get("callback") if kind == "controller_e0" else None, **({"variant_routines": controller_callbacks[raw[4]]["variant_routines"]} if kind == "controller_e0" and "variant_routines" in controller_callbacks.get(raw[4], {}) else {})})
 			item["records"] += 1; item["areas"].add(record["area"]); found = index.get(raw.hex())
 			if kind == "door" or (raw[2] == 0x60 and raw[4] == 2 and raw[5] == 0): item["exported"] += 1; item["sources"].add("doors.json" if kind == "door" else "weather"); exported += 1
 			elif found: item["exported"] += 1; item["sources"].update(found["sources"]); item["capabilities"].update(found["capabilities"]); item["callbacks"].update(found["callbacks"]); item["spawn_gated"] = item["spawn_gated"] or found["spawn_gated"]; exported += 1
@@ -2029,7 +2340,12 @@ def export_actor_coverage(dat_dir=None, levels_dir=None, props_dir=None, docs_di
 	for stage, entry in gaps.items():
 		for key, item in entry["classes"].items():
 			if item["records"] > item["exported"]: lines.append("| %s | %s%s | %s | %d | %s | %s |" % (stage, key, " (model unresolved)" if item.get("unresolved_model") else "", item.get("class_callback") or "-", item["records"] - item["exported"], ",".join(map(str, item["areas"])), ",".join(item["capabilities"]) or "-"))
-	lines += ["", "## Notes", "", "- Type 0x20 actors and 0x60 props share the class callback table the overlay init installs (the table slot for class 21 points at the cell holding the class update function; `class_callback` in the tables above). The update function dispatches `actor+8` through a state table whose entry 0 is the constructor.", "- The constructor selects the model with SLES 0x8003DFC8 using a key byte (`actor+6` for class 0, `actor+7` for class 97) or SLES 0x8003DFA4 (key 0, e.g. chests); `actor_resource_keys` reads that from the constructor.", "- Types 0xE0, 0xA0 and 0x40 are 32-byte pool records (SLES 0x8003E9D8, 0x8003EB7C) without a class callback; GAME 0x800DA1F8 and 0x800DB4A4 only stream-despawn them with per-stage bitmaps. What each E0 class encodes is still untraced.", "- Class 25 type-0x60 props at route contact positions are the lift pads (ST0F is ported; other dungeons use the same pad/route pairing).", "", "## Easter eggs and secrets found so far", "", "- ST09 kickable can (class 0x4A, hit handler 0x800EE24C) and duck (class 0x4B, hit handler 0x800EEE98): kicking them is ported; message ST09:100 pays 200 zenny and earns the matching achievement.", "- ST2B/ST3B class-8 type-0x60 props: proximity message triggers (`lb a3,0xF(actor)` index, flag from the record) with request calls at ST2B 0x800ED5C0 and ST3B 0x800F2ECC; not ported."]
+	lines += ["", "## Notes", "", "- Type 0x20 actors and 0x60 props share the class callback table the overlay init installs (the table slot for class 21 points at the cell holding the class update function; `class_callback` in the tables above). The update function dispatches `actor+8` through a state table whose entry 0 is the constructor.", "- The constructor selects the model with SLES 0x8003DFC8 using a key byte (`actor+6` for class 0, `actor+7` for class 97) or SLES 0x8003DFA4 (key 0, e.g. chests); `actor_resource_keys` reads that from the constructor.", "- Types 0xE0, 0xA0 and 0x40 are 32-byte pool records (SLES 0x8003E9D8, 0x8003EB7C); GAME 0x800DA1F8 and 0x800DB4A4 stream-despawn them with per-stage bitmaps. SLES 0x8003D0E8 walks the 32 E0 slots every frame and calls `table[actor+4]` (table pointer stored in GAME global 0x80078EA0 by the overlay init); `class_callback` of the E0 rows lists that table's entry per stage.",
+	"- E0/10 is a per-stage scripted-event state machine with unique code in each of its 22 overlays (ST09's is Roll's follower pose resolver, ST4A's the tutorial steps). E0/21 is the door-lock barrier manager: for each event flag 0x710+i (i = 0..15) it allocates and frees an A1 class 2 variant 1 object with door index record byte 8 + i; the port gates the same doors through `lock_event` in `doors.json`. E0/27 is a gated spawner: state 0 frees the record when its record byte 10 is below the stage state byte (0x8009C7FC), state 1 frees it once the event flag in its last record word (actor+0x16, -1 for none) is set and otherwise calls `variant_routines[record byte 6]` (the table is listed per stage); those routines allocate the room's enemies and are the hook for the original-code runner. E0/25 (ST2D, ST2E, ST2F) is the ice-floor marker, not a let-go guard: GAME 0x800CD7C4 sets player+0xBD (the ice-slip state) unless the shoes at player+0x1A3 are cleated (4) or global byte 0x8007CEC0 is set. ST2E marks every area; ST2D marks every area except 0, where it applies only while the player stands on a class-31 prop (player+0x52 set, player+0x54 pointing at a type-0x60 class-31 record); ST2F does the same for area 7. With +0xBD set the walk start state accelerates forward speed by 0x10 per tick instead of setting it, the run state adds 8 instead of 0x28, and GAME 0x800CD93C decays +0x38/+0x3C/+0xD8/+0xDC by 0x20 per tick instead of zeroing them (ported as `ice_slip_ticks` in `player_controller.gd`: the ground velocity keeps a heading and a speed, the speed moves toward the input speed by 8 units per tick (16 for slow walking, the traced run stop on ice: GAME 0x800C61CC adds 8 instead of 0x28 per tick; units are 30/4096 world units per second as in the port's jump and air speeds), the heading follows the input and is kept when the input is released, which is the heading-rotated momentum of GAME 0x800CD7F4; the port's walk speed has no run ramp, so the traced 0x20 idle decay is not added; `native_area_controller.gd` applies the stage/area rule from `area_controllers.json`). Type-0x60 class 31 is therefore an ice slab, not a carryable (state-0 code hash-identical in ST2D, ST2E, ST2F and ST58; `export_props` writes `native_ice_block`, `native_ice_block.gd` runs it). The resource variant is the table byte at record variant (ST2F 0x80103D14: 0, 7, 6, 0; `prop_resource_variant`), which fixes the ST58 28 variant-3 tiles (model key 0) and the ST2D/2E/2F variant 1/2 models. Variant 0 cracks after 25 ticks of standing on it (model key 1, sound 0x24F), shatters after 50 (3 pieces, sound 0x250) and heals when stepped off early; variants 1 (key 7) and 2 (key 6) are translucent and break only on a hit with damage and flags & 0x440000 (1: 16 shards, sound 0x24D; 2: 4x4 shard grid, sound 0x254, freed for good). A broken slab returns after 90 (variants 0, 3) or 150 (1, 2) ticks with a 16-tick translucent fade (sound 0x24E, 0x260 in ST58). Variant 3 starts hidden and non-solid with an unwritten timer (0 in a fresh pool, so 65536 ticks): the 28 ST2F area 7 and ST58 area 1 tiles stay hidden. Record byte 5 selects the callback cell; state 2 records (ST2F plates) use another routine and are left static. Sparkle effects and the two class-8 flash objects of the variant 2 break are not ported. E0/5 (ST1F, ST22, ST23) and E0/26 (ST20, ST48, ST4C, ST5B) are VRAM animation players: their callbacks only emit SLES 0x80063D74 copies (the GPU VRAM-to-VRAM rectangle copy; coordinates wrap at 1024 x 512). `export_vram_animations` runs each callback unchanged in Unicorn for 1600 ticks (global tick counter 0x1F800006 counting up), detects the period (E0/5 96 ticks, E0/26 64 to 256) and writes `vram_animations.json` plus the area VRAM (`vram_area_NN.bin`); `native_vram_animation.gd` applies the copies at 25 Hz and patches the baked page textures (materials are named clut_XXXX_page_YYYY, so a VRAM rectangle maps to texel rows of the matching 256 x 256 pages through that material's CLUT). ST48's E0/26 ignores the player-range gate (always on); ST00's E0/26 emits no copies. E0/4 (ST00, ST0A) steps the 20-byte entries of the map renderer's polygon-group list (scratch 0x1F8000B0 pointer and 0x1F8000B4 count, written by SLES 0x80026A58 for every map draw; entry bytes: flags (bit 7 skips), frame count, index, countdown, +4 pointer to a polygon packet, +0xC frame list of delay << 8 | frame, +0x10 table of two-word values) and, when the countdown ends, copies the selected two words (the packet's CLUT/UV and tpage/UV words) into the polygon packet: a per-polygon UV/CLUT animation of baked map faces, which needs a map from those packets to GLB faces; not ported. E0/22 (ST27, ST28, ST34) trace for the runner: callback 0x800FA118 (ST27; state table 0x80101228, state 0 sets the countdown +0x18 to 0x3C, state 1 0x800FA16C); each tick it asks GAME 0x800CDAC0 (player, halfword of the table at 0x80101244 indexed by the record variant) and, when that returns nonzero and the tick counter (scratch 0x1F800006) & 7 is 0 it calls 0x800F6998 (purpose untraced: it allocates through SLES 0x8003E800); when the countdown (+0x18) is zero it reloads (rnd & 0x3F) + 0x28, takes two random indices into the halfword tables 0x80101234/0x8010123C and calls SLES 0x80042674 (polar offset: angle = player yaw (0x8007D0CE) + table, radius from the table), adds the player x/z, queries the floor with 0x800B13FC/0x800B12B0 and, when the tile word has bit 0x4000 and (word & 0x1F) in 5..8, allocates a type 0x60 object (SLES 0x8003E800, class 0x2E = 46, flags |= 2) at that point; class 46 (ST27 cell 0x80105558: dispatcher 0x800F5D2C, state table 0x801010DC, init 0x800F5D68 fills eight streak slots (+0x74 + 2 * i heights, +0xA4.. 0x40/0x18/0x1F colour bytes), update/draw 0x800F61FC (479 words, SLES 0x8003EEC4, 0x80042674, 0x800B13B4) emits gouraud streak packets): it needs the runner's effect renderer; not ported. E0/22 (ST27, ST28, ST34) spawns class-46 particle streak objects around the player while the floor flag word has bit 0x4000 and type 5-8 (visual). E0/30 (ST28 area 3) spawns two class-68 flame objects every 16 ticks at (48,-1040,2224) and (976,-1040,2224) with a damage zone (SLES 0x80042704): a fire-vent hazard (ported: `export_area_controllers`, `native_area_controller.gd`; the burst cadence, rise, growth, fade and damage 8 are the traced values, the flame sprite is the original 8-frame sheet (`flame_sprites.png`: GAME VRAM tpage 0x2F, CLUT 0x7CD2, rows 0x40-0x5F, additive, frame = tick mod 8) and the hit sphere uses the traced radius because the collision resolver at SLES 0x80042A04 is not ported). E0/35 (ST48 area 1, ST5B area 0) is a pull-in field: inside the record radius (halfword +0xE) it puts the player in state 0xC (+0xBA = 1, +0xE0.. = record centre) and spawns class-3 effect 0x1C sand puffs. GAME 0x800C4454 pulls the player toward the centre each tick while +0xBA is set, by record halfword 8 * (radius - distance) / radius in 16.16 position units (0.0625 units per tick at the centre for 256), snapping to the centre when closer than one step, and a nonzero +0xBC scales the jump launch by 3/4 (1/2 when +0xBB > 0x30, not ported). Ported: the pull, the 3/4 jump (`soft_ground_ticks`) and the sand puffs: each tick the callback allocates one SLES 0x8003E918 object (class 3 = GAME 0x800D90EC, variant 0x1C) at player joint 14 or 17 (count * 3 + 0xB) when the distance moved per tick is >= 9 raw (or player state byte +9 is 2 or 3: (tick & 1) + 1), none below 5 and on odd ticks (rnd & 1) + 1 between 5 and 8; `models.capture_effect` runs the class unchanged in NativeMachine (15 frames of two additive sprite quads, GAME VRAM tpage 0x0E, CLUT 0x7C91) and `native_effect.gd` plays them. E0/19 (ST14 area 0) is an ambient sound channel trigger: a plane test on x (variants 0, 1) or z (2, 3) calls SLES 0x800464B4 / 0x80046568 or GAME 0x800D9B50 by record byte 8 on the channel list at 0x8009E9E8 and frees itself; the call requests music cue = record byte 9 (ported through the audio `_request_music`; the secondary channel call 2 is ignored). NPC head tracking (`native_town_npc.gd`, `native_head_look.gd`) follows the class-0 template at ST09 0x800E85C8/0x800E960C: look modes 1 (straight), 2 (player), 3 and 4 (route node within +-0x100), 5 and 6 (the watched class-0 actor whose record byte 8 equals this NPC's byte 10, within 0x200 and +-0x100 of facing; mode 6 aims at the own height) and 7/8 (up/down); stationary gesture NPCs pick 5-8 per pattern. E0/37 (ST41 areas 2, 6, 7; ST42 areas 6, 13) is a gravity gate: when the sign of the bearing difference to the line through the record (angle = record byte 6 * 256 + 0x400) changes within 0x200 of it, it clears event flags 0x153 and 0x154, sets 0x155 and plays sound 0x2BF (it also spawns six class-0x56 markers). The ST41/ST42 stage routine (0x800E7398) writes player+0xBF each tick: 12 with flag 0x155 (heavy), -8 with 0x153 (light), else 0; GAME 0x800C7250 scales the fall step to (3 * (16 + modifier)) >> 4, and the gravity terminal (ST41/ST42 messages 21-25) sets the flags. Ported: `export_gravity_gates` (gravity_gates.json), `native_gravity_gate.gd`, `native_gravity.gd` and the player `gravity_modifier` (the fall step, and the run speed scaled by 1 - modifier / 64 for positive modifiers, GAME 0x800C62C0..0x800C63B0).", "- Class numbers are per overlay. Type-0x60 class 25 is the lift pad in every dungeon whose overlay carries the ST0F lift code (pad, setup, run, finish and ride hash-identical; 25 stages, `export_dungeon_lifts` writes their `mine_lifts.json`): record bytes 8-11 are the question message, direction, lock flag offset and locked message (ST26 messages 1-11 are the floor questions, 14 the power-off message). The talk sites ST26 0x800E7DA0 (security terminals, messages 16-21) and ST56 0x800E773C (transfer monitor, messages 1-2) are not lift pads: they belong to objects no static record places (the stage's E0/10 script creates them) and run the same ten-state device template as the class-1 data terminals of ST14, ST17, ST1D, ST24, ST29, ST2F, ST35, ST40 and ST4C.", "", "## Easter eggs and secrets found so far", "", "- ST09 kickable can (class 0x4A, hit handler 0x800EE24C) and duck (class 0x4B, hit handler 0x800EEE98): kicking them is ported; message ST09:100 pays 200 zenny and earns the matching achievement.", "- ST2B/ST3B class-8 type-0x60 props: one-shot proximity messages. When the player is idle and within `radius` of the record (ST2B table 0x800F3F80, ST3B table 0x800FEBB4, indexed by the record variant, y offset added to the record y) the prop sets the event flag in record bytes 8-9 (ST2B 0x3EB, ST3B 0x3EC), requests message record byte 11 (ST2B 50, ST3B 60) through 0x800BE2E0 (request 0x20000) at ST2B 0x800ED5C0 / ST3B 0x800F2ECC and frees itself. Ported (`native_proximity_message.gd`, `world.bind_proximity_messages`).",
+	"- ST32 (Pokte mayor's home) hosts the quizzes ST25 messages 12-19 call a secret section of: class 88, 95 and 130 records at 0x800EAF00, 0x800EAF14 and 0x800EAF28 (request 0x800E7A18, messages 80, 60 and 10; the quiz fee messages 12-16 and the prize flow live in the ST32 bank); bound through `NATIVE_SCRIPTED_INTERACTIONS[\"ST32\"]`.",
+	"- ST32 Pokte quiz (ST25 messages 12-19 are the rumour lines): the mayor (message 10) and the two teachers (messages 80 and 60) start quizzes by setting event flags 0x680 with 0x683 (messages 17 and 19, fee 200 or 100 zenny) or 0x684 (messages 27 and 36); the quiz scene object in ST32T (setup 0x800E87C4, runner 0x800E8C64, sub-state tables 0x800E7018..0x800E7060) shows the question from the embedded bank at 0x800EBB28 (u16 offsets, four answers), checks the answer table at 0x800EBA44 (1-4), uses the prompt window rows at 0x800EB9A4 (messages 115-159) and counts the score. The secret is the mayor's second offer (messages 25-35, flag 1:24): after the first prize she gives the village treasure, the weapon Zetsabre (item 4:43), for 2,000,000 zenny (message 28 wallet gate, message 30) or for answering 100 questions in a row without a mistake (messages 27, 31-47). The message engine runs the offer, payment and item grant; `export_quiz` writes `assets/levels/ST32/quiz.json` (the 212 embedded questions with the text-run opcode the native reader opens implicitly, the question rows per quiz kind, the answers, the prompt window map and the teacher prize flags) and `native_quiz.gd` runs the scene object: kind from flags 0x681/0x682/0x683 (else 0x684), random row, ten (or 100) questions, the progress messages at 50, 80, 90 and 99, the failure messages (base+5/6 for the 100 route, base+2/3 otherwise), prize flags for the first four teacher passes, and the pass/fail nibbles of game bytes 0x75-0x77 kept in `native_quiz_progress`. The Left counter is drawn from the original digit sprites (`quiz_digits.png`: tpage 0x0D, CLUT 0x7F11, 8 x 12, origin (0x40, 0x1A), pitch 9). Not ported: the quizmaster gesture commands (record byte +0xC of the scene NPC), the confetti sprite (0x800E97D4), the scene 0x2B camera and the prompt window (the question window already says to choose).",
+	"- Post office (ST0C messages 50-62): letters are chosen by flags 1:3F7..3FB (3:247-251) and the counter redirects (native_counter_redirect on counter 1 at 3, 6, 9) to messages 85-89; message 58 (the Servbots' letter) is the counter-9 branch. ST3F messages 48-49 are two copies of one idle line (a worker who would rather play video games); ST17 message 174 (Roll's diary) sits in a run of tips 168-175 with no flag gate. All run through the existing message engine.",
+	"- ST29 class-1 type-0x20 record (area 0, story states 12+) is a data terminal: request call 0x800E9B08 in callback 0x800E97D4 (flags 0x6FA/0x6F9); ported as a class-1 talk binding."]
 	write_output(docs_dir / "actor_coverage.md", "\n".join(lines) + "\n", encoding="utf-8")
 	return {"stages": len(summary), "stages_with_gaps": len(gaps), "unexported_records": sum(entry.get("unexported_records", 0) for entry in summary.values())}
 
