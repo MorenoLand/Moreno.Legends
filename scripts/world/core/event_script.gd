@@ -53,9 +53,12 @@ func prepare_stage_async(stage: String) -> bool:
 	if not await AssetStore.ensure_group("dialogue-" + stage, true): return false
 	var source: Variant = catalog["data"]["banks"].get(stage, null); var path := str(catalog["directory"]).path_join(str(source.get("file", ""))) if source is Dictionary else ""
 	if path.is_empty() or not FileAccess.file_exists(path): return load_bank(catalog, stage)
-	var holder := {}; var task := WorkerThreadPool.add_task(_parse_bank.bind(path, holder))
-	while not WorkerThreadPool.is_task_completed(task): await get_tree().process_frame
-	WorkerThreadPool.wait_for_task_completion(task)
+	var holder := {}
+	if OS.has_feature("nothreads"): _parse_bank(path, holder)
+	else:
+		var task := WorkerThreadPool.add_task(_parse_bank.bind(path, holder))
+		while not WorkerThreadPool.is_task_completed(task): await get_tree().process_frame
+		WorkerThreadPool.wait_for_task_completion(task)
 	if catalog["banks"].has(stage): return true
 	if not holder.get("bank") is Dictionary: catalog["missing"][stage] = true; return false
 	catalog["banks"][stage] = holder["bank"]; catalog["entries"][stage] = holder["indexed"]; return true

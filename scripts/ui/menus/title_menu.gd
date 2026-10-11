@@ -144,7 +144,7 @@ func show_press_start() -> void:
 	_layout()
 	press_started.emit()
 func _finish_logo() -> void:
-	phase = "opening"
+	phase = "opening"; _apply_phase(); _layout()
 	engine_scene_requested.emit("ST02")
 func _open_menu() -> void:
 	phase = "menu"

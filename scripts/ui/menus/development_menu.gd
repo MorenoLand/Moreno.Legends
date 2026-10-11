@@ -17,6 +17,10 @@ var preview_stat := -1
 var menu_selection := 0
 var stat_selection := 0
 var panel_code := -1
+static func open(gameplay: Node) -> void:
+	var menu := new(); gameplay.get_node("HUD").add_child(menu)
+	await menu.develop(gameplay)
+	if is_instance_valid(menu): menu.queue_free()
 func develop(gameplay: Node) -> bool:
 	host = gameplay; stage = DEVELOPMENT_STAGE
 	var source: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://assets/development/development.json")); items = JSON.parse_string(FileAccess.get_file_as_string("res://assets/shops/items.json"))

@@ -66,7 +66,7 @@ func open(stage_name: String, source := DIRECTORY) -> bool:
 	for kind in ["models", "root", "bank1"]:
 		if entry.has(kind):
 			machine.load_image(directory + str(entry[kind]["file"]), int(entry[kind]["address"]))
-	return machine.load_unit("engine", FileAccess.get_file_as_string(directory + "engine.gd")) and machine.load_unit("ovl", FileAccess.get_file_as_string(directory + str(entry["unit"])))
+	return machine.load_unit_file("engine", directory + "engine.gd") and machine.load_unit_file("ovl", directory + str(entry["unit"]))
 
 
 ## Runs the new-game initialisers, then the original stage set-up (GAME 0x800BA374) and area set-up (GAME 0x800BA48C) for the given stage number and area.
@@ -285,7 +285,7 @@ func equip_weapon(weapon: int) -> bool:
 	if loaded_module != module:
 		for section: Dictionary in entry["sections"]:
 			machine.load_image(directory + str(section["file"]), int(section["address"]))
-		if not machine.load_unit("module", FileAccess.get_file_as_string(directory + str(entry["unit"]))):
+		if not machine.load_unit_file("module", directory + str(entry["unit"])):
 			return false
 		loaded_module = module
 	return true

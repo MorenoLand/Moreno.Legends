@@ -60,6 +60,7 @@ func _physics_process(delta: float) -> void:
 	elapsed += delta
 	while elapsed >= TICK: elapsed -= TICK; _tick()
 func _tick() -> void:
+	if player.infinite_energy: tank = int(data["tank"]["capacity"]); reserve = reserve_limit()
 	if player.special_action != "shot":
 		var step := mini(mini(int(data["tank"]["refillPerTick"]), int(data["tank"]["capacity"]) - tank), reserve)
 		tank += step

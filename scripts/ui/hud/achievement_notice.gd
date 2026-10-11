@@ -40,7 +40,7 @@ func _blocked() -> bool:
 	return false
 func _refresh_visibility() -> void: visible = not phase.is_empty() and not _blocked()
 func _begin_next() -> void:
-	current = pending.pop_front(); var icon_path := str(current["icon"]); icon = load(icon_path) as Texture2D if not icon_path.is_empty() and ResourceLoader.exists(icon_path) else null; text_width = 146.0 if icon != null else 174.0; title_lines = _wrap(_readable_text(str(current["title"]))); description_lines = _wrap(_readable_text(str(current["description"]))) if not str(current["description"]).is_empty() else []
+	current = pending.pop_front(); var icon_path := str(current["icon"]); icon = load(icon_path) as Texture2D if not icon_path.is_empty() and ResourceLoader.exists(icon_path) else null; text_width = 146.0 if icon != null else 174.0; title_lines = ["Achievement earned!"]; description_lines = _wrap(_readable_text(str(current["title"])))
 	rectangle.size.y = maxf(12.0 + 14.0 * float(title_lines.size() + description_lines.size()), 36.0 if icon != null else 0.0); hold_seconds = 0.0; _begin_animation("opening"); _refresh_visibility(); shown.emit(str(current["id"]))
 func _begin_animation(value: String) -> void:
 	phase = value; var key := "prompt:%d:%d" % [roundi(rectangle.position.x), roundi(rectangle.position.y)]
@@ -74,7 +74,7 @@ func _draw() -> void:
 	if not FRAME.content_visible(self): return
 	if icon != null: draw_texture_rect(icon, Rect2(rectangle.position + Vector2(6, 6), Vector2(24, 24)), false)
 	var position := rectangle.position + Vector2(35 if icon != null else 7, 6 + font.get_ascent(12))
-	for line: String in title_lines: draw_string(font, position, line, HORIZONTAL_ALIGNMENT_LEFT, text_width, 12, Color.WHITE); position.y += 14.0
+	for line: String in title_lines: draw_string(font, position, line, HORIZONTAL_ALIGNMENT_LEFT, text_width, 12, Color8(255, 222, 99)); position.y += 14.0
 	for line: String in description_lines: draw_string(font, position, line, HORIZONTAL_ALIGNMENT_LEFT, text_width, 12, Color.WHITE); position.y += 14.0
 func _wrap(text: String) -> Array[String]:
 	var result: Array[String] = []

@@ -19,6 +19,7 @@ func action_tick(_previous_time: float) -> void:
 	if now and not held: combo["pressed"] = true
 	held = now
 	if int(combo["control"]) != control and _play(int(combo["control"])): control = int(combo["control"]); shown_frame = -1
+	if player.infinite_energy: combo["tank"] = int(data["tank"]["capacity"])
 	tank = int(combo["tank"])
 	if int(combo["frame"]) != shown_frame: shown_frame = int(combo["frame"]); _seek(minf(float(shown_frame) / 30.0, _length()))
 	if combo.get("done", false): host.combo = {}; player.special_action_time = _length(); player.velocity = Vector3.ZERO; return

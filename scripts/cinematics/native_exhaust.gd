@@ -16,7 +16,7 @@ func configure(name: String) -> bool:
 	if texture == null: return false
 	size = texture.get_size(); top_level = true; global_transform = Transform3D.IDENTITY; mesh = ArrayMesh.new(); cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var material := StandardMaterial3D.new(); material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; material.albedo_texture = texture; material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST; material.vertex_color_use_as_albedo = true
-	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA; material.blend_mode = BLENDS[str(effect["blend"])]; material.cull_mode = BaseMaterial3D.CULL_DISABLED; material.no_depth_test = effect.has("frames"); material_override = material
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA; material.blend_mode = BLENDS[str(effect["blend"])]; material.cull_mode = BaseMaterial3D.CULL_DISABLED; material_override = material
 	return true
 ## Plume: value is the tick counter. Smoke: one call per native tick; the hull's own counter starts at 0 on the first call.
 func native_tick(value: int) -> void:

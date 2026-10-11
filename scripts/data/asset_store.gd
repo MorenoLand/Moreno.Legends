@@ -108,18 +108,25 @@ func _ensure_group(group: String, optional := false) -> bool:
 			value = JSON.parse_string((response[3] as PackedByteArray).get_string_from_utf8())
 		if not value is Dictionary or not value.get("groups") is Dictionary: return _fail("Invalid content manifest")
 		manifest = value
+		_prune_cache()
 	if not manifest.groups.has(group): return optional or _fail("Missing content group: " + group)
 	var entry: Dictionary = manifest.groups[group]; group_done = 0; group_total = int(entry.bytes); _set_state("Verifying")
 	await get_tree().process_frame
 	var cache := "user://asset_cache"
 	if DirAccess.make_dir_recursive_absolute(cache) != OK: return _fail("Cannot create content cache")
+	# On the web user:// is synced to IndexedDB when a file closes; chunks that are written and deleted while a sync runs make it fail with ENOENT, so downloads work in memory and only the finished pack lands in user://.
+	var work := cache
+	if OS.has_feature("web"):
+		work = "/tmp/asset_work"
+		if DirAccess.make_dir_recursive_absolute(work) != OK: return _fail("Cannot create content cache")
 	var pack_path := cache.path_join(str(entry.sha256) + ".pck")
 	if not _valid_file(pack_path, int(entry.bytes), str(entry.sha256)):
 		_set_state("Downloading")
-		var output := FileAccess.open(pack_path + ".partial", FileAccess.WRITE)
+		var partial := work.path_join(str(entry.sha256) + ".partial")
+		var output := FileAccess.open(partial, FileAccess.WRITE)
 		if output == null: return _fail("Cannot write content cache")
 		for chunk: Dictionary in entry.chunks:
-			var chunk_path := cache.path_join(str(chunk.sha256) + ".part")
+			var chunk_path := work.path_join(str(chunk.sha256) + ".part")
 			if not _valid_file(chunk_path, int(chunk.bytes), str(chunk.sha256)):
 				if not OS.has_feature("web"):
 					var local_path := "res://" + str(chunk.path)
@@ -133,12 +140,24 @@ func _ensure_group(group: String, optional := false) -> bool:
 			output.store_buffer(FileAccess.get_file_as_bytes(chunk_path)); group_done += int(chunk.bytes)
 			await get_tree().process_frame
 		output.close(); _set_state("Verifying"); await get_tree().process_frame
-		if not _valid_file(pack_path + ".partial", int(entry.bytes), str(entry.sha256)): return _fail("Content integrity check failed: " + group)
-		if DirAccess.rename_absolute(pack_path + ".partial", pack_path) != OK: return _fail("Cannot finish content cache")
-		for chunk: Dictionary in entry.chunks: DirAccess.remove_absolute(cache.path_join(str(chunk.sha256) + ".part"))
+		if not _valid_file(partial, int(entry.bytes), str(entry.sha256)): return _fail("Content integrity check failed: " + group)
+		if work == cache:
+			if DirAccess.rename_absolute(partial, pack_path) != OK: return _fail("Cannot finish content cache")
+		else:
+			if DirAccess.copy_absolute(partial, pack_path) != OK: return _fail("Cannot finish content cache")
+			DirAccess.remove_absolute(partial)
+		for chunk: Dictionary in entry.chunks: DirAccess.remove_absolute(work.path_join(str(chunk.sha256) + ".part"))
 	_set_state("Unpacking"); await get_tree().process_frame
 	if not ProjectSettings.load_resource_pack(pack_path, false): return _fail("Cannot mount content group: " + group)
 	return true
+## Packs of earlier exports (a different digest) would otherwise stay in the browser's storage forever.
+func _prune_cache() -> void:
+	var current := {}
+	for group: Dictionary in manifest.groups.values(): current[str(group.sha256) + ".pck"] = true
+	var folder := DirAccess.open("user://asset_cache")
+	if folder == null: return
+	for file in folder.get_files():
+		if file.ends_with(".pck") and not current.has(file): folder.remove(file)
 func _valid_file(path: String, bytes: int, digest: String) -> bool:
 	var file := FileAccess.open(path, FileAccess.READ)
 	if file == null: return false

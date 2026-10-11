@@ -11,14 +11,7 @@ body { color: white; background-color: black; overflow: hidden; touch-action: no
 #canvas:focus { outline: none; }
 #status { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; visibility: hidden; background: #14141c url("loading_background.png") repeat; background-size: 128px 128px; image-rendering: pixelated; animation: gears 4.3s steps(64) infinite; }
 @keyframes gears { to { background-position: 128px 128px; } }
-#status-box { box-sizing: border-box; width: min(504px, 92vw); padding: 14px 18px 16px; background: #2a2a3c; border: 3px solid; border-color: #f8f8f8 #606060 #606060 #f8f8f8; outline: 2px solid #808080; box-shadow: 0 0 0 5px #16161f; font: 700 18px/1.3 "Courier New", Consolas, monospace; letter-spacing: 1px; text-shadow: 1px 1px 0 #000; }
-#status-title { margin-bottom: 14px; }
-#status-bar { height: 12px; background: #292938; border: 2px solid #c2c9b0; box-sizing: content-box; }
-#status-fill { height: 100%; width: 0; background: #ffde63; }
-#status-fill.indeterminate { width: 20%; animation: slide 1.1s linear infinite; }
-@keyframes slide { from { margin-left: -20%; } to { margin-left: 100%; } }
-#status-detail { margin-top: 10px; font-size: 15px; color: #ffde63; min-height: 1.3em; }
-#status-notice { display: none; margin-top: 12px; color: #ff9c9c; font-size: 15px; letter-spacing: 0; text-shadow: none; }
+#status-canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
 		</style>
 		$GODOT_HEAD_INCLUDE
 	</head>
@@ -30,25 +23,165 @@ body { color: white; background-color: black; overflow: hidden; touch-action: no
 			Your browser does not support JavaScript.
 		</noscript>
 		<div id="status">
-			<div id="status-box">
-				<div id="status-title">Downloading Legends...</div>
-				<div id="status-bar"><div id="status-fill" class="indeterminate"></div></div>
-				<div id="status-detail"></div>
-				<div id="status-notice"></div>
+			<canvas id="status-canvas" width="248" height="68"></canvas>
 			</div>
-		</div>
-		<script src="$GODOT_URL"></script>
-		<script>
+			<script src="$GODOT_URL"></script>
+			<script>
 const GODOT_CONFIG = $GODOT_CONFIG;
 const GODOT_THREADS_ENABLED = $GODOT_THREADS_ENABLED;
 const engine = new Engine(GODOT_CONFIG);
 
+// Loader window: the in-game dialogue frame (prompt window primitives in assets/menu/manifest.json: 0x32 gradient
+// fill at 50% alpha, 0x48 gray/white/gray chamfered outlines) drawn at native 1x and scaled by an integer factor.
+const statusWindow = (function () {
+	const canvas = document.getElementById('status-canvas');
+	const context = canvas.getContext('2d');
+	const BODY_W = 232, BODY_H = 56, MARGIN = 6, LINE = 14;
+	const state = { title: 'Downloading Legends...', fraction: -1, detail: '', notice: [], font: null, atlas: null };
+	let frame = 0;
+
+	function plot(image, x, y, colour) {
+		if (x < 0 || y < 0 || x >= image.width || y >= image.height) return;
+		const o = (y * image.width + x) * 4;
+		image.data[o] = colour[0]; image.data[o + 1] = colour[1]; image.data[o + 2] = colour[2]; image.data[o + 3] = 255;
+	}
+	function rect(image, x, y, w, h, colour) {
+		for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) plot(image, x + i, y + j, colour);
+	}
+	function octagon(x, y, width, height, offset) {
+		const c = 3 + offset, l = x - offset, t = y - offset, r = x + width + offset, b = y + height + offset;
+		return [[l, t + c], [l + c, t], [r - c, t], [r, t + c], [r, b - c], [r - c, b], [l + c, b], [l, b - c]];
+	}
+	function outline(image, x, y, width, height, offset, colour) {
+		const points = octagon(x, y, width, height, offset);
+		for (let i = 0; i < 8; i++) {
+			let [x0, y0] = points[i];
+			const [x1, y1] = points[(i + 1) % 8];
+			const sx = Math.sign(x1 - x0), sy = Math.sign(y1 - y0);
+			for (;;) {
+				plot(image, x0, y0, colour);
+				if (x0 === x1 && y0 === y1) break;
+				x0 += sx; y0 += sy;
+			}
+		}
+	}
+	// Triangle fan from the window centre (dark) to each edge (blue), as the game's 0x32 primitives do.
+	function gradient(image, x, y, width, height) {
+		const poly = octagon(x, y, width, height, 0), cx = x + width / 2, cy = y + height / 2;
+		const edge = [48, 48, 96], mid = [16, 16, 24];
+		for (let j = y; j <= y + height; j++) {
+			for (let i = x; i <= x + width; i++) {
+				const px = i + 0.5, py = j + 0.5;
+				for (let k = 0; k < 8; k++) {
+					const a = poly[k], b = poly[(k + 1) % 8];
+					const d = (b[1] - cy) * (a[0] - cx) + (cx - b[0]) * (a[1] - cy);
+					const wa = ((b[1] - cy) * (px - cx) + (cx - b[0]) * (py - cy)) / d;
+					const wb = ((cy - a[1]) * (px - cx) + (a[0] - cx) * (py - cy)) / d;
+					const wc = 1 - wa - wb;
+					if (wa < 0 || wb < 0 || wc < 0) continue;
+					const o = (j * image.width + i) * 4;
+					image.data[o] = edge[0] * (1 - wc) + mid[0] * wc;
+					image.data[o + 1] = edge[1] * (1 - wc) + mid[1] * wc;
+					image.data[o + 2] = edge[2] * (1 - wc) + mid[2] * wc;
+					image.data[o + 3] = 128;
+					break;
+				}
+			}
+		}
+	}
+	function glyph(code) {
+		return state.font && (state.font[code] || state.font[63]);
+	}
+	function width(string) {
+		let total = 0;
+		for (const ch of string) { const g = glyph(ch.charCodeAt(0)); total += g ? g.advance : 6; }
+		return total;
+	}
+	function text(string, x, y) {
+		if (!state.atlas) return;
+		for (const ch of string) {
+			const g = glyph(ch.charCodeAt(0));
+			if (!g) { x += 6; continue; }
+			if (g.w > 0) context.drawImage(state.atlas, g.x, g.y, g.w, g.h, x + g.ox, y + g.oy, g.w, g.h);
+			x += g.advance;
+		}
+	}
+	function wrap(string, limit) {
+		const out = [];
+		string.split('\n').forEach((paragraph) => {
+			let line = '';
+			paragraph.split(' ').forEach((word) => {
+				const candidate = line ? line + ' ' + word : word;
+				if (line && width(candidate) > limit) { out.push(line); line = word; } else { line = candidate; }
+			});
+			out.push(line);
+		});
+		return out;
+	}
+	function layout() {
+		const lines = state.notice.length ? wrap(state.notice.join('\n'), BODY_W - 24) : [];
+		const bodyH = BODY_H + (lines.length ? 4 + LINE * lines.length : 0);
+		const w = BODY_W + MARGIN * 2, h = bodyH + MARGIN * 2;
+		if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+		const s = Math.max(1, Math.min(4, Math.floor(window.innerWidth / (w + 8)), Math.floor(window.innerHeight / (h + 8))));
+		canvas.style.width = (w * s) + 'px';
+		canvas.style.height = (h * s) + 'px';
+		return { lines, bodyH, w, h };
+	}
+	function draw() {
+		frame = 0;
+		const m = layout();
+		const image = context.createImageData(m.w, m.h);
+		gradient(image, MARGIN, MARGIN, BODY_W, m.bodyH);
+		outline(image, MARGIN, MARGIN, BODY_W, m.bodyH, 0, [0x80, 0x80, 0x80]);
+		outline(image, MARGIN, MARGIN, BODY_W, m.bodyH, 1, [0xf8, 0xf8, 0xf8]);
+		outline(image, MARGIN, MARGIN, BODY_W, m.bodyH, 2, [0x60, 0x60, 0x60]);
+		const bx = MARGIN + 12, by = MARGIN + 28, bw = BODY_W - 24;
+		rect(image, bx - 1, by - 1, bw + 2, 10, [0xc2, 0xc9, 0xb0]);
+		rect(image, bx, by, bw, 8, [0x29, 0x29, 0x38]);
+		if (state.fraction >= 0) {
+			rect(image, bx, by, Math.round(bw * Math.min(1, state.fraction)), 8, [0xff, 0xde, 0x63]);
+		} else {
+			const seg = Math.round(bw / 5), span = bw + seg;
+			const pos = Math.floor(performance.now() / 1100 * span) % span - seg;
+			const from = Math.max(0, pos), to = Math.min(bw, pos + seg);
+			if (to > from) rect(image, bx + from, by, to - from, 8, [0xff, 0xde, 0x63]);
+		}
+		context.putImageData(image, 0, 0);
+		text(state.title, MARGIN + 12, MARGIN + 8);
+		text(state.detail, MARGIN + 12, MARGIN + 40);
+		m.lines.forEach((line, i) => text(line, MARGIN + 12, MARGIN + 58 + LINE * i));
+		if (state.fraction < 0 && !state.notice.length) frame = requestAnimationFrame(draw);
+	}
+	function redraw() {
+		if (frame) cancelAnimationFrame(frame);
+		draw();
+	}
+
+	fetch('native_font.fnt').then((response) => response.text()).then((source) => {
+		const font = {};
+		for (const m of source.matchAll(/char id=(\d+) x=(\d+) y=(\d+) width=(\d+) height=(\d+) xoffset=(-?\d+) yoffset=(-?\d+) xadvance=(\d+)/g)) {
+			font[+m[1]] = { x: +m[2], y: +m[3], w: +m[4], h: +m[5], ox: +m[6], oy: +m[7], advance: +m[8] };
+		}
+		const atlas = new Image();
+		atlas.onload = () => { state.font = font; state.atlas = atlas; redraw(); };
+		atlas.src = 'font_atlas.png';
+	}).catch((err) => console.error(err));
+	window.addEventListener('resize', redraw);
+	redraw();
+
+	return {
+		setTitle(value) { state.title = value; redraw(); },
+		setProgress(fraction, detail) {
+			if (state.fraction === fraction && state.detail === detail) return;
+			state.fraction = fraction; state.detail = detail; redraw();
+		},
+		setNotice(value) { state.notice = value.split('\n').filter((line) => line.length); redraw(); },
+	};
+}());
+
 (function () {
 	const statusOverlay = document.getElementById('status');
-	const statusTitle = document.getElementById('status-title');
-	const statusFill = document.getElementById('status-fill');
-	const statusDetail = document.getElementById('status-detail');
-	const statusNotice = document.getElementById('status-notice');
 
 	let initializing = true;
 	let statusMode = '';
@@ -63,19 +196,11 @@ const engine = new Engine(GODOT_CONFIG);
 			return;
 		}
 		statusOverlay.style.visibility = 'visible';
-		statusNotice.style.display = mode === 'notice' ? 'block' : 'none';
 		statusMode = mode;
 	}
 
 	function setStatusNotice(text) {
-		while (statusNotice.lastChild) {
-			statusNotice.removeChild(statusNotice.lastChild);
-		}
-		const lines = text.split('\n');
-		lines.forEach((line) => {
-			statusNotice.appendChild(document.createTextNode(line));
-			statusNotice.appendChild(document.createElement('br'));
-		});
+		statusWindow.setNotice(text);
 	}
 
 	function displayFailureNotice(err) {
@@ -127,16 +252,12 @@ const engine = new Engine(GODOT_CONFIG);
 		engine.startGame({
 			'onProgress': function (current, total) {
 				if (current > 0 && total > 0) {
-					statusFill.classList.remove('indeterminate');
-					statusFill.style.width = (100 * current / total).toFixed(1) + '%';
-					statusDetail.textContent = (current / 1048576).toFixed(1) + ' / ' + (total / 1048576).toFixed(1) + ' MB';
+					statusWindow.setProgress(current / total, (current / 1048576).toFixed(1) + ' / ' + (total / 1048576).toFixed(1) + ' MB');
 				} else {
-					statusFill.classList.add('indeterminate');
-					statusFill.style.width = '';
-					statusDetail.textContent = '';
+					statusWindow.setProgress(-1, '');
 				}
 				if (current > 0 && current >= total) {
-					statusTitle.textContent = 'Starting Legends...';
+					statusWindow.setTitle('Starting Legends...');
 				}
 			},
 		}).then(() => {

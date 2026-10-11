@@ -824,12 +824,12 @@ def parse_global_area_script_routes(texture):
 		routes.append({"global_area_index": global_area_index, "pointer_ram": hex(pointer), "pointer_file_offset": file_offset, "entries": entries})
 	return routes, script_area_routes
 
-def export_static_actor(payload, model_index, texture_path, output_path, source_name="ST0F00.BIN"):
+def export_static_actor(payload, model_index, texture_path, output_path, source_name="ST0F00.BIN", vram=None):
 	count = read_u32(payload, 0)
 	if model_index >= count: raise ValueError("actor model index is outside the archive")
 	flags, mesh, tracks, controls = struct.unpack_from("<4I", payload, 4 + model_index * 16); n_high, n_medium, n_low, mesh_extra = struct.unpack_from("<4B", payload, mesh); high, medium, low, bone_offset, hierarchy_offset, texture_offset, bounds_offset = struct.unpack_from("<7I", payload, mesh + 4)
 	if bone_offset or not n_high: raise ValueError(f"{source_name} model {model_index} is not a static high-LOD mesh")
-	texture_info = read_u32(payload, texture_offset); tpage = texture_info & 0xFFFF; clut = texture_info >> 16; vram, _ = textures(texture_path); texture_png = png(256, 256, decode_page(vram, tpage, clut)); builder = GlbBuilder(); image_view = builder.view(texture_png); groups = {}; face_count = 0
+	texture_info = read_u32(payload, texture_offset); tpage = texture_info & 0xFFFF; clut = texture_info >> 16; vram = textures(texture_path)[0] if vram is None else vram; texture_png = png(256, 256, decode_page(vram, tpage, clut)); builder = GlbBuilder(); image_view = builder.view(texture_png); groups = {}; face_count = 0
 	for part in range(n_high):
 		tri_count, quad_count, vertex_count, exponent, tri_offset, quad_offset, vertex_offset = struct.unpack_from("<4B3I", payload, high + part * 16); scale = (0.5 if exponent == 0xFF else 1 << exponent) / 2048.0; vertices = [pbd_position(read_u32(payload, vertex_offset + index * 4), scale) for index in range(vertex_count)]
 		for is_quad, faces, face_offset in ((False, tri_count, tri_offset), (True, quad_count, quad_offset)):
@@ -1825,7 +1825,7 @@ class NativeMachine:
 		else: raise ValueError("Unsupported COP2 move")
 		machine.reg_write(self.registers.UC_MIPS_REG_PC, address + 4)
 	def reset(self, seed):
-		self.machine.mem_write(0x150000, bytes(0x400)); self.put(0x1F800050, self.LIST_RECORDS); self.put(0x1F80004C, self.LIST_POLYGONS); self.put(0x1F800048, self.TABLE); self.put(0x1F800000, seed); self.put(0x1F800004, 0, 1); self.put(0x1F80000A, 0, 1); self.put(0x1F800012, 0x7FFF, 2); self.put(0x1F800006, 0, 2); self.put(0x1F8000B5, 0, 1); self.freed = False
+		self.machine.mem_write(0x150000, bytes(0x400)); self.put(0x1F800050, self.LIST_RECORDS); self.put(0x1F80004C, self.LIST_POLYGONS); self.put(0x1F800048, self.TABLE); self.put(0x1F800000, seed); self.put(0x1F800004, 0, 1); self.put(0x1F80000A, 0, 1); self.put(0x1F800012, 0x7FFF, 2); self.put(0x1F800006, 0, 2); self.put(0x1F8000B5, 0, 1); self.freed = False; self.draw_blend = 0
 		for index, value in enumerate((0x1000, 0, 0x1000, 0, 0x1000, 0, 0, 1024)): self.put(0x1F800014 + 4 * index, value)
 		self.gte.c[26], self.gte.c[24], self.gte.c[25], self.gte.c[27], self.gte.c[28] = 1024, 0, 0, 0, 0
 		for index, value in enumerate((0x1000, 0, 0x1000, 0, 0x1000, 0, 0, 1024)): self.gte.c[index] = value
@@ -1846,7 +1846,7 @@ class NativeMachine:
 			self.call(0x800390EC)
 			for pointer, command in layout:
 				if command == 0x2C and self.word(pointer) >> 24 == 9: records.append([self.word(pointer + 4 * index) for index in range(1, 10)])
-		pointer, end, result, blend = self.LIST_POLYGONS, self.word(0x1F80004C), [], 0
+		pointer, end, result, blend = self.LIST_POLYGONS, self.word(0x1F80004C), [], self.draw_blend
 		while pointer < end:
 			tag = self.word(pointer); count = tag >> 24; words = [self.word(pointer + 4 + 4 * index) for index in range(count)]; pointer += 4 + 4 * count
 			if words and words[0] >> 24 == 0xE1: blend = (words[0] >> 5) & 3
@@ -1855,12 +1855,12 @@ class NativeMachine:
 				result.append({"blend": blend, "semi": bool(words[0] >> 25 & 1), "colors": [[words[2 * index] & 255, (words[2 * index] >> 8) & 255, (words[2 * index] >> 16) & 255] for index in range(4)], "vertices": [[signed(words[2 * index + 1] & 0xFFFF), signed(words[2 * index + 1] >> 16)] for index in range(4)]})
 			elif words and words[0] >> 24 in (0x3C, 0x3E) and count == 12:
 				signed = lambda value: value - 0x10000 if value & 0x8000 else value
-				result.append({"blend": (words[5] >> 21) & 3, "semi": bool(words[0] >> 25 & 1), "tpage": (words[5] >> 16) & 0x1F, "clut": words[2] >> 16, "colors": [[words[3 * index] & 255, (words[3 * index] >> 8) & 255, (words[3 * index] >> 16) & 255] for index in range(4)], "vertices": [[signed(words[3 * index + 1] & 0xFFFF), signed(words[3 * index + 1] >> 16)] for index in range(4)], "uvs": [[words[3 * index + 2] & 255, (words[3 * index + 2] >> 8) & 255] for index in range(4)]})
+				blend = (words[5] >> 21) & 3; result.append({"blend": blend, "semi": bool(words[0] >> 25 & 1), "tpage": (words[5] >> 16) & 0x1F, "clut": words[2] >> 16, "colors": [[words[3 * index] & 255, (words[3 * index] >> 8) & 255, (words[3 * index] >> 16) & 255] for index in range(4)], "vertices": [[signed(words[3 * index + 1] & 0xFFFF), signed(words[3 * index + 1] >> 16)] for index in range(4)], "uvs": [[words[3 * index + 2] & 255, (words[3 * index + 2] >> 8) & 255] for index in range(4)]})
 			else: raise ValueError(f"Unsupported native packet {words[0] >> 24:#x}")
 		for words in records:
 			signed = lambda value: value - 0x10000 if value & 0x8000 else value
 			result.append({"blend": (words[4] >> 21) & 3, "semi": bool(words[0] >> 25 & 1), "tpage": (words[4] >> 16) & 0x1F, "clut": words[2] >> 16, "colors": [[words[0] & 255, (words[0] >> 8) & 255, (words[0] >> 16) & 255]] * 4, "vertices": [[signed(words[1 + 2 * index] & 0xFFFF), signed(words[1 + 2 * index] >> 16)] for index in range(4)], "uvs": [[words[2 + 2 * index] & 255, (words[2 + 2 * index] >> 8) & 255] for index in range(4)]})
-		self.put(0x1F80004C, self.LIST_POLYGONS); self.put(0x1F800050, self.LIST_RECORDS); return result
+		self.draw_blend = blend; self.put(0x1F80004C, self.LIST_POLYGONS); self.put(0x1F800050, self.LIST_RECORDS); return result
 def capture_effect(module, init, update, setup=(), seeds=range(1, 7), state=0x64, skip=(), maximum=None):
 	"""Runs an original effect actor (init state, then the update state until it frees itself) once per random seed and returns the polygon packets of every drawn frame."""
 	machine = NativeMachine(module); machine.skip = set(skip); actor = 0x80150000; result = []
@@ -1900,13 +1900,19 @@ def export_effect_pages(effects, output_dir):
 					if name not in names: names[name] = None; write_output(output_dir / name, world.png(256, 256, ui.decode_page(vram, polygon["tpage"], polygon["clut"], False)))
 					polygon["page"] = name; del polygon["tpage"], polygon["clut"]
 	return sorted(names)
+def export_projectile_model(weapon, entry, output_dir):
+	"""The projectile model the weapon's launcher object binds through the stage model archive (SLES 0x8003DFA4: key 0x11, class = actor class, entries 4 and 5 of the common head of every archive), drawn by the generic object pass SLES 0x80025540 from the header at object +0x94; its material 3 palette (CLUT 0x3C0C) is the one the weapon module uploads."""
+	module_file = f"PL00R{weapon - 1:02X}.BIN"; vram = textures(COMMON / "PL00T.BIN")[0]; world.texture_uploads((COMMON / module_file).read_bytes(), vram, module_file); payload = runner_stage_blobs("ST4A", None, True)["models_data"]
+	if payload[4 + 16 * entry:4 + 16 * entry + 3] != bytes((0x11, 4 + (weapon == 6), 0)): raise ValueError("Projectile model entry differs")
+	name = f"weapon_{weapon:02x}_shot.glb"; export_static_actor(payload, entry, None, Path(output_dir) / name, "ST4A models", vram)
+	return {"model": name, "source": "stage model archive head entry %d (key 0x11, class %d), SLES 0x8003DFA4 binds it to the launcher object (+0x94), SLES 0x80025540 draws it" % (entry, 4 + (weapon == 6)), "alongAxis": "z, nose toward -z"}
 def homing_missile_extension(built, output_dir):
 	"""Homing Missile (module PL00R05): flight and steering constants, the smoke trail (GAME class 6) and the explosion (GAME class 7)."""
 	R, G = built["image"], built["game"]
 	if R.word(0x8010A004) != 0x27BDFFE0 or R.imm(0x8010A208) != -0x100 or R.imm(0x8010A558) != -0x40 or R.imm(0x8010A570) != -0x600 or R.imm(0x8010A2B0) != 0xBF or R.imm(0x8010A4D4) != 0x40 or R.imm(0x8010A35C) != 4: raise ValueError("Homing Missile module differs")
 	if G.pair(0x800D2E6C, 0x800D2E74) != 0x3A343434 or G.pair(0x800D2E84, 0x800D2E8C) != 0x3A363636 or G.pair(0x800D3284, 0x800D3288) != 0xFFFDFDFE or G.imm(0x800D2D30) != 0x1B or G.imm(0x800D2D38) != 0x1A: raise ValueError("Trail renderer differs")
 	explosion = capture_effect(None, 0x800D331C, 0x800D3448, ((6, 1, 1), (0xC, R.imm(0x8010A6FC), 2)), range(1, 5), 0x94, EXPLOSION_SKIP); pages = export_effect_pages([explosion], output_dir)
-	return {"bullet": {"source": "PL00R05 0x8010A114 (spawn) / 0x8010A3D0 (flight) / 0x8010A694 (explosion spawn), steering GAME 0x800CF1AC", "launchSound": R.imm(0x8010A2B0), "initialSpeedRaw": -R.imm(0x8010A208), "accelerationRaw": -R.imm(0x8010A558), "maximumSpeedRaw": -R.imm(0x8010A570), "substepsPerTick": R.imm(0x8010A544), "turnLimit": R.imm(0x8010A4D4), "turnDivisorShift": R.shift(0x8010A4F8), "steering": {"kind": "ramp", "armDelayBase": R.imm(0x8010A35C), "armedTurnShift": 1, "pitchFactor": 2, "limit": R.imm(0x8010A4D4), "divisorShift": R.shift(0x8010A4F8)}, "rule": "armed after 4 - special ticks; the turn accumulator gains special + 1 per tick up to the limit and the steering rate is accumulator >> 2, doubled once armed, pitch twice the yaw rate", "damageStat": "attack stat on contact, halved when game byte 0x8009C7FE is 4"},
+	return {"projectile": export_projectile_model(6, 2, output_dir), "bullet": {"source": "PL00R05 0x8010A114 (spawn) / 0x8010A3D0 (flight) / 0x8010A694 (explosion spawn), steering GAME 0x800CF1AC", "launchSound": R.imm(0x8010A2B0), "initialSpeedRaw": -R.imm(0x8010A208), "accelerationRaw": -R.imm(0x8010A558), "maximumSpeedRaw": -R.imm(0x8010A570), "substepsPerTick": R.imm(0x8010A544), "turnLimit": R.imm(0x8010A4D4), "turnDivisorShift": R.shift(0x8010A4F8), "steering": {"kind": "ramp", "armDelayBase": R.imm(0x8010A35C), "armedTurnShift": 1, "pitchFactor": 2, "limit": R.imm(0x8010A4D4), "divisorShift": R.shift(0x8010A4F8)}, "rule": "armed after 4 - special ticks; the turn accumulator gains special + 1 per tick up to the limit and the steering rate is accumulator >> 2, doubled once armed, pitch twice the yaw rate", "damageStat": "attack stat on contact, halved when game byte 0x8009C7FE is 4"},
 		"trail": {"kind": "ribbon", "source": "GAME 0x800D2C10 class 6 effect following the missile", "history": G.imm(0x800D2D30), "historyCap": G.imm(0x800D2D38), "headScale": [G.shift(0x800D2EB0), G.imm(0x800D2EB8)], "segmentScale": [2, 1], "fade": G.imm(0x800D2FC8), "colorNewEnd": G.pair(0x800D2E84, 0x800D2E8C) & 255, "colorOldEnd": G.pair(0x800D2E6C, 0x800D2E74) & 255, "colorStep": 2, "blend": 1, "rule": "newest to oldest, four gouraud quads per segment (corner-centre wedges of the swept square), half size head (variant << 4 | 8) then (2 * variant + 1) * (16 - remaining / 2), colours newest 0x34 to 0x36 fading 2 per segment"},
 		"explosion": {"source": "GAME 0x800D32E0 class 7 effect, run unchanged; the missile spawns variant 1 with size (attack level << 4) + 0x80", "sizeBase": R.imm(0x8010A6FC), "sizeShift": R.shift(0x8010A6F8), "hitDamageBase": R.imm(0x8010A710), "hitDamageShift": R.shift(0x8010A70C), "sound": G.imm(0x800D33A4), "ticks": len(explosion[0]), "area": "each tick damages actors inside (size * (16 - counter)) >> 5 raw units", "pages": pages, "variants": explosion}}
 def capture_sprite_trail(owner_steps=12):
@@ -1920,7 +1926,7 @@ def hyper_shell_extension(built, output_dir):
 	R, G = built["image"], built["game"]
 	if R.word(0x8010A104) != 0x27BDFFC0 or R.imm(0x8010A278) != -0x180 or R.imm(0x8010A728) != -0x40 or R.imm(0x8010A740) != -0xA00 or R.imm(0x8010A640) != 4 or R.imm(0x8010A3EC) != 0xBE or R.imm(0x8010A714) != 3: raise ValueError("Hyper Shell module differs")
 	trail = capture_sprite_trail(); explosion = capture_effect(None, 0x800D331C, 0x800D3448, ((6, 1, 1), (0xC, R.imm(0x8010A820), 2)), range(1, 5), 0x94, EXPLOSION_SKIP); pages = export_effect_pages([[[trail]], explosion], output_dir)
-	return {"bullet": {"source": "PL00R04 0x8010A104 (spawn) / 0x8010A530 (flight) / 0x8010A7B8 (hit)", "launchSound": R.imm(0x8010A3EC), "initialSpeedRaw": -R.imm(0x8010A278), "accelerationRaw": -R.imm(0x8010A728), "maximumSpeedRaw": -R.imm(0x8010A740), "substepsPerTick": R.imm(0x8010A714), "steering": {"kind": "fixed", "yawRate": R.imm(0x8010A640), "pitchFactor": 2, "delayTicks": R.imm(0x8010A494), "fuseDistanceRaw": 0x400}, "rule": "steers at a fixed rate toward the lock-on point after the delay when a target is locked; once the distance to the target stops shrinking inside 0x400 raw units the shell detonates"},
+	return {"projectile": export_projectile_model(5, 1, output_dir), "bullet": {"source": "PL00R04 0x8010A104 (spawn) / 0x8010A530 (flight) / 0x8010A7B8 (hit)", "launchSound": R.imm(0x8010A3EC), "initialSpeedRaw": -R.imm(0x8010A278), "accelerationRaw": -R.imm(0x8010A728), "maximumSpeedRaw": -R.imm(0x8010A740), "substepsPerTick": R.imm(0x8010A714), "steering": {"kind": "fixed", "yawRate": R.imm(0x8010A640), "pitchFactor": 2, "delayTicks": R.imm(0x8010A494), "fuseDistanceRaw": 0x400}, "rule": "steers at a fixed rate toward the lock-on point after the delay when a target is locked; once the distance to the target stops shrinking inside 0x400 raw units the shell detonates"},
 		"trail": {"kind": "sprites", "source": "GAME 0x800D287C class 5", "history": 8, "frames": trail},
 		"explosion": {"source": "GAME 0x800D32E0 class 7 effect, run unchanged; the shell spawns variant 1 with size (attack level << 5) + 0xC0", "sizeBase": R.imm(0x8010A820), "sizeShift": R.shift(0x8010A81C), "hitDamageBase": R.imm(0x8010A834), "hitDamageShift": R.shift(0x8010A830), "sound": G.imm(0x800D33A4), "ticks": len(explosion[0]), "pages": pages, "variants": explosion}}
 def export_special_weapon(weapon, output_dir=None):

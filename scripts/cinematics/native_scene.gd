@@ -47,6 +47,7 @@ var orbit_velocity := Vector3.ZERO
 var eye_velocity := Vector3.ZERO
 var trig: Array = []
 var xa: AudioStreamPlayer
+var last_wall := 0
 var transition_route: Dictionary = {}
 var suppressed: Array[Node3D] = []
 var suppressed_streams: Array[Dictionary] = []
@@ -71,6 +72,8 @@ var player_faces: Array = []
 var player_face_page: Texture2D
 var registration_records: Array[String] = []
 var player_pose: Node3D
+var saved_position: Array = []
+var saved_facing := 0
 func configure(gameplay: Node3D, level: Node3D, path: String, requested_area: int = -1) -> bool:
 	host = gameplay; scene_root = level; directory = path.get_base_dir()
 	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
@@ -134,6 +137,7 @@ func run() -> bool:
 			if is_instance_valid(leaf) and leaf.has_meta("closed_yaw"): leaf.rotation.y = float(leaf.get_meta("closed_yaw"))
 			await host.room_stream._close_portal(str(key))
 	var initial: Dictionary = callbacks["initialization"]; head_units = 0
+	var origin: Vector3 = scene_root.to_local(host.player.global_position); saved_position = [-origin.x * 256.0, -origin.y * 256.0, origin.z * 256.0]; saved_facing = _yaw(host.player.player_model)
 	if not bool(initial.get("player_keep_transform", false)): host.player.global_position = scene_root.to_global(_world(initial["player_position_raw"])); _set_yaw(host.player.player_model, int(initial["player_yaw_raw"]))
 	if initial.has("music_cue"): host.audio.play_sound(int(initial["music_cue"]))
 	for placement: int in initial.get("suppress_placements", []):
@@ -168,6 +172,7 @@ func run() -> bool:
 		elif str(operation["op"]) == "fade":
 			if bool(operation.get("wait", true)): await _fade(int(operation["type"]))
 			else: _fade(int(operation["type"]), false)
+		elif str(operation["op"]) == "fade_hold": await host.transition_overlay.hold_wipe(int(operation["type"]))
 		else: _action(operation)
 	if callbacks.has("xa") and not initial.has("init_ops"):
 		var audio_path := directory.path_join("audio/manifest.json")
@@ -176,19 +181,24 @@ func run() -> bool:
 		if not audio is Dictionary or int(audio.get("id", -1)) != int(callbacks["xa"]["descriptor_index"]): _restore(); return false
 		if not await AssetStore.ensure_voice(audio): _restore(); return false
 		var stream: AudioStream = await host.audio._load_stream(str(audio["file"]))
-		if stream == null: _restore(); return false
-		xa = AudioStreamPlayer.new(); xa.stream = stream; xa.bus = "SFX" if AudioServer.get_bus_index("SFX") >= 0 else "Master"; add_child(xa); xa.play()
-		while is_inside_tree() and xa.get_playback_position() <= 0.0: await get_tree().process_frame
+		if stream != null: xa = AudioStreamPlayer.new(); xa.stream = stream; xa.bus = "SFX" if AudioServer.get_bus_index("SFX") >= 0 else "Master"; add_child(xa); xa.play()
+		while is_instance_valid(xa) and is_inside_tree() and xa.get_playback_position() <= 0.0: await get_tree().process_frame
 	camera.make_current(); running = true; _commands(); _interpolate(); segment_tick = 1; phase_tick = 1; total_tick = 1; _camera_update()
 	var success: bool = await completed
 	_restore(); return success
 func _process(delta: float) -> void:
-	if not running or finishing: return
+	if not running or finishing: last_wall = 0; return
 	if skip_requested: _skip_scene()
 	if finishing: return
+	# The engine clamps a frame's delta (about 0.13 s), so a slow web frame would advance fewer ticks than real time while the voice plays in real time: follow the wall clock and spend a bounded time per frame catching up.
+	var web := OS.has_feature("web"); var began := Time.get_ticks_usec()
+	if web:
+		delta = clampf(float(began - last_wall) / 1000000.0, 0.0, 5.0) if last_wall > 0 else delta
+		last_wall = began
 	elapsed += delta * float(data.get("native_tick_hz", 25))
 	while elapsed >= 1.0 and running and not finishing:
 		elapsed -= 1.0; native_tick()
+		if web and Time.get_ticks_usec() - began > 40000: break
 func native_tick() -> void:
 	if message_failed: running = false; completed.emit(false); return
 	if area_loading: return
@@ -231,11 +241,13 @@ func _program(program: Array) -> void:
 			if op in ["message", "message_start"]: _message(int(operation["index"]))
 			elif op == "area_change": _area_change(operation)
 			elif op == "fade": _fade(int(operation["type"]), bool(operation.get("wait", true)))
+			elif op == "fade_hold": _fade_hold(int(operation["type"]))
+			elif op == "development_menu": _development_menu()
 			elif op == "jump" or (op == "jump_if" and answer == int(operation["answer"])): program_index = _label(program, str(operation["to"])); operation_started = false; continue
 			elif op not in ["message_wait", "minimum_tick", "delay", "turn_wait", "advance", "finish", "label", "jump_if", "wait_flag_clear", "wait_xa_idle", "wait_actor_inactive"]: _action(operation)
 		if message_failed: return
 		if op == "area_change" and area_loading: return
-		if op == "fade" and fade_busy: return
+		if op in ["fade", "fade_hold"] and fade_busy: return
 		if op == "wait_flag_clear" and _flag(_flag_id(operation["flag"])): return
 		if op == "wait_xa_idle" and is_instance_valid(xa) and xa.playing: return
 		if op == "wait_actor_inactive" and actors.has(int(operation["slot"])):
@@ -243,7 +255,7 @@ func _program(program: Array) -> void:
 			if is_instance_valid(actor):
 				if not actor.has_method("native_scene_active"): message_failed = true; return
 				if actor.native_scene_active(): return
-		if op in ["message", "message_wait"] and message_busy: return
+		if op in ["message", "message_wait", "development_menu"] and message_busy: return
 		if op == "delay" and segment_tick - operation_tick < int(operation["ticks"]): return
 		if op == "minimum_tick" and segment_tick < int(operation["tick"]): return
 		if op == "turn_wait" and _turn(host.player.player_model, int(operation["heading"]), int(operation["speed"])) != 0: return
@@ -548,9 +560,19 @@ func _release_root() -> void:
 	owns_root = false
 func _area_change(operation: Dictionary) -> void:
 	area_loading = true
-	var success: bool = await host.native_scene_area(int(operation["area"]), operation["position_raw"], int(operation["facing_raw"]))
+	var saved: bool = operation["position_raw"] is String
+	var success: bool = await host.native_scene_area(int(operation["area"]), saved_position if saved else operation["position_raw"], saved_facing if saved else int(operation["facing_raw"]))
 	area = int(operation["area"]); area_loading = false; message_failed = message_failed or not success
+	if success and host.streaming_rooms and is_instance_valid(host.room_stream.room_root(stage, area)): scene_root.global_transform = host.room_stream.room_root(stage, area).global_transform
 	if success: camera.make_current()
+func _fade_hold(code: int) -> void:
+	fade_busy = true
+	await host.transition_overlay.hold_wipe(code)
+	fade_busy = false
+func _development_menu() -> void:
+	message_busy = true
+	await preload("res://scripts/ui/menus/development_menu.gd").open(host)
+	message_busy = false
 func _fade(code: int, wait := true) -> void:
 	fade_busy = wait; faded = true
 	await host.transition_overlay.request(code)
@@ -595,15 +617,14 @@ func _prepare_voice_assets() -> bool:
 		if not xa_entries.has(id) or not await AssetStore.ensure_voice(xa_entries[id]): return false
 		if prepared.has(id):
 			var stream: AudioStream = await host.audio._load_stream(str(xa_entries[id]["file"]))
-			if stream == null: return false
-			xa_streams[id] = stream
+			if stream != null: xa_streams[id] = stream
 	return true
 func _play_xa(id: int) -> void:
 	var entry: Dictionary = xa_entries.get(id, {})
 	if entry.is_empty(): message_failed = true; return
 	if not await AssetStore.ensure_voice(entry) or not is_inside_tree(): message_failed = true; return
 	var stream: AudioStream = xa_streams[id] if xa_streams.has(id) else await host.audio._load_stream(str(entry["file"]))
-	if stream == null: message_failed = true; return
+	if stream == null: return
 	if not is_instance_valid(xa): xa = AudioStreamPlayer.new(); xa.bus = "SFX" if AudioServer.get_bus_index("SFX") >= 0 else "Master"; add_child(xa)
 	xa.stream = stream; xa.volume_db = 0.0; xa.play(); xa_ready_tick = -1; xa_answer = answer if id != int(callbacks.get("xa", {}).get("descriptor_index", -1)) else -1
 func _fade_xa(speed: int) -> void:

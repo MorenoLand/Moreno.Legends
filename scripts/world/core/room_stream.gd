@@ -374,6 +374,7 @@ func _load_room_props(room: Node3D, stage: String, area: int, excluded_roles: Ar
 	if is_instance_valid(room): _apply_room_lighting(room, stage, area)
 func read_json_threaded(path: String) -> Variant:
 	if not FileAccess.file_exists(path): return null
+	if OS.has_feature("nothreads"): return JSON.parse_string(FileAccess.get_file_as_string(path))
 	var holder := {}; var task := WorkerThreadPool.add_task(func() -> void: holder["value"] = JSON.parse_string(FileAccess.get_file_as_string(path)))
 	while not WorkerThreadPool.is_task_completed(task): await get_tree().process_frame
 	WorkerThreadPool.wait_for_task_completion(task)
@@ -388,6 +389,7 @@ func _threaded_scene(path: String) -> PackedScene:
 	scene_inflight.erase(path)
 	return scene
 func _threaded_scene_load(path: String) -> PackedScene:
+	if OS.has_feature("nothreads"): return load(path) as PackedScene
 	var status := ResourceLoader.load_threaded_get_status(path)
 	if status == ResourceLoader.THREAD_LOAD_INVALID_RESOURCE:
 		var request_error := ResourceLoader.load_threaded_request(path, "PackedScene", true, ResourceLoader.CACHE_MODE_REUSE)
@@ -998,11 +1000,15 @@ func _add_collision(mesh_node: MeshInstance3D, mesh: Mesh, layers: Array[int] = 
 		var body := StaticBody3D.new(); body.name = "RoomCollision_%d" % layer; body.collision_layer = layer; body.collision_mask = 0; var shape := CollisionShape3D.new(); shape.shape = geometry.duplicate() if layer == 4 else geometry
 		if layer == 4 and shape.shape is ConcavePolygonShape3D: (shape.shape as ConcavePolygonShape3D).backface_collision = true
 		body.add_child(shape); mesh_node.add_child(body)
-## A closed door must stop the player: the map's door panel face is clipped out of the room's player shape (it lies on the room's clip boundary), so each portal gets a thin blocker one body radius beyond the doorway plane on the outer side of the active room. It is off while the portal is open, and the doorway plane stays reachable for the contact tests.
+## A closed door must stop the player. The original blocks a closed doorway with its door actor; the map itself has no static collision there, and `native_floor.filter_shape` keeps only faces inside the original's collision boxes, so the panel's faces (on the doorway plane) are dropped from the player shape and a closed door let him walk into the unloaded neighbour. Each portal therefore gets a thin blocker one body radius beyond the doorway plane on the outer side of the active room (the plane itself stays reachable for the contact tests); it is off while the portal is open. Only portals that touch the active room are solid (a layout can hold overlapping portals of other stages).
 func _sync_portal_blockers() -> void:
 	for portal: Dictionary in portal_layout:
 		var key := _portal_key(portal); var body: StaticBody3D = portal_blockers.get(key)
 		var axis_x := str(portal["normal_axis"]) == "x"
+		var touches_active := _room_key(str(portal["source"]["stage"]), int(portal["source"]["area"])) == active_room_key or _room_key(str(portal["destination"]["stage"]), int(portal["destination"]["area"])) == active_room_key
+		if not touches_active:
+			if is_instance_valid(body): body.collision_layer = 0
+			continue
 		var source_side := _room_key(str(portal["source"]["stage"]), int(portal["source"]["area"])) == active_room_key or _room_key(str(portal["destination"]["stage"]), int(portal["destination"]["area"])) != active_room_key
 		if not is_instance_valid(body):
 			body = StaticBody3D.new(); body.name = "PortalBlocker_" + key.replace(":", "_"); body.collision_mask = 0
@@ -1136,7 +1142,7 @@ func _shape_variants(room_key: String, node_name: String, mesh: Mesh, signature:
 	return camera_shape_cache[cache_key]
 func _finish_variant(variants: Dictionary) -> void:
 	if not variants.has("task"): return
-	WorkerThreadPool.wait_for_task_completion(int(variants["task"]))
+	if int(variants["task"]) >= 0: WorkerThreadPool.wait_for_task_completion(int(variants["task"]))
 	var vertices: PackedVector3Array = variants["holder"].get("vertices", PackedVector3Array()); var geometry: ConcavePolygonShape3D
 	if not vertices.is_empty(): geometry = ConcavePolygonShape3D.new(); geometry.set_faces(vertices)
 	if geometry != null: geometry.backface_collision = true
@@ -1282,7 +1288,7 @@ func _process(_delta: float) -> void:
 	for index in range(prep_pending.size() - 1, -1, -1):
 		var variants: Dictionary = prep_pending[index]["variants"]
 		if not variants.has("task"): prep_pending.remove_at(index); continue
-		if not WorkerThreadPool.is_task_completed(int(variants["task"])): continue
+		if int(variants["task"]) >= 0 and not WorkerThreadPool.is_task_completed(int(variants["task"])): continue
 		var wants_player: bool = prep_pending[index]["player"]; prep_pending.remove_at(index); _finish_variant(variants)
 		if wants_player and variants["shape"] != null and not variants.has("player"):
 			var player_shape := (variants["shape"] as ConcavePolygonShape3D).duplicate() as ConcavePolygonShape3D; player_shape.backface_collision = false; variants["player"] = player_shape
@@ -1329,7 +1335,10 @@ func _prep_node(room_key: String, node_name: String, active: bool, state: Dictio
 	var mesh: Mesh = _open_mesh_for(room_key, node_name, extra_key) if node_name == panel_node else node.mesh
 	var variants := _shape_variants(room_key, node_name, mesh, str(state["signature"]))
 	if variants.has("shape") or variants.has("task"): return
-	var holder := {}; variants["holder"] = holder; variants["task"] = WorkerThreadPool.add_task(_clip_job.bind(mesh.get_faces(), node.global_transform, state["clips"], holder)); prep_pending.append({"variants": variants, "player": active})
+	var holder := {}; variants["holder"] = holder; variants["task"] = -1
+	if OS.has_feature("nothreads"): _clip_job(mesh.get_faces(), node.global_transform, state["clips"], holder)
+	else: variants["task"] = WorkerThreadPool.add_task(_clip_job.bind(mesh.get_faces(), node.global_transform, state["clips"], holder))
+	prep_pending.append({"variants": variants, "player": active})
 static func _clip_job(faces: PackedVector3Array, transform: Transform3D, clips: Array, holder: Dictionary) -> void:
 	holder["vertices"] = _clip_room_faces(faces, transform, clips)
 	if clips.any(func(clip: Dictionary) -> bool: return clip.has("camera_region")): holder["camera_vertices"] = _clip_room_faces(faces, transform, clips, true)

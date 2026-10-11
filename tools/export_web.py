@@ -32,7 +32,7 @@ def group_files(directory):
             continue
         relative = "res://" + path.relative_to(ROOT).as_posix()
         voice_audio = relative.startswith("res://assets/levels/") and path.parent.name == "audio" or relative.startswith(("res://assets/opening/audio/", "res://assets/audio/common_voices/", "res://assets/audio/voices/"))
-        if not single and voice_audio and path.suffix.lower() == ".ogg" and path not in voice_sources(ROOT)[1]: continue
+        if not single and voice_audio and path.suffix.lower() == ".ogg" and Path(os.path.normpath(path)) not in voice_sources(ROOT)[1]: continue
         import_path = path.with_name(path.name + ".import")
         if path.suffix.lower() == ".ogg":
             entries[relative] = str(path)
@@ -58,7 +58,7 @@ def voice_sources(root):
             file = root / entry["file"].removeprefix("res://") if entry["file"].startswith("res://") else path.parent / entry["file"]
             if not file.is_file(): raise FileNotFoundError(file)
             if entry.get("asset_group"): groups.setdefault(entry["asset_group"], set()).add(file)
-            else: legacy.add(file)
+            else: legacy.add(Path(os.path.normpath(file)))
     return groups, legacy
 
 def voice_groups():
@@ -102,10 +102,11 @@ def main():
     runner = ROOT / "assets" / "runner"
     if (runner / "manifest.json").is_file():
         groups["runner-core"] = [runner / "engine.gd", runner / "manifest.json", runner / "ram.bin"]
-        groups.update({"runner-" + stage: [runner / (stage + suffix) for suffix in (".gd", ".bin", ".root.bin", ".models.bin", ".vram.bin")] for stage, entry in json.loads((runner / "manifest.json").read_text(encoding="utf-8"))["stages"].items() if "attach" in entry})
+        groups.update({"runner-" + stage: sorted(runner.glob(stage + ".*")) for stage, entry in json.loads((runner / "manifest.json").read_text(encoding="utf-8"))["stages"].items() if "attach" in entry})
     groups["opening"] = [ROOT / "assets" / "opening", ROOT / "assets" / "video"]
     groups["shared"] = [ROOT / "assets" / name for name in ("minimap", "flutter", "stage_props", "weather", "shops")]
     groups["shared"].append(ROOT / "assets" / "opening" / "effects")
+    groups["shared"].append(ROOT / "assets" / "levels" / "visibility_math.json")
     audio_directory = ROOT / "assets" / "audio" / "ST0F"
     audio = json.loads((audio_directory / "manifest.json").read_text(encoding="utf-8"))
     title_key = audio["roles"]["title_music"]
@@ -152,6 +153,8 @@ def main():
             chunk_path.unlink()
     run(args.engine, "--export-release", "Web", str(output / "index.html"))
     shutil.copyfile(ROOT / "assets" / "menu" / "native_gear_background.png", output / "loading_background.png")
+    for name in ("native_font.fnt", "font_atlas.png"):
+        shutil.copyfile(ROOT / "assets" / "menu" / name, output / name)
     print(json.dumps({"core_bytes": (output / "index.pck").stat().st_size, "groups": {group: {"bytes": entry["bytes"], "chunks": len(entry["chunks"])} for group, entry in manifest["groups"].items()}}, indent=2))
 
 if __name__ == "__main__":

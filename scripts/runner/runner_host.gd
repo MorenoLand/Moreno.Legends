@@ -33,6 +33,8 @@ const START_TICKS := 3
 const FIELD_IDLE := 0x200
 const FIELD_RUNNING := 0x203
 const REQUEST := 0x80078D08
+## How far below the hands a carried block starts (metres; negative: its base rests above the hands, over the head).
+const CARRY_DROP := -0.12
 const LIFE := 0x70
 const ZENNY := 0x8009C810  # the wallet word of the game block (+0x28), read by the Status screen at SLES 0x8004FB60
 ## SLES main loop state word: the tutorial's end (ST4A area 0 handler 0x800E74B8..0x800E7504, after message 0x2D set flag 0x68E) starts the screen wipe, then stores 2 here and points the main loop at the title (0x800128D4(0x80012B48)).
@@ -102,6 +104,8 @@ var player_control := -1
 var finished := false
 var busy := false
 var loader: Thread
+var opening := false
+var last_wall := 0
 var effects: CanvasLayer
 var backdrop: CanvasLayer
 var strips: Array = []
@@ -146,6 +150,7 @@ static func attach(parent: Node3D, stage_name: String, area_index: int, context:
 	host.stage = stage_name
 	host.manifest = entry
 	host.original_start = bool(rule.get("original_start", false)) and gameplay.entry_route.is_empty()
+	host.pin_arrival = bool(rule.get("original_start", false))
 	gameplay.add_child(host)
 	host.start(parent, area_index, int(context["native_save_byte14"]))
 
@@ -154,15 +159,36 @@ func start(parent: Node3D, area_index: int, story: int) -> void:
 	area = area_index
 	pending_story = story
 	session = Session.new()
+	if OS.has_feature("nothreads"):
+		opening = true
+		_open_sync.call_deferred()
+		return
 	loader = Thread.new()
-	loader.start(_open_worker)
+	if loader.start(_open_worker) != OK:
+		loader = null
+		opening = true
+		_open_sync.call_deferred()
+
+## No worker threads (web build): the stage opens on the main thread once the caller has returned.
+func _open_sync() -> void:
+	# Compiling the original code blocks the only thread for seconds on the web: put the loading screen up and let it draw first.
+	AssetStore._block(AssetStore._stage_title(stage))
+	for frame in 40:
+		if AssetStore.screen != null and AssetStore.layer.visible: break
+		await get_tree().process_frame
+	await get_tree().process_frame
+	var opened := _open_worker()
+	AssetStore._unblock()
+	opening = false
+	_loaded(opened)
 
 func _open_worker() -> bool:
 	return session.open(stage)
 
-func _loaded() -> void:
-	var opened: bool = loader.wait_to_finish()
-	loader = null
+func _loaded(opened := true) -> void:
+	if loader != null:
+		opened = loader.wait_to_finish()
+		loader = null
 	if not is_instance_valid(level):
 		level = _level_of(gameplay, stage, area)
 	if not opened:
@@ -263,13 +289,42 @@ func level_loaded(parent: Node3D, area_index: int) -> void:
 	views.clear()
 	barriers.clear()
 	boss_view = null
-	if loader != null:
+	if loader != null or opening:
 		area = area_index
 		return
 	if area_index != area:
+		arrival_from = area
 		area = area_index
 		pending_area = area_index
 		requested_area = area_index
+
+## The area the room streaming handed over from (-1 when the session loaded straight into its area).
+var arrival_from := -1
+var arrival_pinned := false
+## Stages whose attach rule restores the original's start (the training levels) also give the runner the door's destination on a streamed handover.
+var pin_arrival := false
+var arrival_hold := 0
+var arrival_point: Array = []
+## Ticks the first position is kept: the area's region lists read it on the frames after the area set-up, before the port's own position is mirrored again.
+const ARRIVAL_TICKS := 4
+
+## The original enters an area at its door's destination, and the area's region lists (spawn sets such as the Area 03 blocks) read that first position. Streamed rooms hand over wherever the player has walked to by the time the session catches up, which can be past the region; the first frame sees the destination of the door the player came through (the route between the two areas whose destination lies nearest to him) instead.
+func _arrival_raw(machine: Machine) -> Array:
+	arrival_pinned = false
+	var here := Vector2(machine.s16(PLAYER + 0x12), machine.s16(PLAYER + 0x1A))
+	var best: Array = [machine.s16(PLAYER + 0x12), machine.s16(PLAYER + 0x16), machine.s16(PLAYER + 0x1A)]
+	var nearest := INF
+	for route: Dictionary in gameplay.routes if pin_arrival else []:
+		if int(route["source_area"]) != arrival_from or int(route["destination_area"]) != area or str(route.get("destination_stage", stage)) != stage or not route.has("destination_transform_raw"):
+			continue
+		var raw: Array = route["destination_transform_raw"]
+		var distance := here.distance_to(Vector2(int(raw[0]), int(raw[2])))
+		if distance < nearest:
+			nearest = distance
+			best = [int(raw[0]), best[1] if int(raw[1]) == -1 else int(raw[1]), int(raw[2])]
+	arrival_pinned = nearest < INF
+	arrival_from = -1
+	return best
 
 func _request_area(area_index: int) -> void:
 	var machine: Machine = session.machine
@@ -280,11 +335,16 @@ func _request_area(area_index: int) -> void:
 	machine.put8(REQUEST + 5, area_index)
 	machine.put16(REQUEST + 8, 0)
 	machine.put16(REQUEST + 0xC, 0)
-	machine.put16(REQUEST + 0x10, machine.s16(PLAYER + 0x12))
-	machine.put16(REQUEST + 0x12, machine.s16(PLAYER + 0x16))
-	machine.put16(REQUEST + 0x14, machine.s16(PLAYER + 0x1A))
+	var arrival := _arrival_raw(machine)
+	arrival_hold = ARRIVAL_TICKS if arrival_pinned else 0
+	arrival_point = arrival
+	machine.put16(REQUEST + 0x10, arrival[0])
+	machine.put16(REQUEST + 0x12, arrival[1])
+	machine.put16(REQUEST + 0x14, arrival[2])
 
 func _physics_process(delta: float) -> void:
+	if opening:
+		return
 	if loader != null:
 		if not loader.is_alive():
 			_loaded()
@@ -299,15 +359,24 @@ func _physics_process(delta: float) -> void:
 		return
 	if not scene_mode and (bool(gameplay.dialogue_box.get("active")) and int(gameplay.event_script.active_window_state.get("window", 0)) != RADIO_WINDOW or not gameplay.player.is_physics_processing()):
 		return
+	if OS.has_feature("nothreads"):
+		# A slow single-threaded frame gets fewer physics steps than real time; the original's clock is the vblank counter, so follow the wall clock (the voice plays in real time).
+		var now := Time.get_ticks_usec()
+		delta = clampf(float(now - last_wall) / 1000000.0, 0.0, 0.5) if last_wall > 0 else delta
+		last_wall = now
 	elapsed += delta * NATIVE_HZ
 	if ticking:
-		elapsed = minf(elapsed, 2.0)
+		elapsed = minf(elapsed, 2.0 if not OS.has_feature("nothreads") else 12.0)
 		return
+	var single := OS.has_feature("nothreads")
 	while elapsed >= 1.0 and not busy and not finished:
 		elapsed -= 1.0
 		ticking = true
 		await _tick()
 		ticking = false
+		if single:
+			elapsed = minf(elapsed, 12.0)
+			break
 
 ## Start in a scene is the original's skip (GAME 0x800C10B4); taking the event here keeps the pause menu from opening over it.
 func _unhandled_input(event: InputEvent) -> void:
@@ -340,8 +409,17 @@ func _flush_ports() -> void:
 
 ## The original frame and the render phase run on a worker thread while the port keeps drawing; the port side only touches the emulated memory before and after it.
 func _frame(view: Array) -> void:
+	if OS.has_feature("nothreads"):
+		session.frame()
+		if not view.is_empty():
+			if elapsed < 1.0:
+				await get_tree().physics_frame
+			if is_inside_tree() and not finished:
+				_render(view)
+		return
 	job = Thread.new()
 	if job.start(_work.bind(view)) != OK:
+		job = null
 		_work(view)
 		return
 	while job.is_alive() and is_inside_tree():
@@ -350,6 +428,10 @@ func _frame(view: Array) -> void:
 
 func _work(view: Array) -> void:
 	session.frame()
+	_render(view)
+
+## The render phase of an original frame; without worker threads it runs a physics frame after the frame itself, so the two halves do not land in one spike.
+func _render(view: Array) -> void:
 	var drawn: Dictionary = session.render_world() if not view.is_empty() else {}
 	built = effects.build(drawn["screen"], session.gte_projection(), view[0], view[1]) if not view.is_empty() else []
 	built_world = effects.build_world(drawn) if not view.is_empty() else []
@@ -360,6 +442,11 @@ func _tick() -> void:
 	_flush_ports()
 	if not scene_mode:
 		_sync_player_in()
+		if arrival_hold > 0:
+			arrival_hold -= 1
+			machine.put16(PLAYER + 0x12, arrival_point[0])
+			machine.put16(PLAYER + 0x16, arrival_point[1])
+			machine.put16(PLAYER + 0x1A, arrival_point[2])
 	machine.put8(PLAYER + 0x9F, machine.u8(PLAYER + 0x9F) | 0x80 if scene_mode or gameplay.player.is_on_floor() else machine.u8(PLAYER + 0x9F) & 0x7F)
 	_sync_flags_in()
 	var allow_request := scene_mode or scene_grace > 0 or own_request
@@ -398,6 +485,7 @@ func _tick() -> void:
 	if committed != last_committed:
 		last_committed = committed
 		gameplay.native_context["native_save_byte14"] = committed
+	_hold_block(machine)
 	_forward_hits()
 	_bridge_segments()
 	_sync_actors()
@@ -682,6 +770,16 @@ func lift_begin(view: Node3D) -> bool:
 func lift_release(view: Node3D) -> void:
 	if view == lift_view and lift_phase in [1, 2]:
 		lift_phase = 3
+
+## The original places a carried block from the hand joints of its own player model (GAME 0x800CFB24, struct +0x4B0), which the port's animated player replaces: the block's position words follow the port player's hands, so the view and the throw both start there.
+func _hold_block(machine: Machine) -> void:
+	if lift_phase != 2 or not is_instance_valid(lift_view):
+		return
+	var hands: Vector3 = level.to_local(gameplay.player.carry_point()) - Vector3(0, CARRY_DROP, 0)
+	var address := int(lift_view.get("address"))
+	machine.put32(address + 0x10, (roundi(-hands.x * 256.0) << 16) & 0xFFFFFFFF)
+	machine.put32(address + 0x14, (roundi(-hands.y * 256.0) << 16) & 0xFFFFFFFF)
+	machine.put32(address + 0x18, (roundi(hands.z * 256.0) << 16) & 0xFFFFFFFF)
 
 func _lift_fields(machine: Machine) -> void:
 	if not is_instance_valid(lift_view) or lift_phase != 4 and lift_phase != 3 and machine.u8(int(lift_view.get("address")) + 8) not in [1, 2]:

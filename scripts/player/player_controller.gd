@@ -59,6 +59,9 @@ var footstep_events: Dictionary = {}
 var footstep_time := 0.0
 var footstep_clip := ""
 var invulnerable := false
+var infinite_life := false
+var infinite_energy := false
+var max_buster := false
 var free_flight := false
 var no_clip := false
 var inverse_mouse_y := false
@@ -128,6 +131,11 @@ var hurt_immunity := 0.0
 var hurt_damage := 0
 var hurt_hits := 0
 var hurt_push := Vector3.ZERO
+var hurt_hard := false
+var hurt_seeked := false
+var hurt_fresh := false
+var hurt_decay := 0.0
+var hurt_yaw := 0.0
 const HOLD_MASH_ACTIONS := ["move_forward", "move_back", "turn_left", "turn_right", "jump"]
 var holder: Node3D
 var hold_profile := {}
@@ -191,6 +199,7 @@ func _ready() -> void:
 		add_child(player_model)
 	if not OS.has_feature("web"): Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	camera.current = true
+	if combat_allowed and buster_allowed and OS.has_feature("web"): preload("res://scripts/world/combat/projectile_visual.gd").warm.call_deferred(camera)
 	camera.reparent(self, true)
 	camera.top_level = true
 	if camera_pivot is SpringArm3D: (camera_pivot as SpringArm3D).add_excluded_object(get_rid())
@@ -369,7 +378,7 @@ func _physics_process(delta: float) -> void:
 		velocity.x = move_toward(velocity.x, direction.x * air_speed, 16.0 * TICK_HZ * TICK_HZ / 4096.0 * delta)
 		velocity.z = move_toward(velocity.z, direction.z * air_speed, 16.0 * TICK_HZ * TICK_HZ / 4096.0 * delta)
 	if not hurt_phase.is_empty() and not free_flight:
-		var pushed := hurt_phase in ["weak", "launch"]; velocity.x = hurt_push.x if pushed else 0.0; velocity.z = hurt_push.z if pushed else 0.0
+		var pushed := hurt_phase in ["launch", "land", "recover"]; velocity.x = hurt_push.x if pushed else 0.0; velocity.z = hurt_push.z if pushed else 0.0
 	collision_mask = 0 if no_clip else 89
 	var grounded := is_on_floor()
 	if free_flight:
@@ -389,14 +398,14 @@ func _physics_process(delta: float) -> void:
 		if drift.length() > intended.length() + 0.08:
 			global_position = Vector3(before_slide.origin.x + intended.x, global_position.y, before_slide.origin.z + intended.z); velocity.x = intended.x / delta if delta > 0.0 else 0.0; velocity.z = intended.z / delta if delta > 0.0 else 0.0
 	if not free_flight and not no_clip and is_on_floor(): _leave_actor_top()
-	if not free_flight and is_on_floor() and jump_phase in [JumpPhase.RISING, JumpPhase.RELEASED, JumpPhase.FALLING]:
+	if not free_flight and is_on_floor() and hurt_phase.is_empty() and jump_phase in [JumpPhase.RISING, JumpPhase.RELEASED, JumpPhase.FALLING]:
 		jump_velocity = 0
 		_set_jump_phase(JumpPhase.LANDING)
 		landed.emit()
 	_update_camera(delta)
 	if skate_sub >= 0: player_model.rotation.y = skate_yaw
 	elif aiming and direction.length_squared() <= 0.001 and not lock_on.locked(): player_model.rotation.y += clampf(wrapf(camera.global_rotation.y - player_model.rotation.y, -PI, PI), -4.5 * delta, 4.5 * delta)
-	elif direction.length_squared() > 0.001 and not lock_on.locked(): player_model.rotation.y = lerp_angle(player_model.rotation.y, atan2(-direction.x, -direction.z), minf(delta * 12.0, 1.0))
+	elif direction.length_squared() > 0.001 and not lock_on.locked() and hurt_phase.is_empty(): player_model.rotation.y = lerp_angle(player_model.rotation.y, atan2(-direction.x, -direction.z), minf(delta * 12.0, 1.0))
 	var arm_role := "shoot_alternate_upper" if not grounded or (direction.length_squared() > 0.001 and not slow_walking) else "shoot_upper"
 	var arm_name := str(animation_roles.get(arm_role, animation_roles.get("shoot_upper", "")))
 	if is_instance_valid(carried_actor): arm_name = str(animation_roles["lift_hold"])
@@ -575,6 +584,14 @@ func _native_look_pitch() -> int:
 func kick() -> bool:
 	if not combat_allowed or not hurt_phase.is_empty() or not interaction_role.is_empty() or not special_action.is_empty() or special_actions.is_empty() or is_instance_valid(carried_actor) or not is_on_floor(): return false
 	return _start_special_action("kick")
+## Midpoint of the hand bones (Bone_04 and Bone_07), where a carried block is held.
+func carry_point() -> Vector3:
+	var skeleton := upper_modifier.get_parent() as Skeleton3D
+	var hands: Array[Vector3] = []
+	for bone in ["Bone_04", "Bone_07"]:
+		hands.append(skeleton.global_transform * skeleton.get_bone_global_pose(skeleton.find_bone(bone)).origin)
+	return (hands[0] + hands[1]) * 0.5
+
 func _start_special_action(role: String, start_time: float = 0.0) -> bool:
 	var clip := str(animation_roles.get(role, ""))
 	if motion_tree == null or not animation_player.has_animation(clip): return false
@@ -737,10 +754,11 @@ func _toggle_lock_target() -> void:
 
 func worn(slot: String) -> int: return int(weapon_stats.data["outfit_override"][slot]) if outfit_override else weapon_stats.body_part(equipment["body_parts"], slot)
 func _sync_buster() -> void:
-	var key := str(outfit_override) + ",".join(equipment["buster_parts"])
+	var key := str(outfit_override) + str(max_buster) + ",".join(equipment["buster_parts"])
 	if key == buster_key: return
 	buster_key = key
 	buster_levels = weapon_stats.data["outfit_override"]["buster"].duplicate() if outfit_override else weapon_stats.buster_levels(equipment["buster_parts"])
+	if max_buster: var top := int(weapon_stats.parts["maximum"]); buster_levels = [top, top, top, top]
 	fire_interval = float(weapon_stats.fire_pose(weapon_stats.BUSTER) + weapon_stats.value(weapon_stats.BUSTER, weapon_stats.RAPID, buster_levels[weapon_stats.RAPID])) / 30.0
 func _sync_outfit() -> void:
 	if not combat_allowed or not buster_allowed: return
@@ -1155,7 +1173,17 @@ func reset_at(point: Vector3) -> void:
 	player_model.rotation.y = 0.0
 	_play_animation("idle")
 func take_hit(amount: int = 16, flags: int = 0, incoming: Vector3 = Vector3.ZERO) -> void:
-	if invulnerable or hurt_immunity > 0 or not hurt_phase.is_empty() or not roll_phase.is_empty() or health < 0: return
+	if invulnerable or hurt_immunity > 0 or hurt_phase not in ["", "weak"] or not roll_phase.is_empty() or health < 0: return
+	var multiplier := 4 - (worn("armor") >> 1)
+	amount = maxi((amount * multiplier) >> 2, 1)
+	hurt_damage += amount
+	hurt_hits += 1
+	hurt_fresh = true
+	var lethal := _lose_health(amount)
+	# GAME 0x800CB4F0 picks the strength mask: melee/enemy words test 0x80000, words carrying 0x2000000/0x4000000 and no 0x100000 test 0x4080000; the word's flags against it make a hit strong (0x800CB678).
+	var mask := 0x4080000 if flags & 0x100000 == 0 and flags & 0x6000000 != 0 else 0x80000
+	var strong := hurt_damage > int(weapon_stats.data["body_parts"]["knockdown_base"]) + int(weapon_stats.data["body_parts"]["knockdown_step"]) * multiplier or hurt_hits >= 4 or (flags & mask) != 0 or not is_on_floor() or lethal
+	if hurt_phase == "weak" and not strong: return
 	if not ledge_phase.is_empty(): _release_ledge()
 	if holder != null: end_hold(false)
 	_end_skate()
@@ -1164,15 +1192,19 @@ func take_hit(amount: int = 16, flags: int = 0, incoming: Vector3 = Vector3.ZERO
 	special_action = ""
 	_set_carry_filter(false)
 	if upper_modifier != null: upper_modifier.active = true
-	var multiplier := 4 - (worn("armor") >> 1)
-	amount = maxi((amount * multiplier) >> 2, 1)
-	hurt_damage += amount
-	hurt_hits += 1
-	var lethal := _lose_health(amount)
-	var strong := hurt_damage > int(weapon_stats.data["body_parts"]["knockdown_base"]) + int(weapon_stats.data["body_parts"]["knockdown_step"]) * multiplier or hurt_hits >= 4 or (flags & 0x80000) != 0 or not is_on_floor() or lethal
 	var back := incoming.dot(Basis(Vector3.UP, player_model.rotation.y) * Vector3.FORWARD) > 0
 	hurt_phase = "launch" if strong else "weak"
-	var away := Vector3(incoming.x, 0.0, incoming.z); hurt_push = away.normalized() * (512.0 * TICK_HZ / 4096.0) if not away.is_zero_approx() else Vector3.ZERO
+	var away := Vector3(incoming.x, 0.0, incoming.z)
+	if away.is_zero_approx(): away = Basis(Vector3.UP, player_model.rotation.y) * (Vector3.FORWARD if back else Vector3.BACK)
+	hurt_push = Vector3.ZERO
+	hurt_hard = false
+	hurt_seeked = false
+	if strong:
+		# State 0xF (GAME 0x800CE4F8): 0x200 raw per tick along the throw, vertical -0x160 held for two ticks, then gravity 48 until the ground; the body turns to the source (front hit) or away from it.
+		hurt_push = away.normalized() * (512.0 * TICK_HZ / 4096.0)
+		hurt_yaw = player_model.rotation.y
+		player_model.rotation.y = atan2(-away.x, -away.z) if back else atan2(away.x, away.z)
+		jump_velocity = -352; jump_accumulator = -1.0; _set_jump_phase(JumpPhase.FALLING)
 	hurt_clip = "clip_%03d" % ((38 if back else 34) if strong else (33 if back else 32))
 	hurt_ticks = 0.0
 	gun_pose_active = false
@@ -1180,6 +1212,7 @@ func take_hit(amount: int = 16, flags: int = 0, incoming: Vector3 = Vector3.ZERO
 	special_sound_requested.emit(0x97 if strong else 0x96)
 	_play_hurt_clip()
 func _lose_health(amount: int) -> bool:
+	if infinite_life and health > 0: return false
 	var lethal := health - amount < 0
 	health = maxi(health - amount, 0 if health > 0 else -1)
 	health_changed.emit(maxi(health, 0), max_health)
@@ -1192,10 +1225,20 @@ func _play_hurt_clip() -> void:
 		motion_role = ""
 	else: animation_player.play(hurt_clip)
 func _update_hurt(delta: float) -> void:
-	if hurt_phase.is_empty(): return
+	if hurt_phase.is_empty():
+		# GAME 0x800CB590: a tick without a hit takes 4 off the damage count, and a negative count clears it and the hit count.
+		if (hurt_damage > 0 or hurt_hits > 0) and hurt_immunity <= 0.0:
+			hurt_decay += delta * TICK_HZ
+			while hurt_decay >= 1.0:
+				hurt_decay -= 1.0
+				if hurt_fresh: hurt_fresh = false; continue
+				hurt_damage -= 4
+				if hurt_damage < 0: hurt_damage = 0; hurt_hits = 0
+		return
 	hurt_ticks += delta * TICK_HZ
 	var info: Dictionary = native_clips.get(hurt_clip, {})
 	var length := int(info.get("durationTicks", 0))
+	var back := hurt_clip in ["clip_038", "clip_039", "clip_040", "clip_041"]
 	if hurt_phase == "weak":
 		var ticks := 0
 		var pose := 99
@@ -1205,26 +1248,42 @@ func _update_hurt(delta: float) -> void:
 		if pose >= 5:
 			if worn("helmet") == 2: _roll_window(length)
 			else: hurt_phase = ""
-	elif hurt_phase == "launch" and (is_on_floor() or hurt_ticks >= length):
+	elif hurt_phase == "launch" and jump_velocity >= 0 and is_on_floor():
+		# Substate 2 (GAME 0x800C8CB0) lands into control 35/39; once the throw clip reaches its event frame while still airborne, substate 5 (0x800C8E20) lands into 36/40 instead, costing a helmetless player 8 health.
 		hurt_phase = "land"
-		hurt_clip = "clip_039" if hurt_clip == "clip_038" else "clip_035"
+		jump_velocity = 0; jump_accumulator = 0.0; _set_jump_phase(JumpPhase.GROUNDED)
+		hurt_clip = ("clip_040" if back else "clip_036") if hurt_hard else ("clip_039" if back else "clip_035")
 		hurt_ticks = 0.0
 		_play_hurt_clip()
-		special_sound_requested.emit(0x99)
-		if worn("helmet") == 0: _lose_health(int(weapon_stats.data["body_parts"]["helmetless_landing_damage"]))
-	elif hurt_phase == "land" and hurt_ticks >= length and health < 0:
-		hurt_phase = "dead"
-		died.emit()
+		special_sound_requested.emit(0x98 if hurt_hard else 0x99)
+		if hurt_hard and worn("helmet") == 0: _lose_health(int(weapon_stats.data["body_parts"]["helmetless_landing_damage"]))
+	elif hurt_phase == "launch":
+		# Substate 1 runs the launch again, restarting the throw clip at pose 6 (0x800CE4F8 passes 6 when the substate is not 0).
+		if not hurt_seeked and hurt_ticks >= 1.0:
+			hurt_seeked = true
+			if motion_tree != null: motion_tree.set("parameters/MotionSeek/seek_request", 6.0 / 30.0)
+		var frame := int(info.get("events", [{"frame": 28}])[0]["frame"]) - 5
+		if hurt_ticks >= frame: hurt_hard = true
 	elif hurt_phase == "land" and hurt_ticks >= length:
 		hurt_phase = "recover"
-		hurt_clip = "clip_041" if hurt_clip == "clip_039" else "clip_037"
+		if health >= 0: hurt_clip = "clip_041" if back else "clip_037"
+		elif hurt_hard: hurt_clip = "clip_035" if back else "clip_039"
 		hurt_ticks = 0.0
-		_play_hurt_clip()
-	elif hurt_phase == "recover" and hurt_ticks >= length:
-		hurt_phase = ""
-		hurt_immunity = 65.0 / TICK_HZ
-		hurt_damage = 0
-		hurt_hits = 0
+		if health >= 0 or hurt_hard: _play_hurt_clip()
+	elif hurt_phase == "recover":
+		# Substate 4 (0x800C8D90): the slide slows by 0x40 per tick and the state ends when it stops.
+		hurt_push = hurt_push.move_toward(Vector3.ZERO, 64.0 * TICK_HZ * TICK_HZ / 4096.0 * delta)
+		if hurt_push.is_zero_approx():
+			hurt_push = Vector3.ZERO
+			if health < 0:
+				hurt_phase = "dead"
+				died.emit()
+				return
+			player_model.rotation.y = hurt_yaw
+			hurt_phase = ""
+			hurt_immunity = 65.0 / TICK_HZ
+			hurt_damage = 0
+			hurt_hits = 0
 func begin_hold(source: Node3D, profile: Dictionary = {}) -> bool:
 	if holder != null or not hurt_phase.is_empty() or not roll_phase.is_empty() or not ledge_phase.is_empty() or not interaction_role.is_empty() or not special_action.is_empty() or is_instance_valid(carried_actor) or not scripted_walk.is_empty() or health < 0 or jump_phase != JumpPhase.GROUNDED or not is_on_floor(): return false
 	holder = source; hold_profile = profile; hold_accumulator = 0.0; hold_ticks = 0; hold_counter = 0; hold_armed = false; hold_pressed = false

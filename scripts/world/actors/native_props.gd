@@ -424,9 +424,11 @@ static func _load_actor(parent: Node3D, path: String, entry: Dictionary, model: 
 	return node
 static func _prefetchable(entry: Dictionary) -> bool: return str(entry.get("model_file", "")).ends_with(".glb") and not entry.has("native_kickable") and not entry.has("native_pose_resolver")
 static func _prefetch(paths: Array[String]) -> void:
+	if OS.has_feature("nothreads"): return
 	for path in paths:
 		if not ResourceLoader.has_cached(path) and ResourceLoader.load_threaded_get_status(path) == ResourceLoader.THREAD_LOAD_INVALID_RESOURCE: ResourceLoader.load_threaded_request(path, "PackedScene", true, ResourceLoader.CACHE_MODE_REUSE)
 static func _threaded_scene(path: String) -> PackedScene:
+	if OS.has_feature("nothreads"): return load(path) as PackedScene
 	var status := ResourceLoader.load_threaded_get_status(path)
 	if status == ResourceLoader.THREAD_LOAD_INVALID_RESOURCE:
 		var request_error := ResourceLoader.load_threaded_request(path, "PackedScene", true, ResourceLoader.CACHE_MODE_REUSE)

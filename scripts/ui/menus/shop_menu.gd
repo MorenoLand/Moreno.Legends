@@ -333,8 +333,6 @@ func _draw_text(origin: Vector2, text: String, tint: Color) -> void:
 	var colour := 0; var previous := 0; var segment := ""; var x := origin.x
 	for character in text + String.chr(0xE0FF):
 		var code := character.unicode_at(0)
-		if code == 0xE064 or code == 0xE065:
-			x = _flush_segment(segment, x, origin.y, colour, tint); segment = ""; draw_string(ThemeDB.fallback_font, Vector2(x, origin.y), "\u03b1" if code == 0xE064 else "\u03a9", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, tint); x += 10.0; continue
 		if code < 0xE0F0 or code > 0xE0FF: segment += character; continue
 		x = _flush_segment(segment, x, origin.y, colour, tint); segment = ""
 		if code == 0xE0FF: colour = previous

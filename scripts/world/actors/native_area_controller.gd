@@ -71,7 +71,7 @@ func _flame_vents() -> void:
 		if int(flame["life"]) > 0:
 			flame["life"] = int(flame["life"]) - 1
 			var center: Vector3 = level.to_global(flame["position"]); var reach := float(flame["radius"]) / 256.0 + 0.3
-			if center.distance_to(player.global_position + Vector3.UP * 0.5) < reach and player.has_method("take_hit"): player.take_hit(8, 0, (player.global_position - center).normalized())
+			if center.distance_to(player.global_position + Vector3.UP * 0.5) < reach and player.has_method("take_hit"): player.take_hit(8, 0x101000, (player.global_position - center).normalized())
 		else:
 			flame["fade"] = int(flame["fade"]) - 0x10
 			if int(flame["fade"]) <= 0: node.queue_free(); flames.erase(flame); continue

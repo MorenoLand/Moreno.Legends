@@ -2,7 +2,9 @@ extends Control
 signal closed
 const FRAME = preload("res://scripts/ui/common/native_menu_frame.gd")
 var host: Node
-var cheats := {"invulnerable": false, "free_flight": false, "no_clip": false}
+const ITEM = preload("res://scripts/state/item_flags.gd")
+const PERSISTED := ["infinite_life", "infinite_energy", "max_buster"]
+var cheats := {"invulnerable": false, "free_flight": false, "no_clip": false, "infinite_life": false, "infinite_energy": false, "max_buster": false}
 var location_picker: OptionButton
 var room_picker: OptionButton
 var location_message: Label
@@ -33,13 +35,14 @@ func configure(owner: Node) -> void:
 	surface.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(surface)
 	_build_options()
+	for key: String in PERSISTED: cheats[key] = bool(host.settings.get_value("cheats", key, false))
 	var cheat_page := _page("cheats")
 	_scroll_page(cheat_page)
 	cheat_page.add_theme_constant_override("separation", 3)
 	for key in cheats:
-		var label: String = {"invulnerable": "Invulnerable", "free_flight": "Player flight", "no_clip": "No clip"}[key]
+		var label: String = {"invulnerable": "Invulnerable", "free_flight": "Player flight", "no_clip": "No clip", "infinite_life": "Infinite life", "infinite_energy": "Infinite special energy", "max_buster": "Max buster stats"}[key]
 		_toggle(cheat_page, label, cheats[key], func(value): _cheat_changed(key, value))
-	_toggle(cheat_page, "Location picker", bool(host.settings.get_value("interface", "show_location_picker", true)), _picker_changed)
+	_toggle(cheat_page, "Location picker", bool(host.settings.get_value("interface", "show_location_picker", OS.has_feature("editor"))), _picker_changed)
 	_toggle(cheat_page, "Flutter Fly", host.flutter_fly_anytime, func(value): host.flutter_fly_anytime = value)
 	_toggle(cheat_page, "Debug achievements", host.debug_achievements, func(value): host.debug_achievements = value)
 	_button(cheat_page, "Locations", func(): open_page("locations"); focus_first())
@@ -48,6 +51,9 @@ func configure(owner: Node) -> void:
 	cheat_page.add_child(controls)
 	_button(cheat_page, "Refill health", func():
 		if is_instance_valid(host.gameplay): host.gameplay.player.refill_health())
+	for amount: int in [1000, 10000, 100000, 9999999]: _button(cheat_page, "Max zenny" if amount == 9999999 else "Add %d,000 zenny" % (amount / 1000), add_zenny.bind(amount))
+	_button(cheat_page, "Give all weapons", give_all.bind(["special_weapons"], true))
+	_button(cheat_page, "Give all parts", give_all.bind(["buster_parts", "body_parts"], false))
 	_button(cheat_page, "Respawn", func():
 		if is_instance_valid(host.gameplay): host.gameplay.player.reset_at(host.gameplay.spawn_position))
 	var places := _page("locations")
@@ -259,6 +265,7 @@ func _picker_changed(value: bool) -> void:
 	if is_instance_valid(host.gameplay): host.gameplay.set_location_picker_visible(value)
 func _cheat_changed(key: String, value: bool) -> void:
 	cheats[key] = value
+	if key in PERSISTED: host.settings.set_value("cheats", key, value); host.settings.save("user://settings.cfg")
 	apply_player()
 func _discord_changed(value: bool) -> void:
 	host.settings.set_value("interface", "discord_status", value)
@@ -280,3 +287,22 @@ func apply_player() -> void:
 func _process(delta: float) -> void:
 	elapsed += delta
 	if visible and not is_instance_valid(host.gameplay): queue_redraw()
+func add_zenny(amount: int) -> void:
+	if not is_instance_valid(host.gameplay): return
+	var player: Node = host.gameplay.player; player.zenny = clampi(player.zenny + amount, 0, 9999999); host.gameplay.native_context["native_wallet"] = player.zenny
+	var runner: Node = host.gameplay.get_node_or_null("RunnerHost")  # the original's wallet word is the runner's copy; keep it equal so the next tick forwards no difference
+	if runner != null and runner.loader == null and runner.session != null: runner.session.machine.put32(runner.ZENNY, player.zenny); runner.pickup_zenny = player.zenny
+func give_all(groups: Array, upgrade: bool) -> void:
+	if not is_instance_valid(host.gameplay): return
+	var player: Node = host.gameplay.player; var context: Dictionary = host.gameplay.native_context
+	ITEM.sync(player, context)
+	var flags: Dictionary = context.get("event_flags", {}); var levels: Dictionary = context.get("native_special_levels", {})
+	for code: int in ITEM.names:
+		var group := ITEM.group_of(code)
+		if not group in groups: continue
+		var key := ITEM.key_of(code); player.inventory[group][key] = int(player.inventory[group].get(key, 1)); flags[code] = true
+		if group == "special_weapons" and not levels.has(key): levels[key] = [0, 0, 0, 0, 0]
+	if upgrade:
+		var caps: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://assets/development/development.json"))["development"]["weapons"] if FileAccess.file_exists("res://assets/development/development.json") else {}
+		for key: String in levels: if caps.has(key): levels[key] = caps[key]["caps"].duplicate()
+	context["event_flags"] = flags; context["native_special_levels"] = levels; ITEM.sync(player, context)

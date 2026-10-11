@@ -65,7 +65,10 @@ static func warm(root: Node3D) -> void:
 		if not _scannable(node): continue
 		var partial := _placement(node); var scan_key := "%s|%s|%s|%s" % [node.mesh.resource_path, var_to_str(node.global_transform), face_flags, partial] if node.mesh.resource_path.contains("::") else ""
 		if scan_key.is_empty() or scan_cache.has(scan_key): continue
-		var job := {"scan_key": scan_key, "holder": {}}; job["task"] = WorkerThreadPool.add_task(_scan_job.bind(_surface_data(node), node.global_transform, face_flags, partial, job["holder"])); jobs.append(job)
+		var job := {"scan_key": scan_key, "holder": {}}; job["task"] = -1
+		if OS.has_feature("nothreads"): _scan_job(_surface_data(node), node.global_transform, face_flags, partial, job["holder"])
+		else: job["task"] = WorkerThreadPool.add_task(_scan_job.bind(_surface_data(node), node.global_transform, face_flags, partial, job["holder"]))
+		jobs.append(job)
 		await tree.process_frame
 	var cross_nodes: Array[MeshInstance3D] = []
 	for node: MeshInstance3D in root.find_children("*", "MeshInstance3D", true, false):
@@ -78,13 +81,16 @@ static func warm(root: Node3D) -> void:
 			cross_jobs.append(_cross_job_data(cross_nodes, index, cross_partners))
 			if Time.get_ticks_usec() - slice_start > 1500: await tree.process_frame; slice_start = Time.get_ticks_usec()
 		if cross_jobs.is_empty(): cross_cache[cross_signature] = []
+		elif OS.has_feature("nothreads"): _cross_job(cross_jobs, cross_holder); cross_cache[cross_signature] = cross_holder["result"]
 		else: cross_task = WorkerThreadPool.add_task(_cross_job.bind(cross_jobs, cross_holder))
 	if cross_task >= 0:
 		while not WorkerThreadPool.is_task_completed(cross_task): await tree.process_frame
 		WorkerThreadPool.wait_for_task_completion(cross_task); cross_cache[cross_signature] = cross_holder["result"]
 	for job in jobs:
-		while not WorkerThreadPool.is_task_completed(int(job["task"])): await tree.process_frame
-		WorkerThreadPool.wait_for_task_completion(int(job["task"])); scan_cache[job["scan_key"]] = job["holder"]["result"]
+		if int(job["task"]) >= 0:
+			while not WorkerThreadPool.is_task_completed(int(job["task"])): await tree.process_frame
+			WorkerThreadPool.wait_for_task_completion(int(job["task"]))
+		scan_cache[job["scan_key"]] = job["holder"]["result"]
 static func _scan_job(surfaces: Array, world: Transform3D, face_flags: bool, partial: bool, holder: Dictionary) -> void: holder["result"] = _scan(surfaces, world, face_flags, partial)
 static func _collect_node(node: MeshInstance3D, root: Node3D, cacheable_only: bool = false) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []

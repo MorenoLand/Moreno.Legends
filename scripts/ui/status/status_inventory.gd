@@ -33,7 +33,7 @@ func _add_shop_items() -> void:
 		if not definitions.has(group): definitions[group] = {}
 		if not definitions[group].has(key): definitions[group][key] = definition
 static func _plain(text: String) -> String:
-	for entry: Array in [["\ue064", "\u03b1"], ["\ue065", "\u03a9"], ["\ue061", "-"], ["\ue05e", "+"], ["\ue049", "z"], ["\ue050", " "]]: text = text.replace(entry[0], entry[1])
+	for entry: Array in [["\ue049", "z"], ["\ue050", " "]]: text = text.replace(entry[0], entry[1])
 	var plain := ""
 	for character in text:
 		var code := character.unicode_at(0)

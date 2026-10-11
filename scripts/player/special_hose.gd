@@ -90,6 +90,7 @@ func _tick() -> void:
 		detach += 1
 		if detach >= count: count = 0; detach = 0
 	if not spraying: tank = mini(capacity, tank + refill)
+	if player.infinite_energy: tank = capacity
 	_build_points()
 	_collide()
 	_tick_splashes(); _tick_droplets(); _emit_gauge()

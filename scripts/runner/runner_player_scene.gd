@@ -25,6 +25,8 @@ static func available(stage_name: String) -> bool:
 func open(gameplay: Node, stage_name: String) -> bool:
 	player = gameplay.player
 	var directory := "res://assets/levels/%s/" % stage_name
+	if not FileAccess.file_exists(directory + "player_scene.json"):
+		return false
 	var bank: Variant = JSON.parse_string(FileAccess.get_file_as_string(directory + "player_scene.json"))
 	if not bank is Dictionary:
 		return false

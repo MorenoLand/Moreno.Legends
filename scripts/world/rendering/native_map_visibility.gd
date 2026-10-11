@@ -49,9 +49,9 @@ func _process(_delta: float) -> void:
 			var index := z * 128 + x
 			if pixels[index] == 0 and lens_scale <= 1.0: continue
 			var view := to_view * Vector3(-(x * 512 - 32512) / 256.0, base_y, (z * 512 - 32512) / 256.0); var depth := floori(-view.z * 256) >> 2; var width := ((maxi(depth, 0) * 106) >> 6) + (600 if has_near and near.has_point(Vector2i(x, z)) else 400)
-			var lateral := absf(view.x * 256)
-			if pixels[index] == 0 and depth >= 0 and lateral > width and lateral <= width * lens_scale: pixels[index] = 255
-			if depth >= depth_limit or lateral > width * lens_scale: pixels[index] = 0
+			var lateral := absf(view.x * 256); var reach := width * lens_scale + (1024.0 if lens_scale > 1.0 else 0.0)  # a widened lens needs a tile of margin so a placement still on screen keeps a marked corner cell
+			if pixels[index] == 0 and depth >= 0 and lateral > width and lateral <= reach: pixels[index] = 255
+			if depth >= depth_limit or lateral > reach: pixels[index] = 0
 	var world := source.global_transform; var world_changed: bool = world != last_world; var cells_changed: bool = pixels != last_pixels
 	if cells_changed: last_pixels = pixels; texture.update(Image.create_from_data(128, 128, false, Image.FORMAT_L8, pixels))
 	if world_changed: last_world = world

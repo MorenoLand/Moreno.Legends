@@ -649,9 +649,12 @@ func _run_shop() -> void:
 	if is_instance_valid(shop): shop.queue_free()
 func _run_development() -> void:
 	development_pending = false
-	var development := preload("res://scripts/ui/menus/development_menu.gd").new(); $HUD.add_child(development)
-	await development.develop(self)
-	if is_instance_valid(development): development.queue_free()
+	var scene_path := "res://assets/levels/ST04/scene_30.json"
+	if not FileAccess.file_exists(scene_path): await preload("res://scripts/ui/menus/development_menu.gd").open(self); return
+	# Scene 0x30: the Lab (area 2) with Roll, a fixed camera and the menu, then back to the saved pose on the bridge.
+	var area := int(areas[area_picker.selected]["index"]); var parent: Node3D = room_stream.room_root(manifest_path.get_base_dir().get_file(), area) if streaming_rooms else level
+	if not await native_scenes.run_scene(parent, scene_path, area): native_scene_failed.emit(str(native_scenes.last_error)); push_error(str(native_scenes.last_error))
+	if is_inside_tree(): _update_native_player_pose()
 func _begin_message_stage_request(source: Dictionary) -> void:
 	if message_stage_pending: return
 	message_stage_pending = true
@@ -728,7 +731,8 @@ func native_scene_area(area: int, position_raw: Array, facing_raw: int) -> bool:
 	for candidate in range(areas.size()):
 		if int(areas[candidate]["index"]) == area: index = candidate
 	if index < 0 or not await _select_area(index, true): return false
-	player.reset_at(level.to_global(Vector3(-float(position_raw[0]), -float(position_raw[1]), float(position_raw[2])) / 256.0)); player.player_model.rotation.y = -float(facing_raw) * TAU / 4096.0; player.set_physics_process(false); player.velocity = Vector3.ZERO
+	var base: Node3D = room_stream.room_root(manifest_path.get_base_dir().get_file(), area) if streaming_rooms else level
+	player.reset_at(base.to_global(Vector3(-float(position_raw[0]), -float(position_raw[1]), float(position_raw[2])) / 256.0)); player.player_model.rotation.y = -float(facing_raw) * TAU / 4096.0; player.set_physics_process(false); player.velocity = Vector3.ZERO
 	return true
 func _scene_triggers(stage: String) -> Array:
 	if not scene_trigger_cache.has(stage):
@@ -1094,10 +1098,37 @@ func _run_data_menu(npc: Node3D, stage: String, bank: String, message_call: Stri
 	return false
 func _present_data_text(stage: String, text: String) -> void:
 	await dialogue_box.present_message(stage, {"index": -1, "text": text})
+var route_blockers: Dictionary = {}
+var route_blocker_key := ""
+## A closed or locked door that has no streamed portal (a fade route, or a door in an unstreamed stage) still stops the player: the map has no collision on the doorway plane (`native_floor.filter_shape` drops the panel faces) and the original blocks it with the door actor. The active area gets a thin blocker one body radius beyond each such door panel, on the side the door leads to, so the plane stays reachable for the contact tests. Streamed portals have their own in `room_stream`; ladders, lifts, warps and elevators have no panel and get none.
+func _sync_route_blockers(area: int) -> void:
+	var stage := manifest_path.get_base_dir().get_file(); var key := "%s:%d" % [stage, area]
+	if key == route_blocker_key: return
+	route_blocker_key = key
+	for body: StaticBody3D in route_blockers.values(): if is_instance_valid(body): body.queue_free()
+	route_blockers.clear()
+	var native_transition := preload("res://scripts/world/core/native_transition.gd")
+	for route: Dictionary in routes:
+		if int(route["source_area"]) != area or native_transition.is_ladder(route) or native_transition.is_warp(route) or native_transition.is_elevator(route): continue
+		var panel: Variant = route.get("source_panel", null)
+		if not panel is Dictionary: panel = route.get("native_door", {}).get("source_panel", null)
+		if not panel is Dictionary or not panel.has("bounds") or not panel.has("center"): continue
+		if streaming_rooms and not room_stream.portal_for_route(stage, area, route).is_empty(): continue
+		var axis := int(panel["axis"]); var lateral := 2 if axis == 0 else 0
+		var th := -float(route["source_transform_raw"][3]) * TAU / 4096.0; var forward := Vector3(-sin(th), 0.0, -cos(th))
+		var center: Array = panel["center"]; var low: Array = panel["bounds"]["min"]; var high: Array = panel["bounds"]["max"]
+		var width := maxf(float(high[lateral]) - float(low[lateral]), 1.0) + 0.5
+		var offset: Vector3 = room_stream.offset_for(stage, area) if streaming_rooms else Vector3.ZERO
+		var body := StaticBody3D.new(); body.name = "RouteBlocker_%d" % route_blockers.size(); body.collision_mask = 0; body.collision_layer = 1
+		var shape := CollisionShape3D.new(); var box := BoxShape3D.new(); box.size = Vector3(0.1, 3.0, width) if axis == 0 else Vector3(width, 3.0, 0.1); shape.shape = box; body.add_child(shape); add_child(body)
+		var push := signf(forward[axis]) * (($Player/Collision.shape as CapsuleShape3D).radius + 0.05)
+		body.global_position = Vector3(float(center[0]), float(center[1]) + 1.0, float(center[2])) + offset + (Vector3(push, 0.0, 0.0) if axis == 0 else Vector3(0.0, 0.0, push))
+		route_blockers[route_blockers.size()] = body
 func _update_nearest_door() -> void:
 	nearest_door = {}
 	if loading or areas.is_empty(): return
 	var index := int(areas[area_picker.selected]["index"])
+	_sync_route_blockers(index)
 	var distance := INF
 	for route: Dictionary in routes:
 		if int(route["source_area"]) != index: continue

@@ -72,12 +72,22 @@ func _bind() -> void:
 		unit.ram = ram
 
 
-func load_unit(name: String, source: String) -> bool:
-	var script := GDScript.new()
-	script.source_code = source
-	if script.reload() != OK:
-		push_error("Runner: unit %s failed to compile" % name)
-		return false
+## Compiled units by file: compiling the 5 MB engine unit takes seconds, and every stage handover would otherwise repeat it. A unit script holds no state of its own (it has no static variables), so instances share the class.
+static var compiled: Dictionary = {}
+
+func load_unit_file(name: String, path: String) -> bool:
+	if compiled.has(path): return load_unit(name, "", compiled[path])
+	return load_unit(name, FileAccess.get_file_as_string(path), null, path)
+
+func load_unit(name: String, source: String, cached: GDScript = null, cache_path := "") -> bool:
+	var script := cached
+	if script == null:
+		script = GDScript.new()
+		script.source_code = source
+		if script.reload() != OK:
+			push_error("Runner: unit %s failed to compile" % name)
+			return false
+		if not cache_path.is_empty(): compiled[cache_path] = script
 	var unit: RefCounted = script.new()
 	unit.R = R
 	unit.ram = ram

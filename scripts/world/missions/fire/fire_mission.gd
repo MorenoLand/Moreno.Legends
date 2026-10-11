@@ -50,7 +50,7 @@ func _spawn_data(parent: Node3D) -> void:
 	if not is_instance_valid(parent) or parent != level or area != 2 or finished: node.queue_free(); return
 	kitchen_data = preload("res://scripts/world/missions/fire/native_data.gd").new(); kitchen_data.name = "KitchenData"; parent.add_child(kitchen_data); kitchen_data.configure(data, node, self, host.player, trig, atlas)
 	kitchen_data.ignited.connect(func(_actor: Node3D) -> void: remaining += 1); kitchen_data.extinguished.connect(func(_actor: Node3D) -> void: remaining -= 1; _check_clear())
-	kitchen_data.sound_requested.connect(host.audio.play_at); kitchen_data.contact_hit.connect(_contact)
+	kitchen_data.sound_requested.connect(host.audio.play_at); kitchen_data.contact_hit.connect(_contact.bind(0x8A0000))
 func _rand() -> int: return preload("res://scripts/world/actors/native_npc_behavior.gd").next_random(host.native_context)
 func _ember(fire: Node3D) -> void:
 	var spec: Dictionary = data["kitchen_data"]; var r := _rand(); fire.ember_timer = int(spec["ember_interval"][0]) + (r & int(spec["ember_interval"][1]))
@@ -61,10 +61,10 @@ func _ember(fire: Node3D) -> void:
 	var start := Vector3i(base.x + ((int(trig[index][0]) * int(launch["distance"])) >> 16), base.y + int(launch["y"][0]) - (_rand() & int(launch["y"][1])), base.z + ((int(trig[index][1]) * int(launch["distance"])) >> 16))
 	var dx := target.x - start.x; var dz := target.z - start.z; var distance := int(sqrt(float(dx * dx + dz * dz))); var ticks := int((distance << 16) / (int(launch["arc_speed"]) << 12)); var vertical := -int(launch["arc_speed"])
 	if distance != 0 and ticks != 0: vertical = -((int(((start.y - target.y) << 16) / ticks) + (((int(launch["arc_gravity"]) << 12) * ticks) >> 1)) >> 12)
-	var ember: Node3D = preload("res://scripts/world/missions/fire/native_ember.gd").new(); ember.name = "Ember"; level.add_child(ember); ember.configure(data, start, yaw, vertical, trig, atlas, host.player, kitchen_data if is_instance_valid(kitchen_data) else null); ember.contact_hit.connect(_contact)
+	var ember: Node3D = preload("res://scripts/world/missions/fire/native_ember.gd").new(); ember.name = "Ember"; level.add_child(ember); ember.configure(data, start, yaw, vertical, trig, atlas, host.player, kitchen_data if is_instance_valid(kitchen_data) else null); ember.contact_hit.connect(_contact.bind(0x900000))
 func _spawn(entry: Dictionary) -> void:
 	var fire: Node3D = preload("res://scripts/world/missions/fire/native_fire.gd").new(); fire.name = "Fire_%02d" % int(entry["index"]); level.add_child(fire); fire.configure(data, entry, atlas, host.player)
-	fire.extinguished.connect(_fire_out); fire.sound_requested.connect(host.audio.play_at); fire.contact_hit.connect(_contact); fire.ember_requested.connect(_ember); fire.exploded.connect(_explode); fires.append(fire)
+	fire.extinguished.connect(_fire_out); fire.sound_requested.connect(host.audio.play_at); fire.contact_hit.connect(_contact.bind(0x8A0000)); fire.ember_requested.connect(_ember); fire.exploded.connect(_explode); fires.append(fire)
 	fire.controller = self; fire.ember_timer = int(data["kitchen_data"]["ember_init_timer"][0]) + (_rand() & int(data["kitchen_data"]["ember_init_timer"][1]))
 func _explode(fire: Node3D) -> void:
 	var shake: Dictionary = data["fire"]["explosion"]["blast"]["init"]["shake"]; host.player.camera_shake(int(shake["mode"]), int(shake["magnitude"]), int(shake["decay"]))
@@ -79,9 +79,10 @@ func _effects() -> Node3D:
 	return effects
 func _steam(position_raw: Vector3i, subtype: int) -> void: _effects().spawn_steam(position_raw, subtype)
 func _smoke(position_raw: Vector3i) -> Dictionary: return _effects().spawn_smoke(position_raw)
-func _contact(fire: Node3D, damage: int) -> void:
-	if host.player.no_clip or not host.player.hurt_phase.is_empty(): return
-	host.player.take_hit(damage, 0, host.player.global_position - fire.global_position)
+## ST1E hitbox words: fires, the burning explosion and the Data actor register 0x8A0000 (bit 0x80000 makes the hit strong), the ember 0x900004 (no 0x80000).
+func _contact(fire: Node3D, damage: int, flags: int) -> void:
+	if host.player.no_clip: return
+	host.player.take_hit(damage, flags, host.player.global_position - fire.global_position)
 func _fire_out(_fire: Node3D, behaviour: int) -> void:
 	remaining -= 1; extinguished_total += 1; idle = 0
 	var profile: Dictionary = data["areas"][str(area)]

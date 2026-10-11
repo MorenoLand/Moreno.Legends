@@ -15,6 +15,7 @@ var generation := 0
 var keep_mode := false
 var visual_finished := false
 var atlas: Dictionary = {}
+var wipe_held := false
 func configure(manual_tick: bool = false) -> bool:
 	manual = manual_tick; process_mode = Node.PROCESS_MODE_ALWAYS; mouse_filter = Control.MOUSE_FILTER_IGNORE; set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	if manifest_cache.is_empty():
@@ -32,7 +33,12 @@ func request(code: int, retain_mode: bool = false) -> bool:
 	profile = manifest_cache.get("profiles", {}).get("0x%02X" % code, {})
 	if profile.is_empty(): push_error("Unbound native fade code0x%02X" % code); return false
 	var token := generation; keep_mode = retain_mode; tick = 0; settle = int(profile["busy_settle_ticks"]); visual_finished = false; elapsed = 0.0
-	effect.set_shader_parameter("additive", str(profile.get("blend", "subtract")) == "add"); effect.set_shader_parameter("feedback", bool(profile.get("feedback", false)))
+	effect.set_shader_parameter("additive", str(profile.get("blend", "subtract")) == "add"); effect.set_shader_parameter("feedback", bool(profile.get("feedback", false))); effect.set_shader_parameter("wipe", false)
+	if str(profile.get("kind", "")) == "wipe":
+		# The strip wipe keeps the frame shown when it was requested (0x80015534) and grows a strip of the live scene over it; hold_wipe() lets the caller change the scene in between.
+		if DisplayServer.get_name() == "headless": wipe_held = false; return true
+		if not wipe_held and not await _freeze(token): return false
+		wipe_held = false; effect.set_shader_parameter("wipe", true); _wipe_frame(0); busy = true; show(); return await done
 	if bool(profile.get("feedback", false)):
 		# The mask fade needs a captured frame, which a headless run never renders.
 		if DisplayServer.get_name() == "headless": return true
@@ -49,12 +55,29 @@ func request(code: int, retain_mode: bool = false) -> bool:
 		effect.set_shader_parameter("frozen_scene", ImageTexture.create_from_image(image)); _mask_frame(0)
 	else: shade = int(profile["initial_rgb8"]); effect.set_shader_parameter("shade_rgb8", float(shade))
 	busy = true; show(); return await done
+func _freeze(token: int) -> bool:
+	effect.set_shader_parameter("wipe", false); effect.set_shader_parameter("feedback", false); effect.set_shader_parameter("shade_rgb8", 0.0); await RenderingServer.frame_post_draw
+	if token != generation or not is_inside_tree(): return false
+	var image := get_viewport().get_texture().get_image()
+	if image == null or image.is_empty(): return false
+	effect.set_shader_parameter("frozen_scene", ImageTexture.create_from_image(image)); return true
+func hold_wipe(code: int) -> void:
+	# Freezes the current frame and keeps showing it (the strip is empty) until request(code) starts the wipe.
+	clear()
+	if DisplayServer.get_name() == "headless" or not manifest_cache.get("profiles", {}).has("0x%02X" % code): return
+	profile = manifest_cache["profiles"]["0x%02X" % code]
+	if not await _freeze(generation): return
+	effect.set_shader_parameter("wipe", true); effect.set_shader_parameter("wipe_strip", Vector2.ZERO); wipe_held = true; show()
+func _wipe_frame(index: int) -> void:
+	var width := minf(float(int(profile["strip_start"]) + int(profile["strip_step"]) * index), 320.0)
+	effect.set_shader_parameter("wipe_strip", Vector2(320.0 - width, 320.0) if bool(profile["from_right"]) else Vector2(0.0, width))
 func _mask_frame(index: int) -> void:
 	var columns := int(atlas.get("columns", 8)); var tile: Array = atlas.get("tile_size", [320, 240]); var dimensions: Array = atlas.get("size", [2560, 1920]); effect.set_shader_parameter("atlas_rect", Vector4(float((index % columns) * int(tile[0])) / float(dimensions[0]), float(floori(float(index) / float(columns)) * int(tile[1])) / float(dimensions[1]), float(tile[0]) / float(dimensions[0]), float(tile[1]) / float(dimensions[1])))
 func native_tick() -> void:
 	if not busy: return
 	if tick < int(profile["visible_ticks"]):
-		if bool(profile.get("feedback", false)): effect.set_shader_parameter("mask_active", true); _mask_frame(tick)
+		if str(profile.get("kind", "")) == "wipe": _wipe_frame(tick + 1)
+		elif bool(profile.get("feedback", false)): effect.set_shader_parameter("mask_active", true); _mask_frame(tick)
 		else: shade = clampi(shade + int(profile["step_rgb8"]), 0, 255); effect.set_shader_parameter("shade_rgb8", float(shade))
 		tick += 1; return
 	visual_finished = true

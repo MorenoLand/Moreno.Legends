@@ -77,6 +77,7 @@ func configure(player: Node3D, path: String, music_role: String = "music") -> vo
 	player.fired.connect(_fire)
 	player.jumped.connect(func(): _effect(movement, "jump"))
 	player.landed.connect(func(): _effect(movement, "land"))
+	if OS.has_feature("web"): _warm_sounds.call_deferred(["jump", "land", "footstep", "footstep_alternate", "buster"], [0x9B, 0x96, 0x97])
 	if not music_role.is_empty(): play_music(music_role, path)
 func play_music(role: String, path: String = "res://assets/audio/ST0F/manifest.json") -> void:
 	if music == null: return
@@ -141,12 +142,16 @@ static func looped_stream(stream: AudioStream, entry: Dictionary) -> AudioStream
 	if wav != null and looped: wav.loop_mode = AudioStreamWAV.LOOP_FORWARD; wav.loop_begin = begin; wav.loop_end = int(entry.get("loop_end_frame", entry.get("frames", 0)))
 	return wav
 static func source_stream(path: String) -> AudioStream:
-	if not FileAccess.file_exists(path) and path.get_extension().to_lower() in ["wav", "ogg"]: path = path.get_basename() + (".ogg" if path.get_extension().to_lower() == "wav" else ".wav")
+	if not FileAccess.file_exists(path) and path.get_extension().to_lower() in ["wav", "ogg"]:
+		var other := path.get_basename() + (".ogg" if path.get_extension().to_lower() == "wav" else ".wav")
+		if not FileAccess.file_exists(other): push_warning("Missing audio: " + path); return null
+		path = other
 	if path.get_extension().to_lower() == "wav": return AudioStreamWAV.load_from_file(path, {"force/8_bit": false, "force/mono": false, "force/max_rate": false, "edit/trim": false, "edit/normalize": false, "compress/mode": 0})
 	if path.get_extension().to_lower() == "ogg": return AudioStreamOggVorbis.load_from_file(path)
 	return load(path) as AudioStream
 static func _source_job(path: String, result: Dictionary) -> void: result["stream"] = source_stream(path)
 func _load_stream(path: String) -> AudioStream:
+	if OS.has_feature("nothreads"): return source_stream(path)
 	if path.get_extension().to_lower() in ["wav", "ogg"]:
 		var result := {}; var task := WorkerThreadPool.add_task(Callable(get_script(), "_source_job").bind(path, result))
 		while not WorkerThreadPool.is_task_completed(task) and not source_leaving: await source_tick
@@ -209,6 +214,15 @@ func _prepare_effect(key: String) -> bool:
 		if stream == null: return false
 		streams[path] = stream
 	return true
+## Decodes the common effects before first use: on the web build the first Ogg decode of a shot or step lands in the frame that plays it.
+func _warm_sounds(roles: Array, cues: Array) -> void:
+	var keys: Array[String] = []
+	for role: String in roles: keys.append(str(manifest.get("roles", {}).get(role, "")))
+	for cue: int in cues: keys.append(_cue_key(cue))
+	for key in keys:
+		if not manifest.get("effects", {}).has(key) or not await _prepare_effect(key): continue
+		_sound_stream(key, _sound_entry(key))
+		await get_tree().process_frame
 func _effect(node: AudioStreamPlayer3D, role: String) -> void:
 	var key := str(manifest.get("roles", {}).get(role, ""))
 	if not manifest.get("effects", {}).has(key): return

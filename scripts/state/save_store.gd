@@ -86,7 +86,16 @@ func write(state: Dictionary, id: String = "") -> String:
 		error = "The save could not be written." if restored else "The save could not be written; the previous save remains in " + backup + "."
 		return ""
 	if not backup.is_empty(): folder.remove(backup)
+	persist()
 	return id
+## Web user:// syncs to IndexedDB when a file closes, so the rename and delete above finish after the sync of the temporary file began; touching a marker again once they settle stores the final state (a sync that starts while another runs is dropped, hence the retries).
+static func persist() -> void:
+	if not OS.has_feature("web"): return
+	var tree := Engine.get_main_loop() as SceneTree
+	for delay: float in [0.5, 2.0, 6.0]:
+		await tree.create_timer(delay, true, false, true).timeout
+		var marker := FileAccess.open("user://.sync", FileAccess.WRITE)
+		if marker != null: marker.store_8(1); marker.close()
 func valid_state(value: Variant) -> bool:
 	if not value is Dictionary or not value.get("stage") is String or not _integer(value.get("area")) or int(value["area"]) < 0: return false
 	var stage: String = value["stage"]

@@ -17,6 +17,7 @@ var saves := preload("res://scripts/state/save_store.gd").new()
 var save_menu: Control
 var save_feedback: Label
 var session_loading := false
+var circle: Control
 var handover: Dictionary = {}
 signal handover_committed
 var data_save_menu_active := false
@@ -77,7 +78,7 @@ func _ready() -> void:
 	background.color = Color.TRANSPARENT
 	overlay.add_child(background)
 	achievement_notice = preload("res://scripts/ui/hud/achievement_notice.gd").new()
-	overlay.add_child(achievement_notice)
+	canvas.add_child(achievement_notice)
 	var pause_menu := preload("res://scripts/ui/menus/pause_menu.gd").new()
 	overlay.add_child(pause_menu)
 	pause_menu.configure(); pause_menu.host = self
@@ -271,10 +272,21 @@ func _show(name: String) -> void:
 		if child is Button:
 			child.grab_focus()
 			break
+## DEMO 0x800AD774 (Game Start) and 0x800AD7EC (Tutorial) request SLES 0x8001392C type 0x26 (circle wipe, cover) before the stage load; the stage then raises its own arrival fade. The load screen requests the same 0x26 on completion (DEMO 0x800AFF98; save_menu.finish_load).
+func _circle_out() -> void:
+	session_loading = true
+	circle = preload("res://scripts/ui/common/native_fade.gd").new(); overlay.add_child(circle); circle.configure()
+	await circle.request(0x26)
+	session_loading = false
+func _clear_circle() -> void:
+	if is_instance_valid(circle): circle.clear(); circle.queue_free()
+	circle = null
 func _new_game() -> void:
+	await _circle_out()
 	await _start_session({}, "ST39", 0, {"native_save_byte14": 0, "native_save_byte16": 1, "native_save_word40": 0, "native_save_byte44": 1, "native_save_byte45": 1, "event_flags": {}})
 ## DEMO 0x800AD7F8 starts stage 0x4A with start mode 1 and difficulty 1; the player initialiser (GAME 0x800C37D8) hands out special weapon 6 (item flag 0x386) on top of the new-game kit.
 func _tutorial() -> void:
+	await _circle_out()
 	await _start_session({}, "ST4A", 0, {"native_save_byte14": 0, "native_save_byte16": 1, "native_save_word40": 0, "native_save_byte44": 1, "native_save_byte45": 1, "event_flags": {}})
 	if is_instance_valid(gameplay): gameplay.player.inventory["special_weapons"]["6"] = 1
 func _show_error(message: String) -> void:
@@ -287,6 +299,7 @@ func _show_error(message: String) -> void:
 	await error_dialogue.present_message("MENU", {"index": -1, "text": message})
 	if is_instance_valid(focus) and focus.is_visible_in_tree(): focus.grab_focus()
 func _threaded_scene(path: String) -> PackedScene:
+	if OS.has_feature("nothreads"): return load(path) as PackedScene
 	var status := ResourceLoader.load_threaded_get_status(path)
 	if status in [ResourceLoader.THREAD_LOAD_INVALID_RESOURCE, ResourceLoader.THREAD_LOAD_FAILED]:
 		var request_error := ResourceLoader.load_threaded_request(path, "PackedScene", true, ResourceLoader.CACHE_MODE_REUSE)
@@ -425,12 +438,13 @@ func _activate_candidate(candidate: Node3D, previous: Node3D, state: Dictionary,
 	gameplay.player.mouse_sensitivity = float(settings.get_value("controls", "mouse_sensitivity", 0.003))
 	_apply_native_options()
 	custom.apply_player()
-	gameplay.set_location_picker_visible(bool(settings.get_value("interface", "show_location_picker", true)))
+	gameplay.set_location_picker_visible(bool(settings.get_value("interface", "show_location_picker", OS.has_feature("editor"))))
 	gameplay.set_minimap_visible(bool(settings.get_value("interface", "show_minimap", true)))
 	gameplay.player.set_physics_process(false)
 	if gameplay.audio != null: gameplay.audio.set_preparing(false)
 	if is_instance_valid(opening): opening._finish(true)
 	if not committing: await _resume(not OS.has_feature("web"))
+	_clear_circle()
 	if bool(state.get("entry_route", {}).get("flutter_landing", false)) and not committing:
 		if is_instance_valid(docked_hull) and not await preload("res://scripts/world/flutter/flutter_dock.gd").land(gameplay, docked_hull): push_error("Flutter landing sequence failed: " + gameplay.native_scenes.last_error)
 		gameplay.set_meta("native_landing_active", false)
@@ -439,7 +453,7 @@ func _activate_candidate(candidate: Node3D, previous: Node3D, state: Dictionary,
 	gameplay.request_handover_preload()
 func _session_end(background: bool) -> void:
 	if background: handover = {}
-	else: session_loading = false
+	else: session_loading = false; _clear_circle()
 func _discard_handover() -> void:
 	if handover.has("viewport") and is_instance_valid(handover["viewport"]): (handover["viewport"] as Node).queue_free()
 	handover = {}
@@ -666,7 +680,7 @@ func _cycle_info(direction: int) -> void:
 	audio.play_ui("menu_move"); _open_info(order[posmod(from + direction, order.size())], info_return)
 func _set_pickers(shown: bool) -> void:
 	if not is_instance_valid(gameplay) or not gameplay.scene_ui_state.is_empty(): return
-	if shown: gameplay.set_location_picker_visible(bool(settings.get_value("interface", "show_location_picker", true)))
+	if shown: gameplay.set_location_picker_visible(bool(settings.get_value("interface", "show_location_picker", OS.has_feature("editor"))))
 	else: gameplay.set_location_picker_visible(false)
 func _open_info(page: String, source: String) -> void:
 	info_return = source; pages[page].refresh(); _show(page)

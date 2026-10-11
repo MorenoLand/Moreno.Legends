@@ -11,7 +11,7 @@ static var readout_textures: Dictionary = {}
 static func readout_icons(control: Control, kind: String, left: Vector2, right: Vector2) -> void:
 	if not readout_textures.has(kind):
 		var path := "res://assets/menu/status_%s.png" % kind; var image := Image.new()
-		readout_textures[kind] = ImageTexture.create_from_image(image) if image.load_png_from_buffer(FileAccess.get_file_as_bytes(path)) == OK else load(path) as Texture2D
+		readout_textures[kind] = ImageTexture.create_from_image(image) if FileAccess.file_exists(path) and image.load_png_from_buffer(FileAccess.get_file_as_bytes(path)) == OK else load(path) as Texture2D
 	var icon: Texture2D = readout_textures[kind]
 	if icon != null: control.draw_texture(icon, left); control.draw_texture(icon, right)
 static func content_visible(control: Control) -> bool:

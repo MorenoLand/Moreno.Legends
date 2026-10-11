@@ -20,6 +20,7 @@ var elapsed := 0.0
 var history: Array[Vector3] = []
 var trail: MeshInstance3D
 var puffs: Node3D
+var shot: Node3D
 var exploding := false
 var blast := 0
 var blast_size := 0
@@ -33,6 +34,7 @@ static func spawn(shot: Node, muzzle: Vector3, heading: Vector3, damage_value: i
 func _ready() -> void:
 	var bullet: Dictionary = data["bullet"]; var steering: Dictionary = bullet["steering"]; speed = float(bullet["initialSpeedRaw"]); counter = int(steering.get("armDelayBase", steering.get("delayTicks", 0))) - (special if steering["kind"] == "ramp" else 0)
 	var material := StandardMaterial3D.new(); material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; material.vertex_color_use_as_albedo = true; material.cull_mode = BaseMaterial3D.CULL_DISABLED; material.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED; material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD; material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	if data.has("projectile"): shot = (load("res://assets/player/weapons/" + str(data["projectile"]["model"])) as PackedScene).instantiate(); add_child(shot); _plain(shot)
 	if data["trail"]["kind"] == "ribbon": trail = MeshInstance3D.new(); trail.mesh = ImmediateMesh.new(); trail.top_level = true; trail.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF; trail.material_override = material; add_child(trail)
 	else:
 		puffs = Node3D.new(); puffs.set_script(preload("res://scripts/world/combat/native_effect.gd")); get_parent().add_child(puffs); var polygons: Array = []
@@ -45,6 +47,7 @@ func _physics_process(delta: float) -> void:
 		if exploding: _blast_tick()
 		else: _tick()
 		if is_queued_for_deletion(): return
+	if shot != null and not exploding: shot.global_basis = Basis.looking_at(direction, Vector3.UP if absf(direction.y) < 0.99 else Vector3.RIGHT)
 	if trail != null: _draw_trail()
 func _tick() -> void:
 	var bullet: Dictionary = data["bullet"]; var steering: Dictionary = bullet["steering"]
@@ -82,6 +85,7 @@ func _explode(point: Vector3) -> void:
 	var effect := Node3D.new(); effect.set_script(preload("res://scripts/world/combat/native_effect.gd")); get_parent().add_child(effect); effect.global_position = point; var variants: Array = explosion["variants"]; effect.play(variants[randi() % variants.size()], float(blast_size) / float(explosion["sizeBase"]), explosion["pages"])
 	player.special_sound_requested.emit(int(explosion["sound"]))
 	if trail != null: trail.mesh = ImmediateMesh.new()
+	if shot != null: shot.hide()
 	if puffs != null: puffs.queue_free()
 func _blast_tick() -> void:
 	var shape := SphereShape3D.new(); shape.radius = maxf(float((blast_size * (16 - blast)) >> 5) / SIZE_UNIT, 0.05); var query := PhysicsShapeQueryParameters3D.new(); query.shape = shape; query.transform = Transform3D(Basis.IDENTITY, global_position); query.collision_mask = 9
@@ -91,6 +95,10 @@ func _blast_tick() -> void:
 		blast_hit[collider.get_instance_id()] = true; collider.receive_hit(blast_damage, FLAGS, Vector3.UP)
 	blast -= 1
 	if blast <= 0: queue_free()
+## The original draws the projectile model unlit (texture times the vertex shade) in the generic object pass.
+func _plain(model: Node3D) -> void:
+	for instance: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
+		for surface in instance.mesh.get_surface_count(): var material := instance.mesh.surface_get_material(surface).duplicate() as StandardMaterial3D; material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST; material.cull_mode = BaseMaterial3D.CULL_DISABLED; instance.set_surface_override_material(surface, material)
 func _corner(index: int, radius: float) -> Vector2: return [Vector2(-radius, -radius), Vector2(radius + 1.0, -radius), Vector2(radius + 1.0, radius + 1.0), Vector2(-radius, radius + 1.0)][index]
 func _draw_trail() -> void:
 	var mesh := trail.mesh as ImmediateMesh; mesh.clear_surfaces()

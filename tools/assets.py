@@ -142,7 +142,7 @@ def prepare(cue, source, stages, only, report_path=None, tasks=()):
 	if "world" in only and (not stages or "ST3A" in stages): task("flight_scene", cinematics.export_flight_scene)
 	if "world" in only and (not stages or "ST08" in stages): task("landing_scene", cinematics.export_landing_scene)
 	if "world" in only and (not stages or "ST49" in stages): task("dropship_scene", cinematics.export_dropship_scene)
-	if "world" in only and (not stages or "ST04" in stages): task("flutter_scene", cinematics.export_flutter_scene)
+	if "world" in only and (not stages or "ST04" in stages): task("flutter_scene", cinematics.export_flutter_scene); task("roll_development_scene", cinematics.export_roll_development_scene)
 	if "world" in only and (not stages or "ST08" in stages): task("joe_workshop_scene", cinematics.export_joe_scene)
 	if "world" in only and (not stages or any(stage in stages for stage in ["ST0D", "ST0F"])): task("mine_quest", lambda: world.export_mine_quest(source / "DAT", ROOT / "assets/levels"))
 	if "world" in only and (not stages or "ST0F" in stages): task("mine_scenes", cinematics.export_mine_scenes)
