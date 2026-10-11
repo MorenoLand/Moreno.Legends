@@ -1,8 +1,8 @@
 extends Node3D
 signal hit_surface(position: Vector3, normal: Vector3)
 signal impact_sound_requested(sound_id: int, position: Vector3)
-@export var speed := 15.0
-@export var lifetime := 14.0 / 30.0
+@export var speed := 12.5
+@export var lifetime := 14.0 / 25.0
 @export var damage := 8
 @export var attack_level := 0
 @export var hit_flags := 0x40000
@@ -19,7 +19,7 @@ func launch(origin: Vector3, heading: Vector3) -> void:
 func _physics_process(delta: float) -> void:
 	if resolved: return
 	age += delta
-	$Visual.set_native_frame(int(age * 30.0))
+	$Visual.set_native_frame(int(age * 25.0))
 	if age >= lifetime:
 		resolved = true
 		set_physics_process(false)

@@ -1268,6 +1268,7 @@ def bind_icefield_encounter(dat_dir, overlay, payload, archive, texture_path, ou
 		burrowers.append({"entry": json.loads(json.dumps(matches[0])), "player_z_raw_exclusive_minimum": threshold})
 	return {"source": "ST11T0x800E76C4 (story byte14 1) -> GAME0x800C0B0C scene 0x2A (handler 0x800F0FAC, timeline 0x800F33D4)", "story_byte14": 1, "area": 0, "trigger": {"player_z_raw_minimum": T.imm(0x800E7794), "scene": T.imm(0x800E77A4), "flag": T.imm(0x800E77AC), "source": "ST11T0x800E778C..0x800E77B0: player+0x1A < 0x500 keeps the roaming enemies, otherwise starts the scene and sets flag 0x591"}, "arrival": {"position_raw": [T.word(0x800F1274) & 0xFFFF, T.half(0x800F127C), T.word(0x800F1284) & 0xFFFF], "yaw_raw": T.imm(0x800F128C), "source": "ST11T0x800F1214..0x800F1298: scene finish registers the boss and barrier records, then places the player"}, "music_cue": T.imm(0x800F14DC), "radio": {"message": T.imm(0x800E7878), "story_byte14_minimum": T.imm(0x800E787C), "window": T.imm(0x800EF5C8), "bank": "0x8010C000", "source": "ST11T0x800E785C..0x800E7890 registers class 0x1B (0x800EEF04, kind 0 -> 0x800EF5BC) once the scene flag clears"}, "boss": {"entry": entry, "scene_entry": scene_entry, "model_index": index, "source": "ST11T class 59 callback 0x800EB5A4, constructor 0x800EB6DC, state table 0x800F30F4/0x800F3100/0x800F3124"}, "barriers": barriers, "burrowers": burrowers, "defeat": {"spawn": spitters, "flag": T.imm(0x800E78B4), "fade": {"mask": T.imm(0x800E78B8), "speed": T.imm(0x800E78BC), "delay": 0}, "barrier_state": T.imm(0x800E76FC), "register_record": "0x800f2df8", "register_count": T.imm(0x800E78DC), "source": "ST11T0x800E7894..0x800E78F0"}}
 TOWN_NPC_CODE_HASH = "bfc8de2954"
+TOWN_NPC_WATCH_HASH = "b4458e4c8a"  # stationary mode 0 handler (ST25 0x800E8D38; identical in ST09, ST0D, ST17, ST24, ST29, ST3B-ST3F): head forward, head to the player within 256 raw units and 0x200 of the heading until 384 and 0x280
 def overlay_words(overlay):
 	base = read_u32(overlay, 12); count = (len(overlay) - 0x30) // 4; words = struct.unpack_from("<%dI" % count, overlay, 0x30)
 	return base, count, words, (lambda address: words[(address - base) // 4] if base <= address < base + count * 4 and address % 4 == 0 else None)
@@ -1315,7 +1316,7 @@ def town_npc_tables(overlay, callback):
 		if words[index:index + 3] == (0xA4A00038, 0xA4A0003A, 0xA4A0003C):
 			speed_at = next(value for _, value in overlay_constants(overlay, base + index * 4, 24) if inside(value))
 	timers_at = next(value for _, value in overlay_constants(overlay, word(steps + 16), 64) if inside(value))
-	idle_dispatch = table(sub[1], 3); gesture = word(idle_dispatch + 4); gesture_constants = [value for _, value in overlay_constants(overlay, gesture, 80) if inside(value)]; patterns_at = gesture_constants[2]
+	idle_dispatch = table(sub[1], 3); watch = overlay_code_hash(overlay, word(idle_dispatch), word(idle_dispatch + 4)) == TOWN_NPC_WATCH_HASH; gesture = word(idle_dispatch + 4); gesture_constants = [value for _, value in overlay_constants(overlay, gesture, 80) if inside(value)]; patterns_at = gesture_constants[2]
 	if speed_at is None: return None
 	pointers = []; at = routes_at or 0
 	while routes_at and word(at) is not None and base <= word(at) < routes_at and word(at) % 4 == 0 and (not pointers or word(at) > pointers[-1]): pointers.append(word(at)); at += 4
@@ -1325,7 +1326,7 @@ def town_npc_tables(overlay, callback):
 		for node in range((end - pointer) // 8):
 			offset = 0x30 + pointer + node * 8 - base; links = list(struct.unpack_from("<4b", overlay, offset)); x, z = struct.unpack_from("<2h", overlay, offset + 4); nodes.append({"id": node, "x": x, "z": z, "links": links})
 		routes.append(nodes)
-	return {"states": states, "substates": substates, "steps": steps, "routes_at": routes_at, "speed_at": speed_at, "timers_at": timers_at, "patterns_at": patterns_at, "routes": routes, "timers": list(struct.unpack_from("<16H", overlay, 0x30 + timers_at - base)), "patterns": list(struct.unpack_from("<4H", overlay, 0x30 + patterns_at - base)), "speed_row": lambda variant: list(struct.unpack_from("<4H", overlay, 0x30 + speed_at + variant * 8 - base))}
+	return {"watch": watch, "states": states, "substates": substates, "steps": steps, "routes_at": routes_at, "speed_at": speed_at, "timers_at": timers_at, "patterns_at": patterns_at, "routes": routes, "timers": list(struct.unpack_from("<16H", overlay, 0x30 + timers_at - base)), "patterns": list(struct.unpack_from("<4H", overlay, 0x30 + patterns_at - base)), "speed_row": lambda variant: list(struct.unpack_from("<4H", overlay, 0x30 + speed_at + variant * 8 - base))}
 def bind_town_movement(stage, overlay, instances, callback, manifest):
 	tables = town_npc_tables(overlay, callback)
 	if tables is None: return 0
@@ -1335,9 +1336,9 @@ def bind_town_movement(stage, overlay, instances, callback, manifest):
 		if instance["record_type"] != 0x20 or instance["actor_class"] != 0: continue
 		mode = raw[9] & 7; walking = raw[9] & 0x80 == 0
 		if walking and not 0 <= raw[8] < len(tables["routes"]): continue
-		if not walking and mode != 1: continue
+		if not walking and mode != 1 and not (mode == 0 and tables["watch"]): continue
 		row = tables["speed_row"](raw[6]); run = mode >= 4
-		instance["native_movement"] = {"kind": "town_npc", "mode": mode, "walking": walking, "route": raw[8] if walking else None, "idle_at_nodes": bool(raw[9] & 0x10), "velocity_raw": -row[1 if run else 0], "turn_step_raw": row[2] * (2 if run else 1), "animation_control": 2 if run else 1, "source_flags": {"record8": "route index (actor+0xC)", "record9": "bit7 stationary, bit4 idle at nodes, bits0-2 mode (0-3 walk, 4-7 run, stationary mode 1 gestures)"}}
+		instance["native_movement"] = {"kind": "town_npc", "mode": mode, "walking": walking, "route": raw[8] if walking else None, "idle_at_nodes": bool(raw[9] & 0x10), "velocity_raw": -row[1 if run else 0], "turn_step_raw": row[2] * (2 if run else 1), "animation_control": 2 if run else 1, "source_flags": {"record8": "route index (actor+0xC)", "record9": "bit7 stationary, bit4 idle at nodes, bits0-2 mode (0-3 walk, 4-7 run, stationary mode 1 gestures, mode 0 watches the player)"}}
 		bound += 1
 	if bound:
 		manifest["native_town_npc"] = {"routes": tables["routes"], "idle_timer_ticks": tables["timers"], "gesture_patterns": tables["patterns"], "source": {"route_table_ram": hex(tables["routes_at"]) if tables["routes_at"] else None, "route_initializer": "ST overlay init stores the table at GAME 0x80078D30", "state_table_ram": hex(tables["states"]), "substate_table_ram": hex(tables["substates"]), "step_table_ram": hex(tables["steps"]), "speed_table_ram": hex(tables["speed_at"]), "idle_timer_table_ram": hex(tables["timers_at"]), "gesture_pattern_table_ram": hex(tables["patterns_at"]), "code_hash": TOWN_NPC_CODE_HASH, "node_layout": "8 bytes: links[4] int8 (-1 none), x int16, z int16", "walk_controller": "actor substate 0 steps: 0 target node, 1 walk/turn/arrive, 2 next node, 3 blocked turn, 4 idle at node", "arrival_window_raw": 128, "node_choice": "(state&0xFFFF) % valid links, skipping the previous node", "node_pause": "25% of arrivals (0x550000aa << (rng&31) sign bit) when record9 bit4 is set", "not_ported": "head tracking (actor+0x14C+4..7 look bytes)"}}
@@ -1702,7 +1703,7 @@ def export_special_modes(output=None):
 				if value is not False: values.add(value); break
 				index -= 1
 			for position, instruction in enumerate(window):
-				if not instruction.mnemonic.startswith("b") or instruction.mnemonic == "break": continue
+				if not (instruction.mnemonic.startswith("b") and instruction.mnemonic != "break" or instruction.mnemonic == "j"): continue
 				branch_target = int(instruction.op_str.split(", ")[-1], 0)
 				if index >= 0 and window[index].address < branch_target <= address and position + 1 < len(window) and (value := a0_value(window[position + 1])) is not False: values.add(value)
 			calls.append({"call": "%#010x" % address, "values": sorted(values, key=lambda value: -1 if value is None else value)})
@@ -2015,7 +2016,15 @@ def export_arena_barriers(output_dir=None):
 			if added: found = {"area": area, "placement": placement, "boxes": added}
 		if found is None: raise ValueError(f"ST1D barrier tile {tile} adds no collision")
 		barriers.append({"source_record_ram": hex(address), "source_bytes_hex": raw.hex(), "record_id": raw[1], "tile": tile, "brightness": raw[8], "transform_raw": [x, y, z, yaw], **found})
-	data = {"source": "ST1DT class 0x28 (state table 0x800FCED0, init 0x800F7850, draw 0x800F792C, removal 0x800F7DC8); the draw and the GAME0x800C010C(tile, 1) / (tile, 0) calls equal ST11T 0x800EFBE8", "profile": profile, "texture": "arena_barrier.png", "barriers": barriers}
+	if any(T.word(address) != word for address, word in {0x800F6C04: 0x3C030002, 0x800F6C58: 0x0C030043, 0x800F6CD0: 0x3C0700C8, 0x800F6CDC: 0x34E78050, 0x800F6CF0: 0x2442FF00, 0x800F6D14: 0x0C0109C1, 0x800F6D18: 0x3C07FF90}.items()): raise ValueError("ST1D ice pillar code differs")
+	category = (T.word(0x800F6CD0) & 0xFFFF) << 16 | T.word(0x800F6CDC) & 0xFFFF; pillar_table = T.data[T.offset(0x800FCE08):T.offset(0x800FCE08) + 16]; pillars = []; area_tiles = stage.area(2)[0]
+	for index in range(8):
+		tile = [pillar_table[2 * index], pillar_table[2 * index + 1]]; flags = struct.unpack_from("<H", area_tiles[tuple(tile)], 0)[0]
+		if flags & 0xC000 != 0x8000: raise ValueError(f"ST1D pillar tile {tile} holds no placement")
+		placement = flags & 0x7FF; model = stage.placements[placement][1]; broken = [box for box in world.export_floor_shapes(path, {placement: 1})["2"]["boxes"] if box["placement"] == placement]
+		pillars.append({"area": 2, "tile": tile, "placement": placement, "node": f"placement_{placement:03d}_model_{model:03d}", "broken_boxes": broken})
+	volume = {"radius_raw": (category & 0x1FF) << 2, "center_offset_raw": T.imm(0x800F6CF0), "attack_word": (T.word(0x800F6D18) & 0xFFFF) << 16, "category": category, "break_flag": (T.word(0x800F6C04) & 0xFFFF) << 16}
+	data = {"source": "ST1DT class 0x28 (state table 0x800FCED0, init 0x800F7850, draw 0x800F792C, removal 0x800F7DC8); the draw and the GAME0x800C010C(tile, 1) / (tile, 0) calls equal ST11T 0x800EFBE8", "profile": profile, "texture": "arena_barrier.png", "barriers": barriers, "pillars": pillars, "pillar_volume": volume, "pillar_source": "ST1DT class 0x20 variant 1 (state table 0x800FCEB8: init 0x800F6AEC, run 0x800F6B40, free 0x800F6CA0): the area 2 tile table 0x800FCE08 places eight of them; the run state frees the object when GAME 0x800C00D4 reports the tile broken, breaks it (GAME 0x800C010C(tile, 1), debris 0x800F6D2C) when its hit word holds bit 0x20000 and the boss raised its flag (SLES 0x80046EE8), and registers a sphere of radius_raw at the object, center_offset_raw above it, through SLES 0x80042704 (0x800F6CC0)"}
 	write_output(output / "arena_barrier.json", json.dumps(data, indent=2) + chr(10), encoding="utf-8"); return data
 
 import re
@@ -2024,11 +2033,17 @@ RUNNER_DIR = ROOT / "assets" / "runner"
 RUNNER_HLE = ROOT / "scripts" / "runner"
 RUNNER_OVERLAY_BASE, RUNNER_GAME_SIZE, RUNNER_RAM_SIZE = 0x800E7000, 0x3A000, 0x200000
 RUNNER_ENGINE_ROOTS = (0x8003C894, 0x8003CAD0, 0x8003CE00, 0x8003CBD0, 0x8003CA14, 0x8003CF08, 0x8003CCE8, 0x8003D0E8, 0x8003D010, 0x800C0818, 0x800C05E0, 0x8003D1EC, 0x800B8A7C, 0x800390C4, 0x800160EC, 0x800AE328, 0x800C0284, 0x800C256C, 0x800BB0F0, 0x800D97B4, 0x800C35B0, 0x800BA374, 0x800BA48C, 0x800B0244, 0x800C042C, 0x800BDBDC, 0x800C3C84, 0x8001D858, 0x800AEB30)
-RUNNER_STAGES = {name: {} for name in ("ST0E", "ST0F", "ST11", "ST12", "ST13", "ST14", "ST17", "ST18", "ST1C", "ST1D", "ST24", "ST25", "ST27", "ST28", "ST2B", "ST2E", "ST2F", "ST30", "ST33", "ST37", "ST39", "ST3C", "ST3E", "ST43", "ST44", "ST45", "ST46", "ST4B", "ST4C", "ST41", "ST42", "ST4F", "ST50", "ST51", "ST55", "ST58", "ST5C")}
+RUNNER_STAGES = {name: {} for name in ("ST09", "ST0E", "ST0F", "ST11", "ST12", "ST13", "ST14", "ST15", "ST16", "ST17", "ST18", "ST19", "ST1C", "ST1D", "ST24", "ST25", "ST27", "ST28", "ST2B", "ST2E", "ST2F", "ST30", "ST33", "ST35", "ST36", "ST37", "ST38", "ST39", "ST3C", "ST3E", "ST40", "ST43", "ST44", "ST45", "ST46", "ST4A", "ST4B", "ST4C", "ST41", "ST42", "ST4E", "ST4F", "ST50", "ST51", "ST55", "ST58", "ST5C")}
 RUNNER_MODULE_BASE, RUNNER_MODULES = 0x8010A000, tuple(f"PL00R{number:02X}" for number in range(1, 0x11))
 RUNNER_MODEL_BANK, RUNNER_ROOT_BANK = 0x80124800, 0x80154800
-RUNNER_MIN_STORY = {"ST39": 1}  # the new-game opening (story byte 0) stays on the port scene contract
-RUNNER_VALIDATED = ("ST0E", "ST12", "ST13", "ST14", "ST17", "ST18", "ST1C", "ST1D", "ST24", "ST25", "ST27", "ST28", "ST2E", "ST2F", "ST33", "ST37", "ST39", "ST3E", "ST41", "ST42", "ST43", "ST45", "ST46", "ST4C", "ST4F", "ST50", "ST51", "ST55", "ST58")
+RUNNER_OWNED_CLASSES = {"ST0F": {5, 7, 8, 19, 21, 27, 85, 96, 111}, "ST4A": {0, 21}}  # classes the port has records for (ST4A: Roll, the tutorial NPC, and the treasure chest of area 4) that the original code runs itself: the runner keeps them (attach rule "runner_classes") and the port spawns none
+RUNNER_OWNED_SCENES = {"ST0F": {0x50, 0x51, 0x52, 0x53, 0x54}}  # scenes the port has contracts for (the mine quest: arrival, pre-boss, boss intro and defeat, refractor) that the original handlers start themselves
+RUNNER_ORIGINAL_START = ("ST4A", "ST55")  # menu starts (no arrival transform) keep the player where the original stage set-up puts him: the tutorial and the license test begin at their own start points
+RUNNER_LIFT_CLASSES = {"ST4A": (0x25,)}  # class 0x25 is the liftable block of the tutorial's Lifter lesson (area 3 corridor, effect pool objects: idle state 1, carried 2, thrown 3, broken 4): the port's Lifter picks it up and throws it through the original block code
+RUNNER_SOLID_CLASSES = {"ST4A": (0x15,)}  # classes whose bodies block the port's player in every state (the tutorial chest, which the port's own prop used to do)
+RUNNER_KEEP_LOCAL_FLAGS = ("ST4A", "ST55")  # in-stage area changes of the original (request type 0xFF, GAME 0x800BA48C(-1)) keep the area-local flags 0x680-0x6DF and 0x710-0x74F (only the stage load, 0x800BA374 -> 0x800C02D0, clears them): the port does not clear them on its room loads here, the tutorial and test progress live in them
+RUNNER_MIN_STORY = {"ST39": 1, "ST09": 16, "ST3C": 12}  # ST39: the new-game opening (story byte 0) stays on the port scene contract; ST09 and ST3C: the story bytes whose area handlers start scenes 0x72 and 0x5D (scripted_actors dispatch rows 16 and 12), earlier story keeps the port content
+RUNNER_VALIDATED = ("ST09", "ST0E", "ST0F", "ST12", "ST13", "ST14", "ST15", "ST16", "ST17", "ST18", "ST19", "ST1C", "ST1D", "ST24", "ST25", "ST27", "ST28", "ST2E", "ST2F", "ST33", "ST35", "ST36", "ST37", "ST38", "ST39", "ST3C", "ST3E", "ST40", "ST41", "ST42", "ST43", "ST45", "ST46", "ST4A", "ST4C", "ST4E", "ST4F", "ST50", "ST51", "ST55", "ST58")
 def runner_attach_rule(name):
 	"""Whether the runner attaches (only stages whose headless run is clean), and what the port already owns in a stage: actor classes from its scripted, NPC, mine and dungeon-enemy tables and the scene contracts it plays itself; the runner kills those actors, hides door models and does not start those scenes."""
 	import world
@@ -2047,7 +2062,9 @@ def runner_attach_rule(name):
 	scenes = {int(path.stem[6:8], 16) for path in directory.glob("scene_??.json")}
 	travel = ROOT / "assets/levels/ST01/flutter_travel.json"
 	if travel.exists(): scenes |= {entry["landing_scene"] for stage, entry in json.loads(travel.read_text(encoding="utf-8"))["docks"].items() if stage == name and "landing_scene" in entry and stage != "ST08"}
-	return {"enabled": name in RUNNER_VALIDATED, **({"min_story": RUNNER_MIN_STORY[name]} if name in RUNNER_MIN_STORY else {}), "port_classes": sorted(classes), "port_scenes": sorted(scenes)}
+	classes -= RUNNER_OWNED_CLASSES.get(name, set())
+	scenes -= RUNNER_OWNED_SCENES.get(name, set())
+	return {"enabled": name in RUNNER_VALIDATED, **({"solid_classes": list(RUNNER_SOLID_CLASSES[name])} if name in RUNNER_SOLID_CLASSES else {}), **({"lift_classes": list(RUNNER_LIFT_CLASSES[name])} if name in RUNNER_LIFT_CLASSES else {}), **({"keep_local_flags": True} if name in RUNNER_KEEP_LOCAL_FLAGS else {}), **({"runner_classes": sorted(RUNNER_OWNED_CLASSES[name])} if name in RUNNER_OWNED_CLASSES else {}), **({"original_start": True} if name in RUNNER_ORIGINAL_START else {}), **({"min_story": RUNNER_MIN_STORY[name]} if name in RUNNER_MIN_STORY else {}), "port_classes": sorted(classes), "port_scenes": sorted(scenes)}
 def runner_stage(name):
 	"""Overlay, root file, model archive section (the first type-0x0C section after the root: the actor models the loader places in bank 0) and attach rule of a stage."""
 	source = ROOT / "build/disc-assets/DAT" / f"{name}.BIN"; data = source.read_bytes()
@@ -2380,15 +2397,36 @@ def runner_closure(recompiler, roots):
 		seen[entry] = function; work.extend(call for call in function.calls if call not in seen)
 	return seen, hardware, errors
 RUNNER_SUBSTAGE_BANK = 0x8013C800
-RUNNER_SUBSTAGE_BANKS = {"ST14": {"pack": "ST1401.BIN", "offset": 0x1980}, "ST1C": {"pack": "ST1C01.BIN", "offset": 0xFAC}}  # sub-stage 1 of the Manda ruins: the final zone's actor bank (classes 0x24, 0x2B, 0x3E); ST1C01: the actor bank of the post-boss scene 0x13 (classes 0x5D, 0x5A, 0x2F, 0x59, 0x68: the offset skips the player-clip block it shares with the stage archive)
+RUNNER_SUBSTAGE_BANKS = {"ST0F": {"pack": "ST0F01.BIN", "offset": 0}, "ST12": {"pack": "ST1201.BIN", "offset": 0x134C}, "ST13": {"pack": "ST1301.BIN", "section": 0x11000, "offset": 0x2530}, "ST14": {"pack": "ST1401.BIN", "offset": 0x1980}, "ST1C": {"pack": "ST1C01.BIN", "offset": 0xFAC, "loads": {0xA3: ("ST1C01.BIN", 0xFAC, 1), 0xA4: ("ST1C02.BIN", 0, 0)}}}  # sub-stage 1 of the Manda ruins: the final zone's actor bank (classes 0x24, 0x2B, 0x3E); ST1C01: the actor bank of the post-boss scene 0x13 (classes 0x5D, 0x5A, 0x2F, 0x59, 0x68: the offset skips the player-clip block it shares with the stage archive)
 def runner_substage_bank(name, data=False):
 	"""The actor model bank of a stage's sub-stage pack (ST<nn>01.BIN section 0, an uncompressed type-10 section: the bank table sits `offset` bytes after the 0x30 byte header), which the original area set-up loads at 0x8013C800 and points the model bank pointer (scratch 0x1F800074) at; the runner preloads it there."""
 	rule = RUNNER_SUBSTAGE_BANKS.get(name)
 	if not rule: return {}
-	pack = (ROOT / "build/disc-assets/DAT" / rule["pack"]).read_bytes(); size = struct.unpack_from("<I", pack, 4)[0]; bank = pack[0x30 + rule["offset"]:0x30 + size]
+	pack = (ROOT / "build/disc-assets/DAT" / rule["pack"]).read_bytes(); section = rule.get("section", 0)
+	if section: bank = disc.decompress_section(pack, section)[0][rule["offset"]:]  # a compressed pack section (ST1301)
+	else: size = struct.unpack_from("<I", pack, 4)[0]; bank = pack[0x30 + rule["offset"]:0x30 + size]
 	if RUNNER_SUBSTAGE_BANK + len(bank) > RUNNER_ROOT_BANK: raise ValueError(f"{name} sub-stage bank overflows its loader bank")
-	result = {"bank1": {"address": RUNNER_SUBSTAGE_BANK, "size": len(bank), "file": f"{name}.bank1.bin", "models_directory": rule["pack"][:-4] + "_00000"}}
+	result = {"bank1": {"address": RUNNER_SUBSTAGE_BANK, "size": len(bank), "file": f"{name}.bank1.bin", "models_directory": rule["pack"][:-4] + f"_{section:05X}"}}
 	if data: result["bank1_data"] = bank
+	if rule.get("loads"):  # disc reads the original queues (SLES 0x8001B2D8, file id at command +2): ST1C scene 0x13 asks for file 0xA3 (ST1C01) at tick 2462 and 0xA4 (ST1C02) at tick 7444. Bank 1 is the sub-stage bank at 0x8013C800 (scratch parity 1); ST1C02 is a type-10 archive without the player-clip prefix, 12 models (it adds class 0x1D, the door guards) that fits the 0x18000 bytes of bank 0, which it replaces (its textures also upload the palette rows 505/506/508 of areas 3 and 4)
+		loads = {}
+		for file_id, (pack_name, offset, bank) in rule["loads"].items():
+			pack = (ROOT / "build/disc-assets/DAT" / pack_name).read_bytes(); size = struct.unpack_from("<I", pack, 4)[0]; blob = pack[0x30 + offset:0x30 + size]; address = RUNNER_SUBSTAGE_BANK if bank else RUNNER_MODEL_BANK
+			if address + len(blob) > (RUNNER_ROOT_BANK if bank else RUNNER_SUBSTAGE_BANK): raise ValueError(f"{name} file {file_id:#x} overflows its loader bank")
+			loads[str(file_id)] = {"address": address, "size": len(blob), "file": f"{name}.bank_{file_id:02x}.bin", "models_directory": pack_name[:-4] + "_00000", "bank": bank, "vram": f"{name}.bank_{file_id:02x}.vram.bin"}; (result.setdefault("bank_loads_data", {}).__setitem__(file_id, blob) if data else None)
+		result["bank_loads"] = loads
+	return result
+RUNNER_AREA_BANKS = {"ST13": {1: "ST1301.BIN"}}  # areas whose sub-stage archive replaces the stage's model archive at the loader's bank: ST13 area 1 (the boss arena, scene 9) addresses its class 0x24 model only in ST1301.BIN (same root as ST13.BIN, 17 models); the stage load that would swap it is skipped by the runner
+def runner_area_banks(name, data=False):
+	"""The model archives (first type-0x0C section) of the sub-stage packs of RUNNER_AREA_BANKS, written as `<stage>.area<n>.models.bin`."""
+	rules = RUNNER_AREA_BANKS.get(name)
+	if not rules: return {}
+	result = {"area_banks": {}}; blobs = {}
+	for area, pack in rules.items():
+		source = (ROOT / "build/disc-assets/DAT" / pack).read_bytes(); offset = next(offset for offset in range(0x400, len(source) - 12, 0x400) if struct.unpack_from("<I", source, offset)[0] == 0x0C); blob = disc.decompress_section(source, offset)[0]
+		if RUNNER_MODEL_BANK + len(blob) > RUNNER_ROOT_BANK: raise ValueError(f"{name} area {area} model archive overflows its loader bank")
+		result["area_banks"][str(area)] = {"models": {"address": RUNNER_MODEL_BANK, "size": len(blob), "file": f"{name}.area{area}.models.bin"}, "models_directory": f"{pack[:-4]}_{offset:05X}"}; blobs[area] = blob
+	if data: result["area_banks_data"] = blobs
 	return result
 def runner_stage_blobs(name, image, data=False):
 	"""Decompressed stage root and model archive at the addresses the original loader fills for bank 0 (SLES 0x80026770 and 0x80023040 then publish them through scratch 0x1F800080 and 0x1F800074)."""
@@ -2398,9 +2436,9 @@ def runner_stage_blobs(name, image, data=False):
 	if data: result.update(root_data=root, models_data=models)
 	return result
 def runner_vram(name):
-	"""The 1024 x 512 video memory image (little-endian 16-bit words) after the common player textures, the stage overlay and the stage root are uploaded; effect and sprite packets sample it."""
-	import world
-	vram = bytearray(1024 * 512 * 2); disc_assets = ROOT / "build/disc-assets"
+	"""The 1024 x 512 video memory image (little-endian 16-bit words) after the common game textures, the common player textures, the stage overlay and the stage root are uploaded; effect and sprite packets sample it."""
+	import world, ui
+	disc_assets = ROOT / "build/disc-assets"; vram = bytearray(ui.textures(disc_assets / "COMMON/GAME.BIN")[0])
 	for label, path in (("COMMON/PL00T.BIN", disc_assets / "COMMON/PL00T.BIN"), (f"DAT/{name}T.BIN", disc_assets / "DAT" / f"{name}T.BIN"), (f"DAT/{name}.BIN", disc_assets / "DAT" / f"{name}.BIN")): world.texture_uploads(path.read_bytes(), vram, label)
 	return bytes(vram)
 def runner_sections(path):
@@ -2422,7 +2460,7 @@ def export_runner(stages=None, output_dir=None, trace=False):
 		emitter = MipsEmitter(image, unit_of, hle, trace); overlay = [function for function in seen.values() if function and unit_of(function.entry) == "ovl"]; overlays[name] = (emitter, overlay)
 		for function in seen.values():
 			if function and unit_of(function.entry) == "engine" and function.entry not in engine: engine[function.entry] = (emitter, function)
-		manifest["stages"][name] = {"unit": f"{name}.gd", "image": f"{name}.bin", "base": RUNNER_OVERLAY_BASE, "functions": len(overlay), "code_end": end, "vram": f"{name}.vram.bin", "models_directory": f"{name}_{runner_stage(name)['models']:05X}", "attach": runner_attach_rule(name), **runner_stage_blobs(name, image), **runner_substage_bank(name)}
+		manifest["stages"][name] = {"unit": f"{name}.gd", "image": f"{name}.bin", "base": RUNNER_OVERLAY_BASE, "functions": len(overlay), "code_end": end, "vram": f"{name}.vram.bin", "models_directory": f"{name}_{runner_stage(name)['models']:05X}", "attach": runner_attach_rule(name), **runner_stage_blobs(name, image), **runner_substage_bank(name), **runner_area_banks(name)}
 	for name in modules:
 		image = MipsImage(module=name); recompiler = MipsRecompiler(image); entries, end = runner_overlay_entries(recompiler)
 		seen, found, failed = runner_closure(recompiler, entries + list(RUNNER_ENGINE_ROOTS) + runner_engine_pointers(image) + sorted(hle)); hardware.update(found); errors += failed
@@ -2433,8 +2471,12 @@ def export_runner(stages=None, output_dir=None, trace=False):
 		manifest["modules"][name] = {"unit": f"{name}.gd", "functions": len(module_functions), "sections": [{"address": address, "file": f"{name}.s{index}.bin"} for index, (address, _) in enumerate(runner_sections(COMMON / (name + ".BIN")))]}
 	def unit_text(items, unit):
 		text = ['extends "res://scripts/runner/mips_unit.gd"', ""]
-		for emitter, function in items: text += [emitter.method(function, unit), ""]
-		text += ["func table(into: Dictionary) -> void:"] + [f"\tinto[0x{function.entry:X}] = f_{function.entry:08X}" for _, function in items] + [""]
+		kept = []
+		for emitter, function in items:
+			try: text += [emitter.method(function, unit), ""]
+			except ValueError as error: errors.append(f"{unit} function {function.entry:#x} dropped: {error}"); continue  # a code constant that points into data decodes to an opcode the recompiler does not know; the call stays unresolved at run time
+			kept.append((emitter, function))
+		text += ["func table(into: Dictionary) -> void:"] + [f"	into[0x{function.entry:X}] = f_{function.entry:08X}" for _, function in kept] + [""]
 		return "\n".join(text)
 	write_output(output / "engine.gd", unit_text([engine[entry] for entry in sorted(engine)], "engine"), encoding="utf-8"); manifest["engine_functions"] = len(engine)
 	for name, (emitter, overlay, *kind) in overlays.items(): write_output(output / f"{name}.gd", unit_text([(emitter, function) for function in sorted(overlay, key=lambda function: function.entry)], kind[0] if kind else "ovl"), encoding="utf-8")
@@ -2442,7 +2484,13 @@ def export_runner(stages=None, output_dir=None, trace=False):
 		image = MipsImage(runner_stage(name)["overlay"]); write_output(output / f"{name}.bin", next(segment[1] for segment in image.segments if segment[2] == "OVL"))
 		blobs = runner_stage_blobs(name, image, True)
 		for kind in ("root", "models"): write_output(output / f"{name}.{kind}.bin", blobs.pop(kind + "_data"))
-		if name in RUNNER_SUBSTAGE_BANKS: write_output(output / f"{name}.bank1.bin", runner_substage_bank(name, True)["bank1_data"])
+		if name in RUNNER_SUBSTAGE_BANKS:
+			banks = runner_substage_bank(name, True); write_output(output / f"{name}.bank1.bin", banks["bank1_data"])
+			for file_id, blob in banks.get("bank_loads_data", {}).items(): write_output(output / f"{name}.bank_{file_id:02x}.bin", blob)
+			loaded = bytearray(runner_vram(name))  # the textures each queued pack uploads (SLES 0x8001B2D8 reads) are applied cumulatively, in load order
+			for file_id, (pack_name, _, _) in RUNNER_SUBSTAGE_BANKS[name].get("loads", {}).items():
+				import world; world.texture_uploads((ROOT / "build/disc-assets/DAT" / pack_name).read_bytes(), loaded, "DAT/" + pack_name); write_output(output / f"{name}.bank_{file_id:02x}.vram.bin", bytes(loaded))
+		for area, blob in runner_area_banks(name, True).get("area_banks_data", {}).items(): write_output(output / f"{name}.area{area}.models.bin", blob)
 		write_output(output / f"{name}.vram.bin", runner_vram(name))
 	for name in modules:
 		for index, (address, data) in enumerate(runner_sections(COMMON / (name + ".BIN"))): write_output(output / f"{name}.s{index}.bin", data)
@@ -2451,6 +2499,9 @@ def export_runner(stages=None, output_dir=None, trace=False):
 	write_output(output / "ram.bin", MipsImage().ram()); write_output(output / ".gdignore", "")
 	manifest["hardware"] = {f"{address:#010x}": reason for address, reason in sorted(hardware.items())}; manifest["errors"] = errors
 	manifest["unresolved_jumps"] = sorted(f"{address:#010x}" for _, function in list(engine.values()) + [(entry[0], function) for entry in overlays.values() for function in entry[1]] for address in function.unresolved)
+	previous = output / "manifest.json"
+	if stages and previous.is_file():  # a narrow run (--stage) keeps the other stages' entries and the engine-wide fields of the full run
+		kept = json.loads(previous.read_text(encoding="utf-8")); kept["stages"].update(manifest["stages"]); kept["modules"].update(manifest["modules"]); manifest = kept
 	write_output(output / "manifest.json", json.dumps(manifest, indent=1) + "\n", encoding="utf-8"); return manifest
 
 def runner_testable(recompiler, entries, hardware, hle=()):

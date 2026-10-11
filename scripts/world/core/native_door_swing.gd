@@ -17,7 +17,7 @@ func release() -> void:
 	if state == 1: state = 3; velocity = angle / 17; acceleration = -2
 func _physics_process(delta: float) -> void:
 	accumulator += delta * rate
-	while accumulator >= 1.0 / 30.0: accumulator -= 1.0 / 30.0; _tick()
+	while accumulator >= 1.0 / 25.0: accumulator -= 1.0 / 25.0; _tick()
 	(get_parent() as Node3D).rotation.y = closed_yaw + DIRECTION * float(angle) * TAU / 4096.0
 	if state == 0: set_physics_process(false)
 func _tick() -> void:

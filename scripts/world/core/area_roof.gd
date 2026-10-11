@@ -11,6 +11,7 @@ static func apply(root: Node3D, stage: String, area: int) -> bool:
 		root.set_meta("area_roof_configured", true); root.set_meta("native_fixed_pitch", bool(record.get("fixed_pitch", false)))
 		var roof: Dictionary = record.get("roof", {}); var points: Array = roof.get("vertices", [])
 		_apply_blackouts(root, roof)
+		_apply_window_backings(root, roof)
 		if points.is_empty(): return false
 		var source := root.find_child(str(roof.get("material_node", "")), true, false) as MeshInstance3D
 		if source == null or source.mesh == null: return false
@@ -62,6 +63,12 @@ static func _apply_blackouts(root: Node3D, roof: Dictionary) -> void:
 			var point: Array = loop[index]; vertices.append(Vector3(float(point[0]), float(point[1]), float(point[2])))
 	if vertices.is_empty(): return
 	var arrays := []; arrays.resize(Mesh.ARRAY_MAX); arrays[Mesh.ARRAY_VERTEX] = vertices; var mesh := ArrayMesh.new(); mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays); var material := StandardMaterial3D.new(); material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; material.cull_mode = BaseMaterial3D.CULL_DISABLED; material.albedo_color = Color.BLACK; var cover := MeshInstance3D.new(); cover.name = "LadderHatchBlackout"; cover.mesh = mesh; cover.material_override = material; root.add_child(cover)
+static func _apply_window_backings(root: Node3D, roof: Dictionary) -> void:
+	var vertices := PackedVector3Array()
+	for backing: Dictionary in roof.get("window_backings", []):
+		for point: Array in backing.get("vertices", []): vertices.append(Vector3(float(point[0]), float(point[1]), float(point[2])))
+	if vertices.is_empty(): return
+	var arrays := []; arrays.resize(Mesh.ARRAY_MAX); arrays[Mesh.ARRAY_VERTEX] = vertices; var mesh := ArrayMesh.new(); mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays); var material := StandardMaterial3D.new(); material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; material.cull_mode = BaseMaterial3D.CULL_DISABLED; material.disable_fog = true; material.albedo_color = Color.BLACK; var backing := MeshInstance3D.new(); backing.name = "WindowBacking"; backing.mesh = mesh; backing.material_override = material; backing.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF; root.add_child(backing)
 static func _quiet_texture_region(material: ShaderMaterial, roof: Dictionary) -> Vector4:
 	var texture := material.get_shader_parameter("albedo_texture") as Texture2D
 	if texture == null: return Vector4.ZERO

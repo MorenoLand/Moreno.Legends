@@ -17,6 +17,8 @@ var saves := preload("res://scripts/state/save_store.gd").new()
 var save_menu: Control
 var save_feedback: Label
 var session_loading := false
+var handover: Dictionary = {}
+signal handover_committed
 var data_save_menu_active := false
 var opening: Control
 var opening_loading := false
@@ -271,6 +273,10 @@ func _show(name: String) -> void:
 			break
 func _new_game() -> void:
 	await _start_session({}, "ST39", 0, {"native_save_byte14": 0, "native_save_byte16": 1, "native_save_word40": 0, "native_save_byte44": 1, "native_save_byte45": 1, "event_flags": {}})
+## DEMO 0x800AD7F8 starts stage 0x4A with start mode 1 and difficulty 1; the player initialiser (GAME 0x800C37D8) hands out special weapon 6 (item flag 0x386) on top of the new-game kit.
+func _tutorial() -> void:
+	await _start_session({}, "ST4A", 0, {"native_save_byte14": 0, "native_save_byte16": 1, "native_save_word40": 0, "native_save_byte44": 1, "native_save_byte45": 1, "event_flags": {}})
+	if is_instance_valid(gameplay): gameplay.player.inventory["special_weapons"]["6"] = 1
 func _show_error(message: String) -> void:
 	status.hide()
 	if not is_instance_valid(error_dialogue):
@@ -290,14 +296,17 @@ func _threaded_scene(path: String) -> PackedScene:
 		await get_tree().process_frame
 		status = ResourceLoader.load_threaded_get_status(path)
 	return ResourceLoader.load_threaded_get(path) as PackedScene if status == ResourceLoader.THREAD_LOAD_LOADED else null
-func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0, context: Dictionary = {}, load_feedback: bool = false, parked_override: Dictionary = {}, carried: Dictionary = {}) -> void:
-	if session_loading or opening_loading: return
-	session_loading = true
+func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0, context: Dictionary = {}, load_feedback: bool = false, parked_override: Dictionary = {}, carried: Dictionary = {}, background: bool = false) -> void:
+	if session_loading or opening_loading or (background and not handover.is_empty()): return
+	if background: handover = {"loading": true}
+	else:
+		_discard_handover()
+		session_loading = true
 	if not state.is_empty():
 		stage = str(state["stage"])
 		area = int(state["area"])
 	if not await AssetStore.ensure_stage(stage):
-		session_loading = false
+		_session_end(background)
 		if pages["saves"].visible: save_menu.set_message(AssetStore.last_error)
 		elif custom.visible: custom.set_location_message(AssetStore.last_error)
 		else: status.text = AssetStore.last_error; status.show()
@@ -308,7 +317,7 @@ func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0, co
 		else:
 			status.text = "Prepare your disc assets with tools/assets.py before starting."
 			status.show()
-		session_loading = false
+		_session_end(background)
 		return
 	var stage_manifest: Variant = JSON.parse_string(FileAccess.get_file_as_string(stage_path))
 	var area_index := -1
@@ -321,30 +330,30 @@ func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0, co
 	if area_index < 0:
 		if pages["saves"].visible: save_menu.set_message("This area's native ID is not available.")
 		elif custom.visible: custom.set_location_message("This area's native ID is not available.")
-		session_loading = false
+		_session_end(background)
 		return
 	var weapon_policy: Variant = stage_manifest.get("native_combat_policy", null)
 	var buster_allowed := bool(weapon_policy.get("buster_allowed", true)) if weapon_policy is Dictionary else true
 	var player_path := "res://assets/player/megaman_civilian.glb" if stage in ["ST04", "ST05", "ST06", "ST07"] else ("res://assets/player/megaman.glb" if buster_allowed else "res://assets/player/megaman_normal.glb")
 	var gameplay_script := ResourceLoader.load("res://scripts/world/core/gameplay.gd", "GDScript") as GDScript
 	if gameplay_script == null or not gameplay_script.can_instantiate() and (gameplay_script.reload() != OK or not gameplay_script.can_instantiate()):
-		session_loading = false; await _show_error("The gameplay script could not be loaded."); return
+		_session_end(background); await _show_error("The gameplay script could not be loaded."); return
 	var scene: PackedScene = await _threaded_scene("res://scenes/gameplay.tscn")
 	var player_scene: PackedScene = await _threaded_scene(player_path) if scene != null else null
 	if scene == null or player_scene == null:
-		session_loading = false
+		_session_end(background)
 		await _show_error("The game could not be opened.")
 		return
 	await get_tree().process_frame
 	var previous := gameplay
 	var previous_paused := get_tree().paused
-	if is_instance_valid(previous): previous.process_mode = Node.PROCESS_MODE_DISABLED
-	get_tree().paused = false
+	if is_instance_valid(previous) and not background: previous.process_mode = Node.PROCESS_MODE_DISABLED
+	if not background: get_tree().paused = false
 	var candidate := scene.instantiate() as Node3D
 	if candidate == null or candidate.get_script() == null or not (candidate.get_script() as GDScript).can_instantiate():
 		if candidate != null: candidate.queue_free()
 		if is_instance_valid(previous): previous.process_mode = Node.PROCESS_MODE_PAUSABLE
-		get_tree().paused = previous_paused; session_loading = false
+		get_tree().paused = previous_paused; _session_end(background)
 		await _show_error("The gameplay script could not be loaded.")
 		push_error("Failed to compile res://scripts/world/core/gameplay.gd or one of its dependencies")
 		return
@@ -361,7 +370,11 @@ func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0, co
 	candidate.process_mode = Node.PROCESS_MODE_PAUSABLE
 	candidate.hide()
 	candidate.get_node("HUD").hide()
-	add_child(candidate)
+	# A background build lives in its own World3D (own physics space) so its colliders cannot touch the running stage; it joins the main world at the handover.
+	var viewport: SubViewport = null
+	if background:
+		viewport = SubViewport.new(); viewport.own_world_3d = true; viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED; viewport.size = get_viewport().size; add_child(viewport); viewport.add_child(candidate)
+	else: add_child(candidate)
 	if candidate.audio != null and candidate.audio.music != null: candidate.audio.music.stream_paused = true
 	var success: bool = candidate.playable if candidate.preparation_finished else await candidate.prepared
 	if success and not state.is_empty(): success = await candidate.restore_state(state)
@@ -369,30 +382,42 @@ func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0, co
 	if success: candidate.entry_route = {}; candidate.initial_player_state = {}
 	var docked_hull: Node3D = await preload("res://scripts/world/flutter/flutter_dock.gd").ensure(candidate) if success else null
 	if not success:
+		if background:
+			viewport.queue_free(); handover = {}
+			return
 		remove_child(candidate)
 		candidate.queue_free()
 		if is_instance_valid(previous):
 			previous.process_mode = Node.PROCESS_MODE_PAUSABLE
 			previous.player.camera.current = true
 		get_tree().paused = previous_paused
-		session_loading = false
+		_session_end(background)
 		if pages["saves"].visible: save_menu.set_message("This save's area could not be loaded.")
 		elif custom.visible: custom.set_location_message("The room could not be loaded.")
 		else:
 			status.text = "The starting area could not be loaded."
 			status.show()
 		return
+	if background:
+		candidate.process_mode = Node.PROCESS_MODE_DISABLED
+		handover = {"candidate": candidate, "viewport": viewport, "route": state.get("entry_route", {}), "docked_hull": docked_hull, "entry_fade": entry_fade_code}
+		return
+	await _activate_candidate(candidate, previous, state, docked_hull, entry_fade_code, load_feedback, false)
+func _activate_candidate(candidate: Node3D, previous: Node3D, state: Dictionary, docked_hull: Node3D, entry_fade_code: int, load_feedback: bool, committing: bool) -> void:
 	if load_feedback: audio.play_sound(0xEF); await save_menu.finish_load()
 	if is_instance_valid(previous) and previous.audio != null and candidate.audio != null: candidate.audio.adopt_music(previous.audio.capture_music())
 	if entry_fade_code != 0xFF: candidate.transition_overlay.hold(entry_fade_code in [0x09, 0x0A, 0x0B, 0x0C])
 	if is_instance_valid(previous):
 		remove_child(previous)
-		previous.queue_free()
+		if committing: _release_gradually(previous)
+		else: previous.queue_free()
 	gameplay = candidate
 	gameplay.stage_transition_requested.connect(_stage_transition)
+	gameplay.stage_preload_requested.connect(_prepare_handover)
 	gameplay.location_requested.connect(_load_location)
 	gameplay.achievement_earned.connect(_unlock_achievement)
 	gameplay.game_over_requested.connect(_game_over)
+	gameplay.title_requested.connect(_main_menu)
 	var achievement_blockers: Array[Control] = [pages["pause"], options, save_menu, custom, status_menu, achievement_menu, inventory_menu, equipment_menu, map_menu, gameplay.dialogue_box, gameplay.transition_overlay]; achievement_notice.configure(achievement_blockers)
 	gameplay.set_meta("native_landing_active", bool(state.get("entry_route", {}).get("flutter_landing", false)))
 	gameplay.show()
@@ -405,12 +430,76 @@ func _start_session(state: Dictionary, stage: String = "ST04", area: int = 0, co
 	gameplay.player.set_physics_process(false)
 	if gameplay.audio != null: gameplay.audio.set_preparing(false)
 	if is_instance_valid(opening): opening._finish(true)
-	await _resume(not OS.has_feature("web"))
-	if bool(state.get("entry_route", {}).get("flutter_landing", false)):
+	if not committing: await _resume(not OS.has_feature("web"))
+	if bool(state.get("entry_route", {}).get("flutter_landing", false)) and not committing:
 		if is_instance_valid(docked_hull) and not await preload("res://scripts/world/flutter/flutter_dock.gd").land(gameplay, docked_hull): push_error("Flutter landing sequence failed: " + gameplay.native_scenes.last_error)
 		gameplay.set_meta("native_landing_active", false)
 	await gameplay.transition_overlay.request(entry_fade_code)
 	gameplay.player.set_physics_process(true); session_loading = false
+	gameplay.request_handover_preload()
+func _session_end(background: bool) -> void:
+	if background: handover = {}
+	else: session_loading = false
+func _discard_handover() -> void:
+	if handover.has("viewport") and is_instance_valid(handover["viewport"]): (handover["viewport"] as Node).queue_free()
+	handover = {}
+func _transition_state(previous: Node3D, route: Dictionary) -> Dictionary:
+	var state: Dictionary = previous.save_state(true)
+	if state.is_empty(): return {}
+	var stage := str(route["destination_stage"]); var area := int(route["destination_area"])
+	var source_stage := str(state["stage"]); var source_area := int(state["area"])
+	if route.get("parked_location", null) is Dictionary: state["parked_location"] = route["parked_location"].duplicate(true)
+	elif source_stage in ["ST04", "ST05", "ST06", "ST07"] and stage not in ["ST04", "ST05", "ST06", "ST07"]:
+		if str(state.get("parked_location", {}).get("stage", "")) != stage or int(state.get("parked_location", {}).get("area", -1)) != area: state["parked_location"] = {"stage": stage, "area": area}
+	elif stage in ["ST04", "ST05", "ST06", "ST07"] and source_stage not in ["ST04", "ST05", "ST06", "ST07"] and (state.get("parked_location", {}).is_empty() or not preload("res://scripts/world/flutter/flutter_dock.gd").descriptor(source_stage).is_empty()):
+		if str(state.get("parked_location", {}).get("stage", "")) != source_stage or int(state.get("parked_location", {}).get("area", -1)) != source_area: state["parked_location"] = {"stage": source_stage, "area": source_area}
+	state["stage"] = stage; state["area"] = area
+	state["defeated_actors"] = state.get("stage_events", {}).get(stage, []).duplicate()
+	state["minimap"] = state.get("explored_stages", {}).get(stage, []).duplicate(true)
+	state["entry_route"] = route.duplicate(true)
+	return state
+func _prepare_handover(route: Dictionary) -> void:
+	if session_loading or opening_loading or not is_instance_valid(gameplay) or not handover.is_empty(): return
+	var state := _transition_state(gameplay, route)
+	if not state.is_empty(): await _start_session(state, "ST04", 0, {}, false, {}, {}, true)
+func _place_handover_camera(candidate: Node3D, shift: Dictionary) -> void:
+	candidate.player.camera.make_current(); candidate.player.camera_was_current = true
+	var eye := Vector3(float(shift["camera_position"][0]), float(shift["camera_position"][1]), float(shift["camera_position"][2])); var rig: Node3D = candidate.player.camera_pivot
+	candidate.player.camera_world_position = eye; candidate.player.camera_world_origin = rig.global_position; candidate.player.camera_world_basis = rig.global_basis; candidate.player.camera_world_valid = true; candidate.player.camera.global_position = eye; candidate.player.camera.look_at(rig.global_position, Vector3.UP)
+# A stage tree is large; freeing it a few branches per frame keeps the handover frame from stalling.
+func _release_gradually(root_node: Node) -> void:
+	var branches: Array[Node] = []
+	for child in root_node.get_children():
+		branches.append_array(child.get_children()); branches.append(child)
+	for index in branches.size():
+		if is_instance_valid(branches[index]): branches[index].queue_free()
+		if index % 4 == 3: await get_tree().process_frame
+	await get_tree().process_frame
+	if is_instance_valid(root_node): root_node.queue_free()
+# Seamless handover: the dock stage was built in the background while the Flutter ran; at the door it takes over in one frame at the mapped position.
+func _commit_handover(route: Dictionary) -> bool:
+	var waited := 0
+	while handover.has("loading") and waited < 1800: await get_tree().process_frame; waited += 1
+	if not handover.has("candidate") or not is_instance_valid(handover["candidate"]) or not is_instance_valid(gameplay): return false
+	var info := handover; handover = {}
+	var candidate: Node3D = info["candidate"]; var viewport: SubViewport = info["viewport"]; var previous := gameplay; var shift: Dictionary = route.get("native_handover", {})
+	if str(info["route"].get("destination_stage", "")) != str(route["destination_stage"]) or int(info["route"].get("destination_area", -1)) != int(route["destination_area"]) or shift.is_empty(): viewport.queue_free(); return false
+	var live: Dictionary = previous.native_context.duplicate(true); preload("res://scripts/world/core/native_region.gd").enter_stage(live, str(route["destination_stage"]))
+	candidate.native_context.clear(); candidate.native_context.merge(live)
+	candidate.apply_carry(previous.carry_state())
+	var point := Vector3(float(shift["position"][0]), float(shift["position"][1]), float(shift["position"][2]))
+	viewport.remove_child(candidate); viewport.queue_free()
+	candidate.process_mode = Node.PROCESS_MODE_PAUSABLE
+	add_child(candidate)
+	candidate.player.reset_at(point); candidate.player.player_model.rotation.y = float(shift["yaw"]); candidate.player.camera_pivot.rotation = Vector3(float(shift["camera_pitch"]), float(shift["camera_yaw"]), 0.0); candidate.player.velocity = Vector3(float(shift["velocity"][0]), float(shift["velocity"][1]), float(shift["velocity"][2]))
+	candidate.spawn_position = point; candidate.previous_player_position = point; candidate.has_previous_player_position = true
+	_place_handover_camera(candidate, shift)
+	if candidate.sky != null: candidate.sky.set_flying(candidate.sky.flying)
+	previous.process_mode = Node.PROCESS_MODE_DISABLED
+	await _activate_candidate(candidate, previous, {"entry_route": {}}, info["docked_hull"], 0xFF, false, true)
+	_place_handover_camera(candidate, shift)
+	handover_committed.emit()
+	return true
 func _game_over() -> void:
 	if not is_instance_valid(gameplay): return
 	var previous := gameplay
@@ -432,20 +521,10 @@ func _load_location(stage: String, area: int) -> void:
 	await _start_session({}, stage, area, context, false, parked, carried)
 func _stage_transition(route: Dictionary) -> void:
 	if session_loading or not is_instance_valid(gameplay): return
+	if route.has("native_handover") and await _commit_handover(route): return
 	var previous := gameplay
-	var state: Dictionary = previous.save_state(true)
+	var state := _transition_state(previous, route)
 	if state.is_empty(): previous.cancel_stage_transition(); return
-	var stage := str(route["destination_stage"]); var area := int(route["destination_area"])
-	var source_stage := str(state["stage"]); var source_area := int(state["area"])
-	if route.get("parked_location", null) is Dictionary: state["parked_location"] = route["parked_location"].duplicate(true)
-	elif source_stage in ["ST04", "ST05", "ST06", "ST07"] and stage not in ["ST04", "ST05", "ST06", "ST07"]:
-		if str(state.get("parked_location", {}).get("stage", "")) != stage or int(state.get("parked_location", {}).get("area", -1)) != area: state["parked_location"] = {"stage": stage, "area": area}
-	elif stage in ["ST04", "ST05", "ST06", "ST07"] and source_stage not in ["ST04", "ST05", "ST06", "ST07"] and (state.get("parked_location", {}).is_empty() or not preload("res://scripts/world/flutter/flutter_dock.gd").descriptor(source_stage).is_empty()):
-		if str(state.get("parked_location", {}).get("stage", "")) != source_stage or int(state.get("parked_location", {}).get("area", -1)) != source_area: state["parked_location"] = {"stage": source_stage, "area": source_area}
-	state["stage"] = stage; state["area"] = area
-	state["defeated_actors"] = state.get("stage_events", {}).get(stage, []).duplicate()
-	state["minimap"] = state.get("explored_stages", {}).get(stage, []).duplicate(true)
-	state["entry_route"] = route.duplicate(true)
 	await _start_session(state)
 	if is_instance_valid(previous) and gameplay == previous: await previous.transition_overlay.request(int(route.get("native_entry_fade", 0xFF))); previous.cancel_stage_transition()
 func _save_game() -> void:
@@ -546,8 +625,7 @@ func _title_selected(action: String) -> void:
 	match action:
 		"game_start": _new_game()
 		"continue": _show_saves()
-		"tutorial":
-			_start_session({}, "ST4A", 0)
+		"tutorial": _tutorial()
 		"options": _options("main")
 func _options(return_page: String) -> void:
 	options_return = "pause" if return_page == "status" else return_page

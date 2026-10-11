@@ -7,6 +7,13 @@ static func title_origin(font: Font, text: String, rectangle: Rect2) -> Vector2:
 	return Vector2(roundf(rectangle.position.x + rectangle.size.x * 0.5 - 0.5 - (1.0 + font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x) * 0.5), roundf(rectangle.get_center().y - 7.0))
 static func title(control: Control, font: Font, text: String, rectangle: Rect2, color: Color = Color.WHITE) -> void:
 	control.draw_string(font, title_origin(font, text, rectangle) + Vector2(0, font.get_ascent(12)), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, color)
+static var readout_textures: Dictionary = {}
+static func readout_icons(control: Control, kind: String, left: Vector2, right: Vector2) -> void:
+	if not readout_textures.has(kind):
+		var path := "res://assets/menu/status_%s.png" % kind; var image := Image.new()
+		readout_textures[kind] = ImageTexture.create_from_image(image) if image.load_png_from_buffer(FileAccess.get_file_as_bytes(path)) == OK else load(path) as Texture2D
+	var icon: Texture2D = readout_textures[kind]
+	if icon != null: control.draw_texture(icon, left); control.draw_texture(icon, right)
 static func content_visible(control: Control) -> bool:
 	var animation: Dictionary = control.get_meta("native_panel_animation", {})
 	return animation.is_empty() or str(animation["phase"]) == "opening" and bool(animation["complete"])

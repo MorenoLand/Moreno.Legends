@@ -10,10 +10,16 @@ signal landed
 signal died
 signal special_sound_requested(sound_id: int)
 signal hold_ended(holder: Node3D, escaped: bool)
+signal loop_sound_requested(sound_id: int, active: bool)
+## Logic runs at 25 Hz (SLES main loop: two vblanks at 50 Hz). Clips are keyed 30 per record tick, so they play at 25/30 to advance one record tick per logic tick; clip-time values (/ 30.0) stay in clip seconds.
+const TICK_HZ := 25.0
+const CLIP_RATE := 25.0 / 30.0
 @export var projectile_scene: PackedScene = preload("res://scenes/projectile.tscn")
 
-@export var move_speed := 2.2
-@export var turn_speed := 2.3
+## Run speed: raw -0x200 per 25 Hz tick (GAME 0x800C5DB4), 4096 raw per unit (0x800C5374 -> 0x800CD084 -> SLES 0x800417AC); slow walk is raw 0x50 (0x800C5658), 0x50 / 0x200 of it.
+@export var move_speed := 512.0 * 25.0 / 4096.0
+## Run steering: GAME 0x800C5DFC calls steering 0x800CD0E4 with a1 = a2 = 0x20 per tick (4096 per turn); walk and air (0x800C7654) cap at 0x20 too, the idle handler 0x800C648C ramps +4 per tick to 0x60 (+2 to 0x20 with the walk button).
+@export var turn_speed := 0x20 * 25.0 * TAU / 4096.0
 @export var mouse_sensitivity := 0.003
 @export var fire_interval := 11.0 / 30.0
 @export var max_health := 80
@@ -136,6 +142,16 @@ var roll_ticks := 0
 var roll_accumulator := 0.0
 var roll_vertical := 0
 var roll_queued := 0
+# Skating (state 3, GAME 0x800C5E1C): substate -1 off, 0-8 as in the original; speed is the raw +0x3C (negative = forward).
+var skate_sub := -1
+var skate_hold := 0
+var skate_accumulator := 0.0
+var skate_speed := 0
+var skate_control := 0
+var skate_clip_ticks := 0
+var skate_yaw := 0.0
+var skate_turn := 0.0
+var skate_offset := 0.0
 enum JumpPhase { GROUNDED, TAKEOFF, RISING, RELEASED, FALLING, LANDING }
 var jump_phase := JumpPhase.GROUNDED
 var jump_moving := false
@@ -154,6 +170,7 @@ var ledge_shift_peak := 0.0
 var look_head_units := 0
 var look_root_units := 0
 var look_accumulator := 0.0
+var turn_raw := 0.0
 var camera_distance := -1.0
 var camera_world_position := Vector3.ZERO
 var camera_world_origin := Vector3.ZERO
@@ -265,14 +282,14 @@ func _process(delta: float) -> void:
 	if not interaction_role.is_empty():
 		interaction_elapsed = minf(interaction_elapsed + delta, interaction_duration)
 		if interaction_loop:
-			var ticks := mini(floori(interaction_elapsed * interaction_rate * 30.0 + 0.000001), roundi(interaction_duration * interaction_rate * 30.0))
-			global_position.y += float(ticks - interaction_movement_ticks) * interaction_vertical_speed / 30.0
+			var ticks := mini(floori(interaction_elapsed * interaction_rate * TICK_HZ + 0.000001), roundi(interaction_duration * interaction_rate * TICK_HZ))
+			global_position.y += float(ticks - interaction_movement_ticks) * interaction_vertical_speed / TICK_HZ
 			interaction_movement_ticks = ticks
 			if is_finite(interaction_target_y) and (global_position.y - interaction_target_y) * signf(interaction_vertical_speed) >= 0.0: global_position.y = interaction_target_y; interaction_duration = interaction_elapsed
 	if not interaction_role.is_empty() and interaction_elapsed >= interaction_duration:
 		var finished_role := interaction_role
 		interaction_role = ""
-		motion_tree.set("parameters/MotionSpeed/scale", 1.0)
+		motion_tree.set("parameters/MotionSpeed/scale", CLIP_RATE)
 		_play_animation("idle")
 		interaction_finished.emit(finished_role)
 
@@ -297,6 +314,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _physics_process(delta: float) -> void:
 	soft_ground_ticks = maxi(0, soft_ground_ticks - 1); ice_slip_ticks = maxi(0, ice_slip_ticks - 1)
+	if skate_sub >= 0 and (not scripted_walk.is_empty() or not interaction_role.is_empty() or input_blocker.is_valid() and input_blocker.call() or not ledge_phase.is_empty() or holder != null or not roll_phase.is_empty()): _end_skate()
 	if not scripted_walk.is_empty(): _update_scripted_walk(delta); return
 	if not interaction_role.is_empty(): return
 	if input_blocker.is_valid() and input_blocker.call(): velocity = Vector3.ZERO; return
@@ -304,17 +322,18 @@ func _physics_process(delta: float) -> void:
 	if holder != null: _update_hold(delta); _update_camera(delta); return
 	if not roll_phase.is_empty(): _update_roll(delta); _update_camera(delta); return
 	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and (Input.is_action_just_pressed("special") or active_special() == 15 and Input.is_action_just_pressed("fire")): use_special()
-	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and Input.is_action_just_pressed("kick"): kick()
+	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and Input.is_action_just_pressed("kick") and skate_sub < 0: kick()
 	lock_on.update(delta, combat_allowed and hurt_phase.is_empty() and not is_instance_valid(carried_actor) and (Input.is_action_pressed("lock_on") or Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and (buster_auto_lock and buster_allowed and active_special() == 0 or special_auto_lock and active_special() != 0) and (Input.is_action_pressed("fire") or Input.is_action_pressed("aim"))))
-	if not special_action.is_empty(): return
+	if not special_action.is_empty(): _end_skate(); return
 	if locked_target != null and not is_instance_valid(locked_target): locked_target = null
-	shot_timer = maxf(shot_timer - delta, 0.0)
-	shot_pose = maxf(shot_pose - delta, 0.0)
+	shot_timer = maxf(shot_timer - delta * CLIP_RATE, 0.0)
+	shot_pose = maxf(shot_pose - delta * CLIP_RATE, 0.0)
 	hurt_immunity = maxf(hurt_immunity - delta, 0.0)
 	_update_hurt(delta)
 	aiming = combat_allowed and buster_allowed and not is_instance_valid(carried_actor) and hurt_phase.is_empty() and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and Input.is_action_pressed("aim")
 	_sync_buster()
 	_sync_outfit()
+	_update_skate(delta)
 	var firing := combat_allowed and buster_allowed and active_special() != 15 and not is_instance_valid(carried_actor) and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and Input.is_action_pressed("fire")
 	if not hurt_phase.is_empty(): firing = false
 	if firing and Input.is_action_just_pressed("fire"): pending_shot = true
@@ -324,7 +343,7 @@ func _physics_process(delta: float) -> void:
 			gun_pose_time = 0.0
 			if motion_tree != null: motion_tree.set("parameters/ArmSeek/seek_request", 0.0)
 	elif shot_pose <= 0: gun_pose_active = false
-	camera_pivot.rotation.y -= Input.get_axis("turn_left", "turn_right") * turn_speed * delta
+	if skate_sub < 0: camera_pivot.rotation.y -= Input.get_axis("turn_left", "turn_right") * _turn_rate(delta) * delta
 	var input_vector := Vector2(Input.get_axis("strafe_left", "strafe_right"), Input.get_axis("move_back", "move_forward")) if health >= 0 else Vector2.ZERO
 	var forward := -camera_pivot.global_basis.z
 	forward.y = 0.0
@@ -332,20 +351,23 @@ func _physics_process(delta: float) -> void:
 	right.y = 0.0
 	var direction := (right.normalized() * input_vector.x + forward.normalized() * input_vector.y).normalized()
 	slow_walking = Input.is_action_pressed("slow_walk")
-	var speed := move_speed * (0.45 if slow_walking else 1.0) * (0.6 if aiming else 1.0) * (1.0 - float(maxi(gravity_modifier, 0)) / 64.0)
+	var speed := move_speed * (80.0 / 512.0 if slow_walking else 1.0) * (0.6 if aiming else 1.0) * (1.0 - float(maxi(gravity_modifier, 0)) / 64.0)
 	if jump_phase in [JumpPhase.GROUNDED, JumpPhase.TAKEOFF, JumpPhase.LANDING] or free_flight:
-		if ice_slip_ticks > 0 and jump_phase == JumpPhase.GROUNDED and not free_flight:
+		if skate_sub >= 0:
+			ice_sliding = false; var heading := skate_yaw + skate_offset; var skate_rate := -float(skate_speed) * 25.0 / 4096.0
+			velocity.x = -sin(heading) * skate_rate; velocity.z = -cos(heading) * skate_rate
+		elif ice_slip_ticks > 0 and jump_phase == JumpPhase.GROUNDED and not free_flight:
 			var wish := Vector2(direction.x, direction.z)
 			if not ice_sliding: ice_sliding = true; ice_speed = Vector2(velocity.x, velocity.z).length(); ice_direction = Vector2(velocity.x, velocity.z).normalized() if ice_speed > 0.001 else Vector2(-sin(player_model.rotation.y), -cos(player_model.rotation.y))
 			if wish.length_squared() > 0.001: ice_direction = wish.normalized()
-			ice_speed = move_toward(ice_speed, speed if wish.length_squared() > 0.001 else 0.0, (16.0 if slow_walking else 8.0) * 30.0 / 4096.0 * 30.0 * delta); velocity.x = ice_direction.x * ice_speed; velocity.z = ice_direction.y * ice_speed
+			ice_speed = move_toward(ice_speed, speed if wish.length_squared() > 0.001 else 0.0, 16.0 * TICK_HZ * TICK_HZ / 4096.0 * delta); velocity.x = ice_direction.x * ice_speed; velocity.z = ice_direction.y * ice_speed
 		else:
 			ice_sliding = false; velocity.x = direction.x * speed
 			velocity.z = direction.z * speed
 	else:
-		var air_speed := 640.0 * 30.0 / 4096.0 * (0.6 if aiming else 1.0)
-		velocity.x = move_toward(velocity.x, direction.x * air_speed, 16.0 * 900.0 / 4096.0 * delta)
-		velocity.z = move_toward(velocity.z, direction.z * air_speed, 16.0 * 900.0 / 4096.0 * delta)
+		var air_speed := 640.0 * TICK_HZ / 4096.0 * (0.6 if aiming else 1.0)
+		velocity.x = move_toward(velocity.x, direction.x * air_speed, 16.0 * TICK_HZ * TICK_HZ / 4096.0 * delta)
+		velocity.z = move_toward(velocity.z, direction.z * air_speed, 16.0 * TICK_HZ * TICK_HZ / 4096.0 * delta)
 	if not hurt_phase.is_empty() and not free_flight:
 		var pushed := hurt_phase in ["weak", "launch"]; velocity.x = hurt_push.x if pushed else 0.0; velocity.z = hurt_push.z if pushed else 0.0
 	collision_mask = 0 if no_clip else 89
@@ -372,7 +394,8 @@ func _physics_process(delta: float) -> void:
 		_set_jump_phase(JumpPhase.LANDING)
 		landed.emit()
 	_update_camera(delta)
-	if aiming and direction.length_squared() <= 0.001 and not lock_on.locked(): player_model.rotation.y += clampf(wrapf(camera.global_rotation.y - player_model.rotation.y, -PI, PI), -4.5 * delta, 4.5 * delta)
+	if skate_sub >= 0: player_model.rotation.y = skate_yaw
+	elif aiming and direction.length_squared() <= 0.001 and not lock_on.locked(): player_model.rotation.y += clampf(wrapf(camera.global_rotation.y - player_model.rotation.y, -PI, PI), -4.5 * delta, 4.5 * delta)
 	elif direction.length_squared() > 0.001 and not lock_on.locked(): player_model.rotation.y = lerp_angle(player_model.rotation.y, atan2(-direction.x, -direction.z), minf(delta * 12.0, 1.0))
 	var arm_role := "shoot_alternate_upper" if not grounded or (direction.length_squared() > 0.001 and not slow_walking) else "shoot_upper"
 	var arm_name := str(animation_roles.get(arm_role, animation_roles.get("shoot_upper", "")))
@@ -390,13 +413,19 @@ func _physics_process(delta: float) -> void:
 			motion_tree.set("parameters/ArmSeek/seek_request", gun_pose_time)
 			_fire()
 			pending_shot = false
-		gun_pose_time += delta
+		gun_pose_time += delta * CLIP_RATE
 		if gun_pose_time >= length and not firing: gun_pose_active = false
-	if hurt_phase.is_empty(): _play_animation("idle" if free_flight else _jump_role() if jump_phase != JumpPhase.GROUNDED else ("walk" if slow_walking else "run") if direction.length_squared() > 0.001 else "idle")
+	if hurt_phase.is_empty() and skate_sub < 0: _play_animation("idle" if free_flight else _jump_role() if jump_phase != JumpPhase.GROUNDED else ("walk" if slow_walking else "run") if direction.length_squared() > 0.001 else "idle")
 	if motion_tree != null:
 		arm_blend = 1.0 if gun_pose_active or is_instance_valid(carried_actor) else 0.0
 		motion_tree.set("parameters/UpperBody/blend_amount", arm_blend)
 	_update_look(delta)
+func _turn_rate(delta: float) -> float:
+	if absf(Input.get_axis("turn_left", "turn_right")) < 0.01: turn_raw = 0.0; return turn_speed
+	var idle := is_on_floor() and jump_phase == JumpPhase.GROUNDED and Input.get_axis("strafe_left", "strafe_right") == 0.0 and Input.get_axis("move_back", "move_forward") == 0.0
+	if not idle: turn_raw = 32.0; return turn_speed
+	var walk := Input.is_action_pressed("slow_walk"); turn_raw = move_toward(turn_raw, 32.0 if walk else 96.0, (2.0 if walk else 4.0) * TICK_HZ * delta)
+	return turn_speed * turn_raw / 32.0
 func _ledge_floor(point: Vector3) -> Dictionary:
 	var query := PhysicsRayQueryParameters3D.create(point + Vector3.UP * (181.0 / 256.0), point + Vector3.UP * (104.0 / 256.0), 1, [get_rid()])
 	while true:
@@ -444,11 +473,11 @@ func _set_ledge_shift(amount: float) -> void:
 	player_model.position += shift - ledge_shift; ledge_shift = shift
 func _play_ledge_clip(clip: String) -> void:
 	locomotion.animation = clip; motion_role = ""; motion_tree.set("parameters/MotionSeek/seek_request", 0.0); motion_tree.set("parameters/UpperBody/blend_amount", 0.0)
-	animation_player.get_animation(clip).loop_mode = Animation.LOOP_LINEAR if bool(native_clips.get(clip, {}).get("loops", false)) else Animation.LOOP_NONE; motion_tree.set("parameters/MotionSpeed/scale", 25.0 / 30.0)
+	animation_player.get_animation(clip).loop_mode = Animation.LOOP_LINEAR if bool(native_clips.get(clip, {}).get("loops", false)) else Animation.LOOP_NONE; motion_tree.set("parameters/MotionSpeed/scale", CLIP_RATE)
 	if upper_modifier != null: upper_modifier.active = false
 func _release_ledge() -> void:
 	_set_ledge_shift(0.0); ledge_phase = ""; ledge_ticks = 0; ledge_accumulator = 0.0; velocity = Vector3.ZERO; jump_velocity = 0; jump_accumulator = 0.0; _set_jump_phase(JumpPhase.FALLING)
-	motion_tree.set("parameters/MotionSpeed/scale", 1.0)
+	motion_tree.set("parameters/MotionSpeed/scale", CLIP_RATE)
 	if upper_modifier != null: upper_modifier.active = true
 func _update_ledge(delta: float) -> void:
 	if free_flight or no_clip or not hurt_phase.is_empty(): _release_ledge(); return
@@ -479,7 +508,7 @@ func _update_ledge(delta: float) -> void:
 			move_and_slide()
 			if is_on_floor():
 				_set_ledge_shift(0.0); ledge_phase = ""; jump_velocity = 0; _set_jump_phase(JumpPhase.LANDING); landed.emit()
-				motion_tree.set("parameters/MotionSpeed/scale", 1.0)
+				motion_tree.set("parameters/MotionSpeed/scale", CLIP_RATE)
 				if upper_modifier != null: upper_modifier.active = true
 			elif ledge_ticks >= int(native_clips.get("clip_031", {}).get("durationTicks", 20)): _release_ledge()
 func _set_carry_filter(value: bool) -> void:
@@ -489,7 +518,7 @@ func _set_carry_filter(value: bool) -> void:
 	var gun_clip := animation_player.get_animation(str(animation_roles["shoot_upper"]))
 	for track in range(gun_clip.get_track_count()):
 		var path := gun_clip.track_get_path(track)
-		if path.get_subname_count() > 0 and str(path.get_subname(0)) == "Bone_01": blend.set_filter_path(path, not value)
+		if path.get_subname_count() > 0 and str(path.get_subname(0)) in ["Bone_00", "Bone_01"]: blend.set_filter_path(path, not value)  # the hold clip carries the aiming twist on the root (Bone_00) as well: left on while carrying it tilts the pelvis and legs
 	for track in range(animation_player.get_animation(str(animation_roles["lift_hold"])).get_track_count()):
 		var path := animation_player.get_animation(str(animation_roles["lift_hold"])).track_get_path(track)
 		if path.get_subname_count() > 0 and str(path.get_subname(0)) in ["Bone_02", "Bone_03", "Bone_04"]: blend.set_filter_path(path, value)
@@ -569,7 +598,7 @@ func _start_special_action(role: String, start_time: float = 0.0) -> bool:
 func _update_special_action(delta: float) -> void:
 	if special_action.is_empty(): return
 	var previous_time := special_action_time
-	special_action_time += delta
+	special_action_time += delta * CLIP_RATE
 	if special_action == "kick":
 		if special_action_time >= float(special_actions["kick"]["emit_pose"]) / 30.0 and previous_time < float(special_actions["kick"]["hit_ticks"]) / 30.0: _kick_contact()
 	elif special_action == "hose": hose.action_tick(previous_time)
@@ -607,7 +636,7 @@ func _update_look(delta: float) -> void:
 		var offset := locked_target.global_position - global_position
 		relative = wrapf(atan2(-offset.x, -offset.z) - player_model.rotation.y, -PI, PI)
 	var target := clampi(roundi(-relative * 4096.0 / TAU), -1024, 1024)
-	look_accumulator += delta * 30.0
+	look_accumulator += delta * TICK_HZ
 	while look_accumulator >= 1.0:
 		look_accumulator -= 1.0
 		var root_goal := target if gun_pose_active else 0
@@ -638,18 +667,18 @@ func _launch_jump() -> void:
 func _update_jump(delta: float, grounded: bool, direction: Vector3) -> void:
 	if grounded and jump_phase == JumpPhase.GROUNDED:
 		jump_velocity = 0
-		if Input.is_action_just_pressed("jump") and hurt_phase.is_empty():
+		if Input.is_action_just_pressed("jump") and hurt_phase.is_empty() and skate_sub < 0:
 			jump_moving = direction.length_squared() > 0.001
 			jump_accumulator = 0.0
 			if jump_moving:
-				velocity.x = direction.x * 512.0 * 30.0 / 4096.0
-				velocity.z = direction.z * 512.0 * 30.0 / 4096.0
+				velocity.x = direction.x * 512.0 * TICK_HZ / 4096.0
+				velocity.z = direction.z * 512.0 * TICK_HZ / 4096.0
 				_launch_jump()
 			else: _set_jump_phase(JumpPhase.TAKEOFF)
 	elif not grounded and jump_phase == JumpPhase.GROUNDED and placement_frames <= 0:
 		jump_moving = direction.length_squared() > 0.001
 		_set_jump_phase(JumpPhase.FALLING)
-	jump_accumulator += delta * 30.0
+	jump_accumulator += delta * TICK_HZ
 	while jump_accumulator >= 1.0:
 		jump_accumulator -= 1.0
 		jump_ticks += 1
@@ -668,7 +697,7 @@ func _update_jump(delta: float, grounded: bool, direction: Vector3) -> void:
 			JumpPhase.LANDING:
 				if jump_ticks == (3 if jump_moving else 1): var ring := preload("res://scripts/player/ground_effect.gd").new() as Node3D; get_parent().add_child(ring); ring.global_position = global_position
 				if jump_ticks >= 3 and _jump_clip_ended(): _set_jump_phase(JumpPhase.GROUNDED)
-	velocity.y = -float(jump_velocity) * 30.0 / 4096.0
+	velocity.y = -float(jump_velocity) * TICK_HZ / 4096.0
 func _fall_step() -> int: return 48 if gravity_modifier == 0 else 16 * ((3 * (16 + gravity_modifier)) >> 4)
 func _release_jump() -> void:
 	if -jump_velocity > 576: jump_velocity += 576
@@ -751,7 +780,7 @@ func _fire() -> void:
 	var projectile := projectile_scene.instantiate() as Node3D
 	get_parent().add_child(projectile)
 	projectile.damage = buster_damage()
-	projectile.lifetime = float(int(weapon_stats.data["underwater_range"]) if underwater else weapon_stats.value(weapon_stats.BUSTER, weapon_stats.RANGE, buster_levels[weapon_stats.RANGE])) / 30.0
+	projectile.lifetime = float(int(weapon_stats.data["underwater_range"]) if underwater else weapon_stats.value(weapon_stats.BUSTER, weapon_stats.RANGE, buster_levels[weapon_stats.RANGE])) / TICK_HZ
 	projectile.attack_level = buster_levels[weapon_stats.ATTACK]
 	projectile.launch(muzzle, heading)
 	buster_shots.append(projectile)
@@ -887,9 +916,9 @@ func begin_interaction(role: String = "door_open", quick: bool = false, target_y
 	var rate := 3.0 if quick and role == "door_open" else LADDER_RATE if int(source.get("loop_ticks", 0)) > 0 else 1.0
 	interaction_rate = rate if int(source.get("loop_ticks", 0)) > 0 else 1.0
 	interaction_target_y = target_y if int(source.get("loop_ticks", 0)) > 0 else NAN
-	interaction_duration = 3600.0 if is_finite(interaction_target_y) else float(source["duration_ticks"]) / (30.0 * rate)
+	interaction_duration = 3600.0 if is_finite(interaction_target_y) else float(source["duration_ticks"]) / (TICK_HZ * rate)
 	interaction_loop = int(source.get("loop_ticks", 0)) > 0
-	interaction_vertical_speed = -float(source.get("vertical_raw", 0)) * 30.0 / 4096.0
+	interaction_vertical_speed = -float(source.get("vertical_raw", 0)) * TICK_HZ / 4096.0
 	interaction_movement_ticks = 0
 	animation_player.get_animation(name).loop_mode = Animation.LOOP_LINEAR if interaction_loop else Animation.LOOP_NONE
 	velocity = Vector3.ZERO
@@ -908,10 +937,10 @@ func begin_interaction(role: String = "door_open", quick: bool = false, target_y
 		upper_modifier.track_target = false
 		upper_modifier.set_source_aim_angles(0, 0)
 	motion_role = ""
-	motion_tree.set("parameters/MotionSpeed/scale", rate)
+	motion_tree.set("parameters/MotionSpeed/scale", rate * CLIP_RATE)
 	_play_animation(role)
 	motion_tree.advance(0.0)
-	return {"duration": interaction_duration, "vertical_speed": interaction_vertical_speed} if interaction_loop else {"duration": interaction_duration, "rate": rate, "open_at": float(source["open_tick"]) / (30.0 * rate), "close_at": float(source["close_tick"]) / (30.0 * rate), "walk_at": float(source["walk_handoff_tick"]) / (30.0 * rate)}
+	return {"duration": interaction_duration, "vertical_speed": interaction_vertical_speed} if interaction_loop else {"duration": interaction_duration, "rate": rate, "open_at": float(source["open_tick"]) / (TICK_HZ * rate), "close_at": float(source["close_tick"]) / (TICK_HZ * rate), "walk_at": float(source["walk_handoff_tick"]) / (TICK_HZ * rate)}
 func begin_scripted_walk(source: Dictionary, yaw: float) -> bool:
 	var role := "walk" if int(source.get("control", -1)) == 2 else "run"; var clip := str(animation_roles.get(role, "")); var step: Array = source.get("local_step_raw", []); var rate := float(source.get("tick_rate", 0)); var ticks := int(source.get("ticks", 0))
 	if motion_tree == null or animation_player == null or not animation_player.has_animation(clip) or int(source.get("control", -1)) not in [1, 2] or step.size() != 3 or rate <= 0.0 or ticks <= 0: return false
@@ -1008,10 +1037,10 @@ func refresh_room_camera(preserve_world: bool = false) -> void:
 func _update_scripted_walk(delta: float) -> void:
 	var elapsed := float(scripted_walk["elapsed"]); var duration := float(scripted_walk["duration"]); var advance := minf(delta, duration - elapsed)
 	velocity = (scripted_walk["velocity"] as Vector3) * advance / delta; move_and_slide(); apply_floor_snap(); _update_camera(delta); scripted_walk["elapsed"] = elapsed + advance
-	if elapsed + advance >= duration: scripted_walk.clear(); velocity = Vector3.ZERO; motion_tree.set("parameters/MotionSpeed/scale", 1.0); _play_animation("idle"); scripted_walk_finished.emit(true)
+	if elapsed + advance >= duration: scripted_walk.clear(); velocity = Vector3.ZERO; motion_tree.set("parameters/MotionSpeed/scale", CLIP_RATE); _play_animation("idle"); scripted_walk_finished.emit(true)
 func cancel_scripted_walk() -> void:
 	if scripted_walk.is_empty(): return
-	scripted_walk.clear(); velocity = Vector3.ZERO; motion_tree.set("parameters/MotionSpeed/scale", 1.0); _play_animation("idle"); scripted_walk_finished.emit(false)
+	scripted_walk.clear(); velocity = Vector3.ZERO; motion_tree.set("parameters/MotionSpeed/scale", CLIP_RATE); _play_animation("idle"); scripted_walk_finished.emit(false)
 func _configure_animation_tree(metadata: Dictionary) -> void:
 	if animation_player == null or not animation_roles.has("idle"): return
 	var idle := str(animation_roles["idle"])
@@ -1036,11 +1065,13 @@ func _configure_animation_tree(metadata: Dictionary) -> void:
 	blend_tree.add_node("MotionSpeed", AnimationNodeTimeScale.new())
 	blend_tree.add_node("MotionSeek", AnimationNodeTimeSeek.new())
 	blend_tree.add_node("Arm", upper_body)
+	blend_tree.add_node("ArmSpeed", AnimationNodeTimeScale.new())
 	blend_tree.add_node("ArmSeek", AnimationNodeTimeSeek.new())
 	blend_tree.add_node("UpperBody", blend)
 	blend_tree.connect_node("MotionSpeed", 0, "Motion")
 	blend_tree.connect_node("MotionSeek", 0, "MotionSpeed")
-	blend_tree.connect_node("ArmSeek", 0, "Arm")
+	blend_tree.connect_node("ArmSpeed", 0, "Arm")
+	blend_tree.connect_node("ArmSeek", 0, "ArmSpeed")
 	blend_tree.connect_node("UpperBody", 0, "MotionSeek")
 	blend_tree.connect_node("UpperBody", 1, "ArmSeek")
 	blend_tree.connect_node("output", 0, "UpperBody")
@@ -1048,7 +1079,8 @@ func _configure_animation_tree(metadata: Dictionary) -> void:
 	motion_tree.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_PHYSICS
 	animation_player.get_parent().add_child(motion_tree)
 	motion_tree.tree_root = blend_tree
-	motion_tree.set("parameters/MotionSpeed/scale", 1.0)
+	motion_tree.set("parameters/MotionSpeed/scale", CLIP_RATE)
+	motion_tree.set("parameters/ArmSpeed/scale", CLIP_RATE)
 	motion_tree.anim_player = motion_tree.get_path_to(animation_player)
 	motion_tree.root_node = animation_player.root_node
 	motion_tree.active = true
@@ -1086,7 +1118,7 @@ func reset_at(point: Vector3) -> void:
 	if holder != null: end_hold(false)
 	_end_roll()
 	ledge_phase = ""; ledge_ticks = 0; ledge_accumulator = 0.0
-	if motion_tree != null: motion_tree.set("parameters/MotionSpeed/scale", 1.0)
+	if motion_tree != null: motion_tree.set("parameters/MotionSpeed/scale", CLIP_RATE)
 	interaction_role = ""
 	if is_instance_valid(carried_actor): carried_actor.release_lift(-player_model.global_basis.z, -768, -64)
 	carried_actor = null
@@ -1126,6 +1158,7 @@ func take_hit(amount: int = 16, flags: int = 0, incoming: Vector3 = Vector3.ZERO
 	if invulnerable or hurt_immunity > 0 or not hurt_phase.is_empty() or not roll_phase.is_empty() or health < 0: return
 	if not ledge_phase.is_empty(): _release_ledge()
 	if holder != null: end_hold(false)
+	_end_skate()
 	if is_instance_valid(carried_actor): carried_actor.release_lift(-player_model.global_basis.z, -768, -64)
 	carried_actor = null
 	special_action = ""
@@ -1139,7 +1172,7 @@ func take_hit(amount: int = 16, flags: int = 0, incoming: Vector3 = Vector3.ZERO
 	var strong := hurt_damage > int(weapon_stats.data["body_parts"]["knockdown_base"]) + int(weapon_stats.data["body_parts"]["knockdown_step"]) * multiplier or hurt_hits >= 4 or (flags & 0x80000) != 0 or not is_on_floor() or lethal
 	var back := incoming.dot(Basis(Vector3.UP, player_model.rotation.y) * Vector3.FORWARD) > 0
 	hurt_phase = "launch" if strong else "weak"
-	var away := Vector3(incoming.x, 0.0, incoming.z); hurt_push = away.normalized() * (512.0 * 30.0 / 4096.0) if not away.is_zero_approx() else Vector3.ZERO
+	var away := Vector3(incoming.x, 0.0, incoming.z); hurt_push = away.normalized() * (512.0 * TICK_HZ / 4096.0) if not away.is_zero_approx() else Vector3.ZERO
 	hurt_clip = "clip_%03d" % ((38 if back else 34) if strong else (33 if back else 32))
 	hurt_ticks = 0.0
 	gun_pose_active = false
@@ -1160,7 +1193,7 @@ func _play_hurt_clip() -> void:
 	else: animation_player.play(hurt_clip)
 func _update_hurt(delta: float) -> void:
 	if hurt_phase.is_empty(): return
-	hurt_ticks += delta * 30.0
+	hurt_ticks += delta * TICK_HZ
 	var info: Dictionary = native_clips.get(hurt_clip, {})
 	var length := int(info.get("durationTicks", 0))
 	if hurt_phase == "weak":
@@ -1189,7 +1222,7 @@ func _update_hurt(delta: float) -> void:
 		_play_hurt_clip()
 	elif hurt_phase == "recover" and hurt_ticks >= length:
 		hurt_phase = ""
-		hurt_immunity = 65.0 / 30.0
+		hurt_immunity = 65.0 / TICK_HZ
 		hurt_damage = 0
 		hurt_hits = 0
 func begin_hold(source: Node3D, profile: Dictionary = {}) -> bool:
@@ -1203,7 +1236,7 @@ func hold_arm() -> void:
 	if holder != null: hold_armed = true; hold_counter = int(hold_profile.get("mash", 32)); hold_ticks = 0
 func end_hold(escaped: bool = true) -> void:
 	if holder == null: return
-	var source := holder; holder = null; hold_armed = false; velocity = Vector3.ZERO; motion_tree.set("parameters/MotionSpeed/scale", 1.0)
+	var source := holder; holder = null; hold_armed = false; velocity = Vector3.ZERO; motion_tree.set("parameters/MotionSpeed/scale", CLIP_RATE)
 	if upper_modifier != null: upper_modifier.active = true
 	hold_ended.emit(source, escaped)
 func _update_hold(delta: float) -> void:
@@ -1236,7 +1269,7 @@ func _begin_roll(flag: int) -> void:
 func _end_roll() -> void:
 	roll_queued = 0
 	if roll_phase.is_empty(): return
-	roll_phase = ""; velocity = Vector3.ZERO; motion_tree.set("parameters/MotionSpeed/scale", 1.0)
+	roll_phase = ""; velocity = Vector3.ZERO; motion_tree.set("parameters/MotionSpeed/scale", CLIP_RATE)
 	if upper_modifier != null: upper_modifier.active = true
 func _roll_event_tick(clip: String) -> int:
 	var elapsed := 0
@@ -1269,3 +1302,93 @@ func _update_roll(delta: float) -> void:
 func refill_health() -> void:
 	health = max_health
 	health_changed.emit(health, max_health)
+# Jet Skates / Hydrojets: trigger GAME 0x800CABC0, hook 0x800CA1DC, state 3 0x800C5E1C, steering 0x800C6288 (25 Hz ticks, raw speeds; negative = forward).
+func _skate_shoes() -> bool:
+	var shoes := worn("shoes")
+	return shoes == 1 and not underwater or shoes == 2 and underwater
+func _skate_flag(id: int) -> bool:
+	var context: Variant = get_parent().get("native_context")
+	if not context is Dictionary: return false
+	var flags: Variant = context.get("event_flags", {})
+	return flags is Dictionary and bool(flags.get(id, flags.get(str(id), false)))
+func _skate_limit(base: int) -> int: return base - ((gravity_modifier * base) >> 6) if gravity_modifier > 0 else base
+func _skate_done() -> bool:
+	var elapsed := 0
+	for record: Dictionary in native_clips.get("clip_%03d" % skate_control, {}).get("records", []):
+		if int(record["flags"]) == 255: return skate_clip_ticks >= elapsed
+		elapsed += int(record["durationTicks"])
+	return false
+func _skate_play(control: int) -> void:
+	skate_control = control; skate_clip_ticks = 0
+	var clip := "clip_%03d" % control
+	if motion_tree == null or not animation_player.has_animation(clip): return
+	locomotion.animation = clip; motion_role = "skate"; motion_tree.set("parameters/MotionSeek/seek_request", 0.0); motion_tree.set("parameters/MotionSpeed/scale", CLIP_RATE)
+	animation_player.get_animation(clip).loop_mode = Animation.LOOP_LINEAR if bool(native_clips.get(clip, {}).get("loops", false)) else Animation.LOOP_NONE
+func _skate_may_start() -> bool:
+	if free_flight or no_clip or health < 0 or not hurt_phase.is_empty() or is_instance_valid(carried_actor) or not special_action.is_empty() or jump_phase != JumpPhase.GROUNDED or not is_on_floor(): return false
+	if not Input.is_action_pressed("slow_walk") or not _skate_shoes(): return false
+	for action in ["move_forward", "move_back", "strafe_left", "strafe_right", "turn_left", "turn_right", "jump"]:
+		if Input.is_action_pressed(action): return false
+	return true
+func _skate_steer(rate: int) -> int:
+	var axis := Input.get_axis("turn_left", "turn_right")
+	if absf(axis) < 0.44: skate_turn = 0.0; return 0
+	skate_turn = -signf(axis) * float(rate) * TAU / 4096.0 * 25.0
+	return 1 if axis > 0.0 else 2
+func _skate_move() -> int:
+	var rate := 0x18; var lean := 0x80; var limit := _skate_limit(-0x340)
+	if Input.is_action_pressed("move_forward"): rate = 0x10; lean = 0x40; skate_speed = maxi(skate_speed - 8, _skate_limit(-0x400))
+	elif Input.is_action_pressed("move_back"): rate = 0x20; lean = 0xC0; skate_speed = mini(skate_speed + 0x10, _skate_limit(-0x280))
+	elif skate_speed > limit: skate_speed = maxi(skate_speed - 8, limit)
+	else: skate_speed = mini(skate_speed + 0x10, limit)
+	var code := _skate_steer(rate)
+	skate_offset = float(-lean if code == 1 else lean if code == 2 else 0) * TAU / 4096.0
+	return code
+func _skate_tick() -> void:
+	var walk := Input.is_action_pressed("slow_walk")
+	if skate_sub < 2 and not walk: _end_skate(); return
+	if skate_sub >= 4 and skate_sub <= 6 and (not walk or not _skate_shoes()): skate_sub = 7
+	if skate_sub >= 8 and skate_clip_ticks >= 7 and Input.is_action_pressed("move_forward") and not walk: _end_skate(); return
+	match skate_sub:
+		0: _skate_play(0x30); skate_sub = 1
+		1: if skate_clip_ticks >= 12: skate_sub = 2
+		2:
+			skate_speed = _skate_limit(-0x280)
+			if _skate_done(): _skate_play(0x31); loop_sound_requested.emit(0x9D, true); skate_sub = 4
+		4, 5, 6:
+			var entry := skate_sub; var code := _skate_move()
+			if entry == 4:
+				if code == 1: _skate_play(0x35); skate_sub = 5
+				elif code == 2: _skate_play(0x37); skate_sub = 6
+				elif _skate_done(): _skate_play(0x31)
+			elif entry == 5:
+				if code == 0: _skate_play(0x36); skate_sub = 4
+				elif code == 2: _skate_play(0x39); skate_sub = 6
+				elif _skate_done(): _skate_play(0x33)
+			else:
+				if code == 0: _skate_play(0x38); skate_sub = 4
+				elif code == 1: _skate_play(0x3A); skate_sub = 5
+				elif _skate_done(): _skate_play(0x34)
+			if entry != 4: special_sound_requested.emit(0x9E)
+		7: _skate_play(0x32); _skate_steer(0x20); loop_sound_requested.emit(0x9D, false); special_sound_requested.emit(0x9F); skate_sub = 8
+		8:
+			skate_speed = mini(skate_speed + (8 if ice_slip_ticks > 0 else 0x28), 0); _skate_steer(0x20)
+			if _skate_done(): _end_skate(); return
+	skate_clip_ticks += 1
+func _update_skate(delta: float) -> void:
+	if skate_sub >= 0 and (not hurt_phase.is_empty() or health < 0 or free_flight or no_clip or is_instance_valid(carried_actor) or not is_on_floor() and placement_frames <= 0): _end_skate()
+	skate_accumulator += delta * 25.0
+	while skate_accumulator >= 1.0:
+		skate_accumulator -= 1.0
+		if skate_sub >= 0: _skate_tick()
+		elif _skate_may_start():
+			skate_hold += 1
+			if skate_hold >= 9 or _skate_flag(0x24D): skate_sub = 0; skate_yaw = player_model.rotation.y; skate_speed = 0; skate_turn = 0.0; skate_offset = 0.0; _skate_tick()
+		else: skate_hold = 0
+	if skate_sub < 0: return
+	skate_yaw += skate_turn * delta; camera_pivot.rotation.y += skate_turn * delta
+func _end_skate() -> void:
+	skate_hold = 0
+	if skate_sub < 0: return
+	skate_sub = -1; skate_speed = 0; skate_turn = 0.0; skate_offset = 0.0; loop_sound_requested.emit(0x9D, false)
+	if motion_role == "skate" and motion_tree != null: motion_role = ""; motion_tree.set("parameters/MotionSpeed/scale", CLIP_RATE)

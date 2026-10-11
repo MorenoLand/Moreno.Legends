@@ -59,7 +59,7 @@ func refresh(group: String, slot: int = -1) -> void:
 		if group == "body_parts" and slot >= 0 and definition.has("slots") and slot not in definition["slots"]: continue
 		var label := item_name(group, str(id))
 		if group in ["items", "key_items"]: label += "  %d" % int(owned[id])
-		var usable := handlers.has(group + ":" + str(id)) or (group == "special_weapons" and str(id) == "0")
+		var usable := handlers.has(group + ":" + str(id)) or (group == "special_weapons" and str(id) == "0") or (slot >= 0 and group in ["body_parts", "buster_parts"])
 		_row(str(id), label, usable)
 func _row(id: String, caption: String, usable: bool) -> void:
 	var button := Button.new()
@@ -88,6 +88,10 @@ func _activate(id: String) -> void:
 	if handlers.has(key): handlers[key].call(host.gameplay.player, id, equipment_slot)
 	elif category == "special_weapons" and id == "0": host.gameplay.player.equipped_special = 0
 	elif id.is_empty() and equipment_slot >= 0: host.gameplay.player.equipment[category][equipment_slot] = ""
+	elif equipment_slot >= 0 and category in ["body_parts", "buster_parts"]:
+		var player: Node = host.gameplay.player
+		if player.equipment[category].count(id) - int(player.equipment[category][equipment_slot] == id) >= int(player.inventory[category].get(id, 0)): host.audio.play_ui("menu_cancel"); return
+		player.equipment[category][equipment_slot] = id
 	else: return
 	host.audio.play_ui("menu_confirm")
 	changed.emit()

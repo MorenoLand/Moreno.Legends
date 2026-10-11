@@ -64,7 +64,17 @@ static func _stream_defaults(root: Node3D) -> void:
 			if str(area["file"]) != path.get_file(): continue
 			for rule: Dictionary in area.get("placement_streams", []):
 				if not str(mesh.name).begins_with("placement_%03d_" % int(rule["placement"])): continue
-				var range: Array = rule["default_hidden_range"]; mesh.set_meta("native_stream_visibility", Vector2(float(range[0]), float(range[1])))
+				var range: Array = rule["default_hidden_range"]; mesh.set_meta("native_stream_visibility", Vector2(float(range[0]), float(range[1]))); var open_range: Array = rule["open_hidden_range"]; mesh.set_meta("native_stream_open", Vector2(float(open_range[0]), float(open_range[1]))); mesh.set_meta("native_stream_closed", Vector2(float(range[0]), float(range[1])))
+## The door-stream state of a placement: the open-door range hides the closed-door faces and the closed one the faces only an open door shows. An interior room is only ever seen through an open door.
+static func set_stream_open(root: Node3D, node_name: String, open: bool) -> void:
+	var mesh := root.find_child(node_name, true, false) as MeshInstance3D
+	if mesh == null or mesh.mesh == null or not mesh.has_meta("native_stream_open"): return
+	var hidden: Vector2 = mesh.get_meta("native_stream_open" if open else "native_stream_closed"); mesh.set_meta("native_stream_visibility", hidden)
+	for surface in mesh.mesh.get_surface_count():
+		var material := mesh.get_active_material(surface) as ShaderMaterial
+		if material != null: material.set_shader_parameter("hidden_face_range", hidden)
+static func open_streams(root: Node3D) -> void:
+	for mesh: MeshInstance3D in root.find_children("placement_*", "MeshInstance3D", true, false): set_stream_open(root, str(mesh.name), true)
 static func placement_streams(root: Node3D, rules: Array) -> Array[Dictionary]:
 	var saved: Array[Dictionary] = []
 	for rule: Dictionary in rules:

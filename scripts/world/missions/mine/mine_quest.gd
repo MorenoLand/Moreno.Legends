@@ -26,9 +26,9 @@ func _physics_process(delta: float) -> void:
 		stage = current; area = index; parent = root; state = 0; elapsed = 0.0; ordinary.clear(); boss = null
 		if is_instance_valid(popups): popups.queue_free()
 		popups = null
-		if catalogs.has(stage): _enter()
+		if catalogs.has(stage) and not preload("res://scripts/world/actors/native_props.gd").runner_owned(stage): _enter()
 		return
-	if not catalogs.has(stage): return
+	if not catalogs.has(stage) or preload("res://scripts/world/actors/native_props.gd").runner_owned(stage): return
 	elapsed += delta * 25.0
 	while elapsed >= 1.0 and not busy:
 		elapsed -= 1.0

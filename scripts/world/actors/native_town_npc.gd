@@ -11,6 +11,7 @@ var record9 := 0
 var head: SkeletonModifier3D
 var skeleton: Skeleton3D
 var look_mode := 0
+var near := false
 var look_pitch := 0
 var look_yaw := 0
 var look_target_pitch := 0
@@ -35,6 +36,7 @@ func _physics_process(delta: float) -> void:
 func _native_tick() -> void:
 	_state_tick(); _look_tick()
 func _state_tick() -> void:
+	if is_instance_valid(player) and not bool(profile.get("walking", false)) and int(profile.get("mode", 1)) == 0: near = _player_in_front() if near else _player_ahead(256.0, 512.0); look_mode = 2 if near else 1  # stationary mode 0 (ST25 0x800E8D38): head forward; to the player within 256 raw units and 0x200 of the heading, until 384 and 0x280
 	_watch_tick()
 	if talking or talk_return or idle_after_talk:
 		look_mode = 2 if (record9 & 0x20) != 0 else 1
@@ -45,7 +47,7 @@ func _state_tick() -> void:
 	if bool(profile.get("walking", false)):
 		_walk_tick()
 		if is_instance_valid(player) and _player_ahead(256.0, 512.0): _notice_player()
-	else: _gesture_tick()
+	elif int(profile.get("mode", 1)) == 1: _gesture_tick()
 	if is_instance_valid(clock): clock.call("native_tick")
 func _watch_tick() -> void:
 	if record_raw.size() < 20 or record_raw[8] == record_raw[10]: return

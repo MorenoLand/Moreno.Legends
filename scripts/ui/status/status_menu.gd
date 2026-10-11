@@ -3,6 +3,7 @@ signal options_requested
 signal closed
 const ART = preload("res://scripts/ui/common/native_menu_primitives.gd")
 const EQUIPMENT = preload("res://scripts/ui/status/status_equipment.gd")
+const NATIVE_FRAME = preload("res://scripts/ui/common/native_menu_frame.gd")
 var host: Node
 var data: Dictionary = {}
 var page_definitions: Dictionary = {}
@@ -264,7 +265,8 @@ func _status_values() -> void:
 	draw_rect(Rect2(88, 42, 144, 30), Color8(48, 74, 88))
 	_text(str(names["main"]), Vector2(92, 44), 136, 12, HORIZONTAL_ALIGNMENT_CENTER)
 	_text(str(names["area"]), Vector2(92, 57), 136, 12, HORIZONTAL_ALIGNMENT_CENTER)
-	_text("%07d Z" % int(host.gameplay.player.zenny), Vector2(104, 80), 120, 14, HORIZONTAL_ALIGNMENT_CENTER)
+	_text("%07d \uE049" % int(host.gameplay.player.zenny), Vector2(104, 80), 120, 14, HORIZONTAL_ALIGNMENT_CENTER)
+	NATIVE_FRAME.readout_icons(self, "zenny_coin", Vector2(99, 83), Vector2(211, 83)); NATIVE_FRAME.readout_icons(self, "time_clock", Vector2(99, 107), Vector2(211, 107))
 	var time := int(host.gameplay.play_time_seconds)
 	_text("%d:%02d:%02d" % [time / 3600, (time / 60) % 60, time % 60], Vector2(104, 104), 120, 14, HORIZONTAL_ALIGNMENT_CENTER)
 	draw_rect(Rect2(88, 128, 144, 22), Color8(48, 74, 88))

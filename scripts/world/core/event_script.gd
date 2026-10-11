@@ -17,8 +17,11 @@ var preflight_results: Dictionary = {}
 var preflight_context_hash := 0
 var catalog: Dictionary = {}
 static var catalogs: Dictionary = {}
+const NATIVE_CONTEXT_DEFAULTS := {"native_save_byte14": 0, "native_save_byte16": 0, "native_save_word40": 0, "native_save_byte44": 1, "native_save_byte45": 1, "event_flags": {}}
 func configure(dialogue_node: Control, manifest_path := "res://assets/dialogue/manifest.json", context: Dictionary = {}) -> bool:
 	dialogue = dialogue_node; native_context = context
+	for key: String in NATIVE_CONTEXT_DEFAULTS:  # saves and stage hops may omit fields the original save block always holds (Data's menu 0x41 needs byte45)
+		if not native_context.has(key): native_context[key] = NATIVE_CONTEXT_DEFAULTS[key].duplicate() if NATIVE_CONTEXT_DEFAULTS[key] is Dictionary else NATIVE_CONTEXT_DEFAULTS[key]
 	preflight_results.clear()
 	var page_callable := Callable(self, "_on_native_page_started")
 	if dialogue.has_signal("native_page_started") and not dialogue.is_connected("native_page_started", page_callable): dialogue.connect("native_page_started", page_callable)
@@ -249,7 +252,10 @@ func _resolve_program(stage: String, initial_index: int, window_state: Dictionar
 					if arguments.size() != 2: return {"supported": false}
 					current_page_commands.append({"opcode": opcode, "arguments": arguments, "source_command": command.duplicate(true)})
 				0x37:
-					if arguments.size() != 5 or arguments[0] in [1, 2] or not simulated_context.has("native_wallet"): return {"supported": false}
+					if arguments.size() != 5 or arguments[0] > 2 or arguments[0] == 0 and not simulated_context.has("native_wallet"): return {"supported": false}
+					if arguments[0] != 0:  # modes 1 and 2 add to the saved halfwords at game block +0x78 and +0x7A (the donation total the Pokte rebuild handler spends, and the ST3C counter), wrapping at 16 bits
+						var counter_key := "native_save_word78" if arguments[0] == 1 else "native_save_word7A"; var counter := (int(simulated_context.get(counter_key, 0)) + ((int(arguments[1]) << 24) | (int(arguments[2]) << 16) | (int(arguments[3]) << 8) | int(arguments[4]))) & 0xFFFF
+						simulated_context[counter_key] = counter; current_page_commands.append({"opcode": opcode, "arguments": arguments, "source_command": command.duplicate(true), "native_context_mutation": {counter_key: counter}}); continue
 					var delta := (int(arguments[1]) << 24) | (int(arguments[2]) << 16) | (int(arguments[3]) << 8) | int(arguments[4]); if delta >= 0x80000000: delta -= 0x100000000
 					var wallet := int(simulated_context["native_wallet"]); if wallet < -delta: return {"supported": false}
 					wallet = mini(wallet + delta, 9999999); simulated_context["native_wallet"] = wallet; current_page_commands.append({"opcode": opcode, "arguments": arguments, "source_command": command.duplicate(true), "native_context_mutation": {"native_wallet": wallet}})
@@ -313,7 +319,9 @@ func _resolve_program(stage: String, initial_index: int, window_state: Dictionar
 					return {"supported": false}
 			if opcode in [0x0E, 0x11, 0x16, 0x28, 0x2A, 0x3F, 0x41, 0x42, 0x47] and target < 0: return {"supported": false}
 			if opcode in [0x11, 0x16, 0x28, 0x2A, 0x3F, 0x41, 0x42, 0x47] and target == 0xFF: continue
+			if opcode == 0x0E and target == message_index: break  # a jump to itself after a wait (ST4A message 0x2D) is the original's idle loop: the program ends here and the commands before it stay
 			if opcode in [0x0E, 0x11, 0x16, 0x28, 0x2A, 0x3F, 0x41, 0x42, 0x47] and target >= 0:
+				if opcode == 0x11: visited.clear()  # a choice resumes mid-message, so "Yes" may redirect back to the message it resumed (ST4A 0x18, 0x1E: go over it again); the next choice returns before a loop can repeat
 				message_index = target; start_offset = -1; redirected = true; break
 		if redirected: continue
 		if not page_text.strip_edges().is_empty(): pages.append(page_text); page_speeds.append(page_speed_counts.duplicate()); page_wait_updates.append(0); page_choices.append({}); page_commands.append(current_page_commands)

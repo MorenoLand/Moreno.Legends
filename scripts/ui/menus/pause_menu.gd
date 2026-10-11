@@ -59,13 +59,13 @@ func _draw() -> void:
 	FRAME.draw(self, layout, "header", Rect2(12, 4, 124, 22))
 	FRAME.draw(self, layout, "selector", Rect2(12, 34, 124, content.get_combined_minimum_size().y + 12))
 	if live:
-		for window: Rect2 in [Rect2(146, 34, 164, 42), Rect2(146, 84, 164, 28), Rect2(146, 120, 164, 40), Rect2(146, 168, 164, 24)]: FRAME.draw(self, layout, "prompt", window)
+		for window: Rect2 in [Rect2(146, 34, 164, 42), Rect2(146, 84, 164, 32), Rect2(146, 120, 164, 40), Rect2(146, 168, 164, 24)]: FRAME.draw(self, layout, "prompt", window)
 	if not FRAME.content_visible(self): return
 	FRAME.title(self, font, "Pause", Rect2(12, 4, 124, 22))
 	if not live: return
 	var gameplay: Node3D = host.gameplay; var names: Dictionary = gameplay.get_location_names(); var player: Node = gameplay.player; var catalog: Node = host.status_menu.inventory_view; var seconds := int(gameplay.play_time_seconds); var partner: String = host.special_partner()
 	_text("Location", Vector2(152, 37), 8, Color8(150, 205, 220)); _text(str(names["main"]), Vector2(152, 47), 11, Color.WHITE, 152); _text(str(names["area"]) if str(names["area"]) != str(names["main"]) else "", Vector2(152, 60), 9, Color8(255, 222, 99), 152)
-	_text("%07d Z" % int(player.zenny), Vector2(152, 91), 11, Color.WHITE, 80); _text("%d:%02d:%02d" % [seconds / 3600, (seconds / 60) % 60, seconds % 60], Vector2(232, 92), 9, Color.WHITE, 72, HORIZONTAL_ALIGNMENT_RIGHT)
+	_text("%07d \uE049" % int(player.zenny), Vector2(166, 87), 11, Color.WHITE, 82); FRAME.readout_icons(self, "zenny_coin", Vector2(152, 88), Vector2(251, 88)); _text("%d:%02d:%02d" % [seconds / 3600, (seconds / 60) % 60, seconds % 60], Vector2(166, 101), 9, Color.WHITE, 50); FRAME.readout_icons(self, "time_clock", Vector2(152, 101), Vector2(218, 101))
 	_text("Spec.Weapon", Vector2(152, 123), 8, Color8(150, 205, 220)); _text(catalog.item_name("special_weapons", str(player.equipped_special)), Vector2(152, 133), 11, Color.WHITE, 152); _text("X: Swap to " + catalog.item_name("special_weapons", partner) if not partner.is_empty() else "No other weapon", Vector2(152, 148), 8, Color8(255, 222, 99) if not partner.is_empty() else Color8(128, 128, 128), 152)
 	_text("Life", Vector2(152, 174), 8, Color8(150, 205, 220)); preload("res://scripts/ui/menus/info_page.gd").life_gauge(self, Vector2(174, 175), int(player.health), int(player.max_health), 78.0); _text("%d/%d" % [int(player.health), int(player.max_health)], Vector2(256, 174), 8, Color.WHITE, 48, HORIZONTAL_ALIGNMENT_RIGHT)
 func _text(value: String, point: Vector2, font_size: int = 9, color: Color = Color.WHITE, width: float = -1.0, alignment: int = HORIZONTAL_ALIGNMENT_LEFT) -> void:

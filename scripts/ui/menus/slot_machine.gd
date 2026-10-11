@@ -81,11 +81,8 @@ var screen_flash := 0.0
 var tension := false
 var ready_for_input := false
 var rng := RandomNumberGenerator.new()
-static func enabled() -> bool:
-	var settings := ConfigFile.new(); settings.load("user://settings.cfg")
-	return bool(settings.get_value("extras", "slot_machine", true))
 static func applies(stage: String, index: int) -> bool:
-	return stage == STAGE and index == MESSAGE and enabled()
+	return stage == STAGE and index == MESSAGE
 static func payout(symbol_list: Array, bet: int) -> int:
 	if symbol_list[0] == symbol_list[1] and symbol_list[1] == symbol_list[2]: return bet * int(MULTIPLIERS[symbol_list[0]])
 	return bet if symbol_list.count(PAIR_SYMBOL) == 2 else 0

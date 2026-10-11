@@ -34,6 +34,7 @@ var listener: Node3D
 var mono := false
 var voices: Dictionary = {}
 var voice_players: Dictionary = {}
+var loop_wanted: Dictionary = {}
 static var parsed_manifests: Dictionary = {}
 static func _parsed_manifest(path: String) -> Variant:
 	if not parsed_manifests.has(path):
@@ -286,10 +287,11 @@ func _fire(_projectile: Node3D) -> void:
 	_effect(shots, "buster")
 func play_at(sound_id: int, point: Vector3) -> void:
 	_voice_request(sound_id, point, 2)
-func _voice_request(sound_id: int, point: Vector3, mode: int) -> void:
+func _voice_request(sound_id: int, point: Vector3, mode: int, looped := false) -> void:
 	var key := _cue_key(sound_id)
 	if _cue_music(sound_id): _request_music(sound_id); return
 	if not await _prepare_effect(key): return
+	if looped and not loop_wanted.get(sound_id, false): return
 	if mode == 2 and not is_instance_valid(listener): return
 	var source: Dictionary = manifest["effects"][key]; var descriptor := str(source.get("descriptor", "")).hex_decode()
 	if descriptor.size() < 8: return
@@ -317,11 +319,11 @@ func _voice_request(sound_id: int, point: Vector3, mode: int) -> void:
 			if distance >= 0:
 				if distance - int(held.get("distance", 0)) >= 0x9C5: return
 				held["distance"] = distance
-	var entry: Dictionary = _sound_entry(key); var player := _voice_player(voice)
+	var entry: Dictionary = source if looped else _sound_entry(key); var player := _voice_player(voice)
 	var scale := db_to_linear(float(entry.get("volume_db", 0)) - float(source.get("volume_db", 0))) / 16384.0; var left := float(levels.x) * scale; var right := float(levels.y) * scale
-	player.stream = _sound_stream(key, entry); player.volume_db = linear_to_db((left + right) * 0.5) if left + right > 0.0 else -80.0
+	player.stream = looped_stream(_sound_stream(key, entry), {"looped": true, "loop_begin_frame": source.get("loop_start_frame", 0), "sample_rate": source.get("sample_rate", 44100)}) if looped else _sound_stream(key, entry); player.volume_db = linear_to_db((left + right) * 0.5) if left + right > 0.0 else -80.0
 	if not OS.has_feature("web"): (AudioServer.get_bus_effect(AudioServer.get_bus_index(player.bus), 0) as AudioEffectPanner).pan = (right - left) / (right + left) if left + right > 0.0 else 0.0
-	voices[voice] = {"until": now + int(float(source.get("duration_seconds", 0.0)) * 1000.0), "priority": priority, "distance": int(voices.get(voice, {}).get("distance", 0)), "levels": levels, "native_distance": distance, "sound": sound_id}
+	voices[voice] = {"looped": looped, "until": now + (3600000 if looped else int(float(source.get("duration_seconds", 0.0)) * 1000.0)), "priority": priority, "distance": int(voices.get(voice, {}).get("distance", 0)), "levels": levels, "native_distance": distance, "sound": sound_id}
 	player.play()
 func _native_sqrt(value: int) -> int:
 	if value <= 0: return 0
@@ -343,6 +345,11 @@ func _voice_player(voice: int) -> AudioStreamPlayer:
 	return player
 func play_sound(sound_id: int) -> void:
 	_voice_request(sound_id, Vector3.ZERO, 0)
+func loop_sound(sound_id: int, active: bool) -> void:
+	loop_wanted[sound_id] = active
+	if active: _voice_request(sound_id, Vector3.ZERO, 0, true); return
+	for voice: int in voices.keys():
+		if bool(voices[voice].get("looped", false)) and int(voices[voice]["sound"]) == sound_id: voices[voice]["until"] = 0; voices[voice]["looped"] = false; _voice_player(voice).stop()
 func _ensure_buses() -> void:
 	for name in ["BGM", "SE"]:
 		if AudioServer.get_bus_index(name) >= 0: continue

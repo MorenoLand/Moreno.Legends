@@ -42,7 +42,7 @@ func _sync() -> void:
 		var list := _candidates(); text = str(list[clampi(choice, 0, list.size() - 1)]["description"]); text = text if not text.is_empty() else "Equip this part."
 	else: text = "Change equipped %s." % SLOTS[slot][0]
 	set_footer(text)
-	pointer.select_at(Vector2(166.0 if choosing else 40.0, (RIGHT.position.y + float(choice - top) * ROW if choosing else LEFT.position.y + float(slot) * SLOT_ROW + 5.0) + 2.0)); pointer.show(); queue_redraw()
+	pointer.select_at(Vector2(RIGHT.position.x - 1.0 if choosing else LEFT.position.x - 1.0, (RIGHT.position.y + float(choice - top) * ROW if choosing else LEFT.position.y + float(slot) * SLOT_ROW + 5.0) + 2.0)); pointer.show(); queue_redraw()
 func _confirm() -> void:
 	if slot == 0: host.swap_special(); _sync(); return
 	if not choosing: choosing = true; choice = 0; top = 0; host.audio.play_ui("menu_confirm"); _sync(); return

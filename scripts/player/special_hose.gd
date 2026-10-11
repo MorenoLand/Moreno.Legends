@@ -1,6 +1,6 @@
 extends Node3D
 signal gauge_changed(charge: int, capacity: int, segment: int, power: int, power_max: int)
-const TICK := 1.0 / 30.0
+const TICK := 1.0 / 25.0
 var player: CharacterBody3D
 var data: Dictionary = {}
 var segments: Array = []

@@ -38,6 +38,7 @@ uniform vec2 room_clip_depths[16];
 uniform bool room_clip_bounded[16];
 uniform bool room_clip_view_gate[16];
 uniform bool room_clip_view_cut[16];
+uniform bool room_clip_aperture[16];
 uniform int portal_floor_clip_count = 0;
 uniform vec4 portal_floor_clip_planes[16];
 uniform vec4 portal_floor_clip_bounds[16];
@@ -99,7 +100,7 @@ void fragment() {
 			float mouth = eye_depth < doorway_aperture_depths.x ? doorway_aperture_depths.x : doorway_aperture_depths.y; float span = portal_world_position[doorway_aperture_axis] - eye_depth;
 			if (abs(span) < 0.000001) { discard; }
 			vec3 crossing = mix(eye_point, portal_world_position, (mouth - eye_depth) / span);
-			if (abs(crossing[across] - doorway_aperture_center[across]) > doorway_aperture_half.x + 0.01 || abs(crossing.y - doorway_aperture_center.y) > doorway_aperture_half.y + 0.01) { discard; }
+			if (abs(crossing[across] - doorway_aperture_center[across]) > doorway_aperture_half.x - 0.002 || abs(crossing.y - doorway_aperture_center.y) > doorway_aperture_half.y - 0.002) { discard; }
 		}
 	}
 	bool aperture_required = false; bool aperture_visible = false; vec3 eye = INV_VIEW_MATRIX[3].xyz;
@@ -124,6 +125,15 @@ void fragment() {
 			float lateral = dot(portal_world_position.xz, vec2(-room_clip_planes[i].z, room_clip_planes[i].x));
 			vec4 bounds = room_clip_bounds[i]; vec2 depths = room_clip_depths[i];
 			if (lateral < bounds.x || lateral > bounds.y || portal_world_position.y < bounds.z || portal_world_position.y > bounds.w || normal_distance < depths.x || normal_distance > depths.y) { continue; }
+		}
+		if (room_clip_aperture[i]) {
+			float eye_side = dot(vec4(INV_VIEW_MATRIX[3].xyz, 1.0), room_clip_planes[i]);
+			if (eye_side >= 0.0) {
+				float span = eye_side - normal_distance;
+				if (abs(span) < 0.000001) { continue; }
+				vec3 crossing = mix(INV_VIEW_MATRIX[3].xyz, portal_world_position, eye_side / span); float lateral = dot(crossing.xz, vec2(-room_clip_planes[i].z, room_clip_planes[i].x)); vec4 bounds = room_clip_bounds[i];
+				if (eye_side / span > 1.0 || lateral < bounds.x || lateral > bounds.y || crossing.y < bounds.z || crossing.y > bounds.w) { continue; }
+			}
 		}
 		if (normal_distance <= room_clip_limits[i]) { discard; }
 	}

@@ -1045,6 +1045,7 @@ def export_intro_scene():
 			elif x["kind"] in ("face_eyes", "face_mouth"): item = {"op": "actor_face", "channel": "eyes" if x["kind"] == "face_eyes" else "mouth", "sequence": x["args"][1], "native": "%s via %s" % ("SLES0x80041338" if x["kind"] == "face_eyes" else "SLES0x80041348", x["caller"])}
 			elif x["kind"] == "face_init": item = {"op": "actor_face_init", "eye_table_ram": intro_H(x["args"][1] & 0xFFFFFFFF), "mouth_table_ram": intro_H(x["args"][2] & 0xFFFFFFFF) if x["args"][2] else None, "native": "SLES0x80041318 via %s" % x["caller"]}
 			elif x["kind"] == "flag_clear": item = {"op": "event_clear", "id": x["args"][0], "native": "GAME0x800C0584 via %s" % x["caller"]}
+			elif x["kind"] == "spawn_effect_8" and x["caller"] == "0x800e7674": item = {"op": "exhaust", "effect": "flutter_plume", "native": "SLES0x8003E8F8 (pool 8, class 0x0F variant 4 attached to this hull) via %s" % x["caller"]}
 			elif x["kind"] == "spawn_effect_8": item = {"op": "effect_spawn", "native": "SLES0x8003E8F8 (pool 8) via %s" % x["caller"], "args_raw": [a & 0xFFFFFFFF for a in x["args"][:2]], "unverified": True}
 			if item is None: continue
 			if x["step"] == 7 and slot == 5 and answer_of(x["frame"]) >= 0:
@@ -1151,9 +1152,88 @@ intro_NEW_OPS = {
 	"select_by_flags / jump_if / jump / label / wait_flag_clear / director_state": {"params": "see step 0:7", "semantics": "control flow of the step-7 question loop (ctx+7 jump table 0x800E7060)", "sources": ["0x800EC5D0..0x800EC7E8"]},
 	"fade": {"params": "type, wait", "semantics": "SLES0x8001392C(type,0) screen transition; wait until 0x80078F01==0", "sources": ["0x800ECBBC", "0x800ECBE0"]},
 	"actor_track": {"params": "keyframes[{step,tick,position_raw,yaw_raw}]", "semantics": "emulated actor position/yaw (16.16 raw units) of the unchanged class controllers, piecewise linear per native tick", "sources": ["class controllers"]},
-	"effect_spawn": {"params": "args_raw", "semantics": "class 0x30 spawns SLES pool-8 effect actors (class 0x0F variant 4 attached at init 0x800E7674; variant 5 every 32 ticks via 0x800E7948 from position table a0, a1 bit7/low nibble params); effect visuals not decoded", "sources": ["0x800E7674", "0x800E7760", "0x800E7914"]},
+	"effect_spawn": {"params": "args_raw", "semantics": "class 0x30 spawns SLES pool-8 effect actors: variant 5 every 32 ticks via 0x800E7948 from position table a0 (0x800EDB14, world positions 48 m ahead; a1 bit7/low nibble params): grey additive 48x48 sprites on tpage 0x2E, a flight-speed streak rather than exhaust; not drawn", "sources": ["0x800E7760", "0x800E7914"]},
+	"exhaust": {"params": "effect", "semantics": "the hull's attached class 0x0F variant 4 effect (init 0x800E7674): 36 additive sprites per tick at the two nozzles, exported by export_flutter_exhaust as assets/flutter/exhaust/manifest.json; it follows the hull until the hull is freed", "sources": ["0x800E7674", "0x800EA224"]},
 	"camera opcodes 0x18/0x19": {"params": "header ease mode bits16..18, ticks low16; words[1..3] target", "semantics": "focus/orbit interpolation (see scene_05.json camera_interpolation)", "sources": ["GAME0x800C174C", "GAME0x800C182C", "GAME0x800DC7E0"]},
 }
+
+# ---- flutter_exhaust ----
+# Export the Flutter's engine effects as GPU effect records computed by the unchanged original functions under unicorn (SLES0x800390EC draws each record as a camera-facing square).
+# flutter_plume: the class 0x30 hull of the Game Start scene (ST39T 0x800E7674) spawns a pool-8 object of class 0x0F variant 4 attached to itself; the dispatcher 0x800E979C selects variant 4 (0x800EA224)
+# through 0x800EDE10, and it writes 36 records (cmd 0x2E) per tick: two nozzles (+-340 raw), 18 sprites each. Hull at the origin, yaw 0; the port rotates the result with the hull.
+# flutter_smoke: the class 0x27 hull of ST3A scene 6 with resource variant 6 (0x800E9224) spawns a variant 10 object (0x800F236C) of the same class 0x0F every 4th tick at its position + (0, -12, -88);
+# each puff lives 32 ticks and drifts along the angle -yaw - ((counter << 5) & 0x1FF), so one track per phase of the hull's own counter.
+exhaust_BASE = 0x800E7000; exhaust_OBJECT = 0x80097B38; exhaust_RECORDS = 0x801D0000; exhaust_BLENDS = {0: "mix", 1: "add", 2: "sub", 3: "add_quarter"}
+class exhaust_Emu(intro_Emu):
+	def __init__(self):
+		super().__init__(()); self.actor = 0x80190000; self.freed = False
+		for address in (0x80015A5C, 0x8003E440, 0x8003EB7C): self.stubs[address] = ("exhaust", 0, False, False)
+		for index in range(64):
+			for target, source in ((0x800965D8, 0x80073E4E), (0x800968D0, 0x80073E4C)): self.cpu.mem_write((target + index * 2) & 0x1FFFFFFF, intro_SLES[0x800 + source + 4 * index * 64 - 0x80010000:0x800 + source + 4 * index * 64 - 0x80010000 + 2])
+	def stub_hook(self, uc, address, size, data):
+		if self.stubs[address][0] != "exhaust": return super().stub_hook(uc, address, size, data)
+		ra = self.r(31); first, last = self.r(4), self.r(5)
+		if address == 0x80015A5C: uc.mem_write(first & 0x1FFFFFFF, bytes(last - first))
+		if address == 0x8003EB7C: self.freed = True
+		return self._ret(uc, self.actor if address == 0x8003E440 else 0, ra)
+	def w16(self, address, value): self.cpu.mem_write(address & 0x1FFFFFFF, struct.pack("<H", value & 0xFFFF))
+	def effect(self, function, fields, ticks, top):
+		"""Run the effect object's function once per tick (counter 0x1F800006 = tick) until it frees itself and return its GPU effect records per tick as [x, y, z, half diagonal, spin, r, g, b, u0, v0, ..., u3, v3] rows (v relative to top) with the (clut, tpage) words."""
+		obj = exhaust_OBJECT; self.cpu.mem_write(obj & 0x1FFFFFFF, bytes(0x28)); self.freed = False
+		for offset, value in fields.items():
+			if offset in (0x10, 0x12, 0x14, 0x16): self.w16(obj + offset, value)
+			else: self.w8(obj + offset, value)
+		frames = []; words = None
+		for tick in range(ticks):
+			self.w16(0x1F800006, tick); self.w32(0x1F800050, exhaust_RECORDS); self.call(function, (obj,)); rows = []
+			for index in range((self.u32(0x1F800050) - exhaust_RECORDS) // 0x28):
+				_, color, xy, uv0, z, uv1, size, uv2, _, uv3 = struct.unpack("<10I", bytes(self.cpu.mem_read((exhaust_RECORDS + index * 0x28) & 0x1FFFFFFF, 0x28)))
+				if color >> 24 != 0x2E or (words or (uv0 >> 16, uv1 >> 16)) != (uv0 >> 16, uv1 >> 16): raise ValueError("unexpected exhaust record")
+				words = (uv0 >> 16, uv1 >> 16); rows.append([intro_s16(xy), intro_s16(xy >> 16), s32(z), size & 0xFFFF, size >> 16, color & 255, (color >> 8) & 255, (color >> 16) & 255] + [value for packed in (uv0, uv1, uv2, uv3) for value in (packed & 255, ((packed >> 8) & 255) - top)])
+			frames.append(rows)
+			if self.freed: break
+		return frames, words
+def exhaust_texture(vram, words, frames, top, out, name):
+	"""Crop the texels the records sample out of their page and clut and write them as a PNG (alpha 255 where the texel is not transparent); the result says whether every drawn texel carries the semi-transparency bit."""
+	import world
+	clut, tpage = words; page = world.texture_page(vram, clut, tpage, True, True); us = [value for rows in frames for row in rows for value in row[8::2]]; vs = [value for rows in frames for row in rows for value in row[9::2]]
+	left, right, bottom = min(us), max(us) + 1, max(vs) + 1; pixels = bytearray(b"".join(page[((top + v) * 256 + left) * 4:((top + v) * 256 + right) * 4] for v in range(bottom)))
+	alphas = {pixels[i] for i in range(3, len(pixels), 4)} - {0}
+	if left or len(alphas) != 1: raise ValueError("exhaust texels mix blended and opaque pixels")
+	for i in range(3, len(pixels), 4):
+		if pixels[i]: pixels[i] = 255
+	write_output(out / name, world.png(right - left, bottom, pixels)); return {"tpage": tpage, "clut": clut, "blend": exhaust_BLENDS[(tpage >> 5) & 3], "stp_blended": alphas == {128}, "texture_size": [right - left, bottom]}
+def export_flutter_exhaust(root=None, out_dir=None):
+	global intro_SLES, intro_GAME, intro_OVL
+	import world
+	root = Path(root or ROOT); source = root / "build/disc-assets"; out = Path(out_dir or root / "assets/flutter/exhaust"); out.mkdir(parents=True, exist_ok=True)
+	def uploads(*labels):
+		vram = bytearray(1024 * 512 * 2)
+		for label in labels: world.texture_uploads((source / label).read_bytes(), vram, label)
+		return vram
+	intro_SLES = (source / "SLES_035.56").read_bytes(); intro_GAME = (source / "COMMON/GAME.BIN").read_bytes(); intro_OVL = (source / "DAT/ST39T.BIN").read_bytes()
+	word = lambda a: struct.unpack_from("<I", intro_OVL, 0x30 + a - exhaust_BASE)[0]; function = word(0x800EDE10 + 4 * 4)
+	if struct.unpack_from("<4I", intro_OVL, 0)[0] != 1 or struct.unpack_from("<I", intro_OVL, 12)[0] != exhaust_BASE or function != 0x800EA224 or [word(0x800E97A0), word(0x800E97AC)] != [0x3C03800F, 0x2463DE10]: raise ValueError("ST39T effect class 0x0F variant table differs")
+	if [word(0x800E7674), word(0x800E768C), word(0x800E7694), word(0x800E7698), word(0x800E76D0)] != [0x0C00FA3E, 0x2402000F, 0x24020004, 0xA0620006, 0xA071000D]: raise ValueError("ST39T hull does not spawn the attached variant 4 effect")
+	e = exhaust_Emu(); e.cpu.mem_write(e.actor & 0x1FFFFFFF, bytes(0x200)); e.w8(e.actor, 1)
+	frames, words = e.effect(function, {0: 3, 1: 3, 3: 8, 4: 0xF, 6: 4, 0xC: 2, 0xD: 1}, 8, 160)
+	if frames[:4] != frames[4:] or len({len(rows) for rows in frames}) != 1: raise ValueError("exhaust animation is not a 4-frame cycle")
+	plume = exhaust_texture(uploads("COMMON/GAME.BIN", "COMMON/PL00T.BIN", "DAT/ST39T.BIN", "DAT/ST39.BIN"), words, frames, 160, out, "plume.png")
+	flight_load(root); ovl = flight_D["ovl"]; word = lambda a: struct.unpack_from("<I", ovl, 0x30 + a - flight_BASE)[0]; function = word(0x800F5B20 + 4 * 10)
+	if function != 0x800F236C or [word(0x800F0850), word(0x800F085C), word(0x800E92F4), word(0x800E9300), word(0x800E9318), word(0x800E9320), word(0x800E933C), word(0x800E934C), word(0x800E939C), word(0x800E93A0), word(0x800E93A4), word(0x800E93A8), word(0x800E93AC), word(0x800E93B0)] != [0x3C03800F, 0x24635B20, 0x30420003, 0x0C00FA3E, 0x2402000F, 0x2402000A, 0x2442FFF4, 0x2442FFA8, 0x24020001, 0xA082000C, 0x24020004, 0xA082000D, 0xA080000E, 0xA080000F]: raise ValueError("ST3AT hull smoke spawn differs")
+	hulls = {record["source_ram"]: record for record in (fire_record(int(command["actor_record"]["source_ram"], 16)) for command in fire_commands(flight_CAMERA) if command["opcode"] == 0x40) if bytes.fromhex(record["bytes_hex"])[4:7:2] == bytes((0x27, 6))}
+	if len(hulls) != 1: raise ValueError("ST3A scene 6 does not spawn exactly one resource variant 6 hull")
+	hull = next(iter(hulls.values())); e = exhaust_Emu(); tracks = {}; words = None
+	for phase in range(0, 0x200, 0x80):
+		angle = (-hull["yaw_raw"] - phase) & 0xFFF; track, words = e.effect(function, {0: 3, 1: 3, 3: 8, 4: 0xF, 6: 10, 0x10: 0, 0x12: 0, 0x14: 0, 0x16: angle, 0xC: 1, 0xD: 4, 0xE: 0, 0xF: 0}, 64, 0)
+		if len(track) != 32 or any(len(rows) != 1 for rows in track): raise ValueError("unexpected smoke puff lifetime")
+		tracks[str(angle)] = [rows[0] for rows in track]
+	smoke = exhaust_texture(uploads("COMMON/GAME.BIN", "COMMON/PL00T.BIN", "DAT/ST3AT.BIN", "DAT/ST3A.BIN"), words, [list(track) for track in tracks.values()], 0, out, "smoke.png")
+	manifest = {"schema": 1, "source": {"overlay": "DAT/ST39T.BIN and DAT/ST3AT.BIN (load 0x800E7000)", "emulation": "the unchanged effect functions under unicorn (tools/cinematics.py exhaust_Emu), counter 0x1F800006 = tick", "textures": "COMMON/GAME.BIN, COMMON/PL00T.BIN and the stage overlay and root uploads (plume 0x2E/0x3C38 is in ST39T, smoke 0x4E/0x7C93 in GAME)"},
+		"record": {"fields": "x, y, z (raw 1/256 in the engine's axes), half diagonal (raw), spin (4096 = turn), r, g, b (128 = unmodulated), then u, v (relative to the texture) of the four corners in packet order (top-left, top-right, bottom-left, bottom-right)", "shape": "SLES0x800390EC command 0x2C/0x2E: screen-space square with half diagonal along angle ((spin + 0x600) & 0xFFF >> 6) * 64, corners -d, rot(d), -rot(d), +d (rot(x, y) = (-y, x), y down) around the projected centre"},
+		"effects": {"flutter_plume": {"texture": "plume.png", **plume, "spawn": "ST39T 0x800E7674: class 0x30 hull controller 0x800E7594 state 0, +0xC hull slot, +0xD 1 (attached)", "period": 4, "frames": frames[:4]},
+					"flutter_smoke": {"texture": "smoke.png", **smoke, "spawn": "ST3AT 0x800E9300 (class 0x27 variant 6 hull state function 0x800E9224): every tick whose hull counter (+0x14C, 0 at the first update) has bits 0 and 1 clear, at the hull's x, y - 12, z - 88 in world axes", "every": 4, "offset_raw": [0, -12, -88], "yaw_raw": hull["yaw_raw"], "phase_shift": 5, "phase_mask": 0x1FF, "tracks": tracks}}}
+	write_output(out / "manifest.json", json.dumps(manifest, indent=1), encoding="utf-8"); return {"plume_records": len(frames[0]), "smoke_angles": sorted(int(angle) for angle in tracks), "blends": [plume["blend"], smoke["blend"]]}
 
 def export_intro_audio(cue):
 	import audio
@@ -1747,6 +1827,7 @@ flight_OPS = {"xa_play": lambda x: {"op": "play_xa", "descriptor": x["args"][0] 
 flight_NEW_OPS = {"player_face_frame": {"params": "channel eyes|mouth, frame", "semantics": "SLES0x80041724/0x8004173C(ctx+0xB0, frame): stop that channel's face sequence and hold the fixed frame (writes player +0x1A0 eyes / +0x1A1 mouth)", "sources": ["0x800F29A0", "0x800F29AC", "0x800F4468", "0x800F44AC"]},
 	"scrolling_backdrop": {"params": "enabled, velocity_raw[2] (s8 per tick), offset_raw[2]", "semantics": "ST3AT 0x800F4530 (called every tick while ctx+0x16 != 0): ctx+0x10/+0x12 += s8 ctx+0x14/+0x15; draws an 8x8 grid of 128x128 GP0 0x64 sprites (colour 0x808080, clut 0x7C80, v 0x80, u 0/0x80 alternating by row) at screen x = ((ctx+0x10 >> 4) & 0x7F) - 0x160 + col*0x80, y = ((ctx+0x12 >> 4) & 0xFF) - 0x188 + row*0x80 (culled outside x -0x80..0x140, y -0x80..0xF0), after a DR_MODE (SLES0x80063DD4(dfe 1, dtd 1, tpage 0x1B, no window): 4-bit page at VRAM (704,256)), linked at OT entry *(0x80078DDC)+0x88; every enable resets ctx+0x10/+0x12 to 0; the texture is page 0x1B with CLUT 0x7C80 (VRAM (0,498)), both uploaded by DAT/ST3AT.BIN section 0x1D000 (image 704,256 64x256, palette 0,498 128x1); texture = that 256x256 page (rows 0x80..0xFF used)", "sources": ["0x800F4530", "0x800F4560 (tpage)", "0x800F4668..0x800F466C (clut, v)", "0x800F4684..0x800F468C (u by row)", "0x800F2AD0..0x800F2AE0 (update, after the step callback)", "0x800F2A2C (init)", "0x800F2900..0x800F2918", "0x800F31A4..0x800F31C0", "0x800F3460..0x800F347C", "0x800F377C..0x800F3790"]},
 	"effect_spawn": {"params": "class, entry_raw (s16 x,y,z, u16 flags), arg", "semantics": "ST3AT 0x800F4724 spawns effect class 0x0F (byte6 = 5, or 6 when flags bit 0x40; +0xC = arg; +0xD = 0x20; +0xE = flags bit7; +0xF = flags low nibble); 0x800F47E4 spawns pool-0x40 class 0x21 (ST3A_08800 model flags 0x2140) at the entry position with yaw 0x800; inline 0x800F3CCC spawns class 0x0F variant 0x0A every 4 ticks; class 0x0F visuals are not decoded", "sources": ["0x800F31E8", "0x800F32E4", "0x800F34FC", "0x800F35E0", "0x800F36EC", "0x800F380C", "0x800F3960", "0x800F396C", "0x800F3A3C", "0x800F3A54", "0x800F3CCC"]},
+	"exhaust": {"params": "effect", "semantics": "the class 0x27 resource variant 6 hull spawns a class 0x0F variant 10 smoke puff (ST3AT 0x800F236C) every 4th tick of its own counter; export_flutter_exhaust writes the puff tracks as assets/flutter/exhaust/manifest.json (flutter_smoke); the effect function ST3AT 0x800F236C is also spawned by the scene callbacks themselves (0x800F3CCC and others), which are not hull exhaust and are not drawn", "sources": ["0x800E9300", "0x800F236C"]},
 	"file_load / player_bank_switch": {"semantics": "SLES0x8001B2D8(0xFC / 0xFD) loads DAT/ST3A01.BIN / ST3A02.BIN (area 3 texture banks, tools/world.py AREA_TEXTURE_BANKS); 0x800F4228..0x800F423C toggles scratch 0x1F80000C and calls SLES0x80023040 so player controls 0x80.. resolve from the ST3A02 section-0 bank"},
 	"player_render_flag / sound_latch / skip_lock / camera_shake / play_xa": {"semantics": "as tools/cinematics.py NEW_OPS; the sound latch is ctx+0x1A (finish plays 0x2A3 when set, 0x800F2B78..0x800F2B90)"}}
 
@@ -1814,6 +1895,8 @@ def export_flight_scene(root=None, out_dir=None):
 	controllers = fire_controllers(e, {slot_of[k]: v for k, v in tracks.items() if k in slot_of}, {item["slot"]: item["source_ram"] for item in actors})
 	for slot, profile in controllers.items():
 		entry = actors[int(slot)]["entry"]; profile["source"] = "ST3AT class 0x%02X (pool 0x%02X) update emulated once per native tick after the scene update; render helpers stubbed" % (entry["actor_class"], entry["pool_type"])
+	for item in actors:
+		if item["entry"]["actor_class"] == 0x27 and item["entry"]["resource_variant"] == 6: controllers.setdefault(str(item["slot"]), {"source": "ST3AT class 0x27 resource variant 6 state function 0x800E9224", "record": item["source_ram"], "events": []})["events"].append({"op": "exhaust", "effect": "flutter_smoke", "native": "SLES0x8003E8F8 (pool 8, class 0x0F variant 10) from 0x800E9300 on every 4th tick of the hull's own counter, from its first update"})
 	stage_request = fire_request(e.requests[-1]); K = fire_K
 	if (stage_request["type"], stage_request["stage"], stage_request["area"], stage_request["position_raw"], stage_request["facing_raw"]) != (2, "ST08", 0, [K(0x800F2C4C, -0x580), K(0x800F2C54, -0x400), K(0x800F2C5C, 0x10)], K(0x800F2C64, 0xC00)): raise ValueError("finish request differs: %s" % stage_request)
 	disc = root / "build/disc-assets"; payload = (disc / "COMMON/PL00P000.BIN").read_bytes()[0x30:]; face_word = struct.unpack_from("<4I", payload, 0x60)[2]

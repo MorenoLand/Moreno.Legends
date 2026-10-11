@@ -86,7 +86,7 @@ func _frames() -> void:
 func _content() -> void:
 	_chrome_content("Inventory", "inventory", "Q/E: Page   PgUp/PgDn: Scroll   Esc: Back")
 	_text("Life", Vector2(46, 37)); life_gauge(self, Vector2(70, 38), life, life_max, 90.0)
-	_text("%07d Z" % zenny, Vector2(176, 37), 9, Color.WHITE, 100, HORIZONTAL_ALIGNMENT_RIGHT)
+	_text("%07d \uE049" % zenny, Vector2(164, 37), 9, Color.WHITE, 100, HORIZONTAL_ALIGNMENT_RIGHT); FRAME.readout_icons(self, "zenny_coin", Vector2(186, 37), Vector2(266, 37))
 	if rows.is_empty(): _text("Nothing carried", LIST.position, 11, Color8(128, 128, 128), LIST.size.x, HORIZONTAL_ALIGNMENT_CENTER); return
 	for index in range(top, mini(top + VISIBLE, rows.size())):
 		var row: Dictionary = rows[index]; var y := LIST.position.y + float(index - top) * ROW

@@ -13,7 +13,7 @@ static func load_into(parent: Node3D, stage: String, area: int, native_context: 
 	var static_key := "native_static_actor_props_%s_%d" % [stage, area]; var prefetch: Array[String] = []
 	if not bool(parent.get_meta(base_key, false)):
 		for entry: Dictionary in source.get("instances", []):
-			if int(entry.get("area", -1)) == area and not npc_sources.has(_source_key(area, int(entry.get("source_file_offset_value", -1)), str(entry.get("source_bytes", "")))) and _prefetchable(entry): prefetch.append("res://assets/stage_props/" + str(entry.get("model_file", "")))
+			if int(entry.get("area", -1)) == area and port_spawns(stage, entry) and not npc_sources.has(_source_key(area, int(entry.get("source_file_offset_value", -1)), str(entry.get("source_bytes", "")))) and _prefetchable(entry): prefetch.append("res://assets/stage_props/" + str(entry.get("model_file", "")))
 	if not bool(parent.get_meta(static_key, false)):
 		for entry: Dictionary in npc_manifest.get("static_actor_instances", []):
 			var listed_areas: Variant = entry.get("global_area_indices", null)
@@ -22,7 +22,7 @@ static func load_into(parent: Node3D, stage: String, area: int, native_context: 
 	if not bool(parent.get_meta(base_key, false)):
 		for entry: Dictionary in source.get("instances", []):
 			var source_offset := int(entry.get("source_file_offset_value", -1)); var source_raw := str(entry.get("source_bytes", ""))
-			if int(entry.get("area", -1)) != area or npc_sources.has(_source_key(area, source_offset, source_raw)): continue
+			if int(entry.get("area", -1)) != area or npc_sources.has(_source_key(area, source_offset, source_raw)) or not port_spawns(stage, entry): continue
 			var node := await _load_actor(parent, "res://assets/stage_props/" + str(entry.get("model_file", "")), entry, model_by_index.get(int(entry.get("model_index", -1)), {}), native_context)
 			if node != null: _attach_native_source(node, stage, area, entry); created.append(node)
 			if not is_instance_valid(parent): return created
@@ -47,10 +47,11 @@ static func load_into(parent: Node3D, stage: String, area: int, native_context: 
 	var registry_key := "native_scripted_actor_registry_%s_%d" % [stage, area]; var registry: Dictionary = parent.get_meta(registry_key, {}); var slot_pointers: Dictionary = parent.get_meta(registry_key + "_slots", {}); var action_sets := {}; var deferred_pose := false
 	prefetch.clear()
 	for entry: Dictionary in scripted.get("instances", []):
-		if enabled_set_ids.has(str(entry.get("spawn_set", ""))) and not excluded_roles.has(str(entry.get("role", ""))) and (active or not spawn_sets_by_id.get(str(entry.get("spawn_set", "")), {}).get("source", {}).has("controller")) and _prefetchable(entry): prefetch.append("res://assets/levels/%s/%s" % [stage, str(entry.get("model_file", ""))])
+		if port_spawns(stage, entry) and enabled_set_ids.has(str(entry.get("spawn_set", ""))) and not excluded_roles.has(str(entry.get("role", ""))) and (active or not spawn_sets_by_id.get(str(entry.get("spawn_set", "")), {}).get("source", {}).has("controller")) and _prefetchable(entry): prefetch.append("res://assets/levels/%s/%s" % [stage, str(entry.get("model_file", ""))])
 	_prefetch(prefetch)
 	for entry: Dictionary in scripted.get("instances", []):
 		var spawn_set_id := str(entry.get("spawn_set", "")); var spawn_set: Dictionary = spawn_sets_by_id.get(spawn_set_id, {}); var spawn_source: Dictionary = spawn_set.get("source", {}); var direct: bool = spawn_source.has("controller")
+		if not port_spawns(stage, entry): continue
 		if not active and (direct or entry.has("native_pose_resolver")): continue
 		if active and entry.has("native_pose_resolver") and not script_context.has(str(entry["native_pose_resolver"]["player_pose_key"])):
 			deferred_pose = deferred_pose or enabled_sets.has(spawn_set_id)
@@ -96,8 +97,8 @@ static func _attach_spawn_actions(node: Node3D, id: String, source: Dictionary, 
 static func initialize_into(parent: Node3D, stage: String, area: int, native_context: Dictionary = {}, excluded_roles: Array[String] = []) -> Array[Node3D]:
 	var created: Array[Node3D] = []; var tree := Engine.get_main_loop() as SceneTree; var flags_changed := false; var state_changed := false
 	if is_instance_valid(parent):
-		# GAME0x800BA408 -> 0x800C02D0(0) on every area load clears the area-local flags 0x680-0x6DF and 0x710-0x74F before the area handlers run.
-		if native_context.get("event_flags", null) is Dictionary:
+		# GAME0x800BA408 -> 0x800C02D0(0) on every area load clears the area-local flags 0x680-0x6DF and 0x710-0x74F before the area handlers run (runner stages that keep them: the attach rule's keep_local_flags).
+		if native_context.get("event_flags", null) is Dictionary and not (runner_owned(stage) and bool(_read_manifest("res://assets/runner/manifest.json")["stages"][stage]["attach"].get("keep_local_flags", false))):
 			var flags: Dictionary = (native_context["event_flags"] as Dictionary).duplicate()
 			for key in flags.keys():
 				var id := int(key)
@@ -128,6 +129,8 @@ static func spawn_entry(parent: Node3D, stage: String, area: int, entry: Diction
 	return node
 static func pending_scene_requests(parent: Node3D) -> Array: return parent.get_meta("native_pending_scene_requests", []) if is_instance_valid(parent) else []
 static func runner_owned(stage: String) -> bool: return bool(_read_manifest("res://assets/runner/manifest.json").get("stages", {}).get(stage, {}).get("attach", {}).get("enabled", false))
+## Whether the port spawns this record (scripted or prop): a runner stage lists the classes the original code runs itself in its attach rule's runner_classes (ST4A: Roll and the treasure chest).
+static func port_spawns(stage: String, entry: Dictionary) -> bool: return not runner_owned(stage) or not _read_manifest("res://assets/runner/manifest.json")["stages"][stage]["attach"].get("runner_classes", []).has(float(int(entry.get("actor_class", entry.get("class", -1)))))
 static func pending_audio_requests(parent: Node3D) -> Array: return parent.get_meta("native_pending_audio_requests", []) if is_instance_valid(parent) else []
 static func drain_audio_requests(parent: Node3D, audio: Node, stage: String, area: int) -> void:
 	if not is_instance_valid(parent) or not is_instance_valid(audio): return

@@ -13,10 +13,21 @@ import math
 ROOT = Path(__file__).resolve().parents[1]
 UNIT = 1.0 / 256.0
 COORDINATE_BASIS = {"native_to_godot": [-1, -1, 1], "unit": "1/256 map unit", "root_mirror_required": False, "winding": "reversed for reflected X basis"}
-AREA_TEXTURE_BANKS = {("ST3A", 3): [{"file": "ST3A01.BIN", "file_id": 252, "source": "ST3AT overlay callback 0x800F2FEC via SLES0x8001B2D8"}, {"file": "ST3A02.BIN", "file_id": 253, "source": "ST3AT overlay callback 0x800F40A8 via SLES0x8001B2D8"}]}
+AREA_TEXTURE_BANKS = {("ST1C", 3): [{"file": "ST1C02.BIN", "file_id": 164, "source": "ST1C scene 0x13 step callback 0x800F1A1C via SLES0x8001B2D8(0xA4): the 16-colour CLUTs of rows 505/508 that the area 3 map models name (0x7E40..0x7E4D, 0x7F01)"}], ("ST1C", 4): [{"file": "ST1C02.BIN", "file_id": 164, "source": "ST1C scene 0x13 step callback 0x800F1A1C via SLES0x8001B2D8(0xA4): the 16-colour CLUTs of rows 506/508 that the area 4 map models name (0x7E80..0x7E8D, 0x7F03)"}], ("ST3A", 3): [{"file": "ST3A01.BIN", "file_id": 252, "source": "ST3AT overlay callback 0x800F2FEC via SLES0x8001B2D8"}, {"file": "ST3A02.BIN", "file_id": 253, "source": "ST3AT overlay callback 0x800F40A8 via SLES0x8001B2D8"}]}
+AREA_TEXTURE_BANKS.update({("ST25", area): [{"file": "ST2502T.BIN", "file_id": None, "source": "ST25 interiors (areas 1-5): the 16-colour CLUT rows 501-503 (0x7D41..0x7DC0) the interior map models name exist only in ST2502T.BIN, the bank models.py INTERIOR_SCRIPT_BINDINGS[ST25] adds for the interior actors; ST25T alone leaves those palettes empty (alpha 0)"}] for area in range(1, 6)})
 AREA_PLACEMENT_VARIANTS = {("ST06", 3): [{"tile": [63, 64], "event_flag": 0xD6, "item": "television", "overlay_words": {0x800E7410: 0x0C03016D, 0x800E7414: 0x240400D6, 0x800E7420: 0x24020040, 0x800E7448: 0x2503003F, 0x800E7468: 0x8C440000, 0x800E746C: 0x0C030043, 0x800E7470: 0x24050001}, "source": "ST06T living room handler 0x800E73A4 (table 0x800E8FF0[3]): flag 0xD6 clear -> GAME 0x800C010C(tile (63,64), 1) at 0x800E746C"}], ("ST06", 4): [{"tile": [64, 64], "event_flag": 0xD4, "item": "refrigerator", "overlay_words": {0x800E7534: 0x0C03016D, 0x800E7538: 0x240400D4, 0x800E7540: 0x24020040, 0x800E7568: 0x24C30040, 0x800E7588: 0x8C440000, 0x800E758C: 0x0C030043, 0x800E7590: 0x24050001}, "source": "ST06T kitchen handler 0x800E7510 (table 0x800E8FF0[4]): flag 0xD4 clear -> GAME 0x800C010C(tile (64,64), 1) at 0x800E758C"}], ("ST1E", 1): [{"tile": [64, 63], "item": "door", "runtime": "fire mission explosion", "overlay_words": {0x800EABE0: 0x8C640000, 0x800EABE4: 0x0C030043, 0x800EABE8: 0x24050001, 0x800EABF0: 0x24056000, 0x800EABF4: 0x0C005AC7, 0x800EABF8: 0x24060800, 0x800EABFC: 0x2404008B}, "source": "ST1ET variant 1 fire init 0x800EAA18: tile ((x>>9)+0x40, (z>>9)+0x40) of the fire -> GAME 0x800C010C(tile, 1) at 0x800EABE4; then SLES 0x80016B1C(1, 0x6000, 0x800) camera shake and sound 0x8B"}]}
+POKTE_HOUSES = [((57, 60), 0), ((68, 65), 10), ((57, 68), 1), ((68, 60), 11)]  # tile and placement of the four village houses: model directory entries of ST25 models 0-3 hold three model/collision variants (intact, damaged, ruin) selected by the placement state byte
+POKTE_HOUSE_RULES = {0: {"overlay_words": {0x800E7BB4: 0x24050002, 0x800E7CC8: 0x00002821, 0x800E7CCC: 0x0C030043}, "source": "ST25T area 0 handler 0x800E7928 (script state 0, 0x800E7B78..0x800E7CD8): per house, flag 0x103/0x105/0x107/0x109 clear -> GAME 0x800C010C(tile, 0), set with 0x102/0x104/0x106/0x108 clear -> state 1, both set -> state 2; the donation pass at 0x800E79B8 spends 1000 per level first"}, 6: {"overlay_words": {0x800E7708: 0x0C030035, 0x800E77AC: 0x0C030035}, "source": "ST25T area 6 handler 0x800E7660 (Jagd Krabbe fight): GAME 0x800C00D4(tile) reads the house's state, > 0 sets flag 0x103/0x105/0x107/0x109 and >= 2 sets 0x102/0x104/0x106/0x108"}}
+for _area, _rule in POKTE_HOUSE_RULES.items(): AREA_PLACEMENT_VARIANTS[("ST25", _area)] = [{"tile": list(tile), "item": "village house", "states": 3, "runtime": "placement_state", "state_key": f"native_placement_state_ST25_{placement}", **_rule} for tile, placement in POKTE_HOUSES]
+ICE_PILLAR_WORDS = {0x800F6C58: 0x0C030043, 0x800F6C5C: 0x24050001, 0x800FCE08: 0x4342433F, 0x800FCE0C: 0x4B454746, 0x800FCE10: 0x4B3C4F40, 0x800FCE14: 0x443A473B}
+AREA_PLACEMENT_VARIANTS[("ST1D", 2)] = [{"tile": [x, z], "item": "ice pillar", "runtime": "boss fight", "overlay_words": ICE_PILLAR_WORDS, "source": "ST1DT class 0x20 variant 1 state 1 0x800F6B40: a hit word with bit 0x20000 while the boss raises its flag (SLES 0x80046EE8) -> GAME 0x800C010C(tile, 1) at 0x800F6C58, then the break debris 0x800F6D2C; the tile list is the area 2 table 0x800FCE08"} for x, z in [(0x3F, 0x43), (0x42, 0x43), (0x46, 0x47), (0x45, 0x4B), (0x40, 0x4F), (0x3C, 0x4B), (0x3B, 0x47), (0x3A, 0x44)]]
 STAGE_FLAG_RULES = {"ST06": [{"when_event_flag": 0xD1, "flags": [0x717, 0x719], "overlay_words": {0x800E72A4: 0x0C03016D, 0x800E72A8: 0x240400D1, 0x800E72B4: 0x0C030156, 0x800E72B8: 0x24040717, 0x800E72BC: 0x0C030156, 0x800E72C0: 0x24040719, 0x800E72CC: 0x0C030161, 0x800E72D0: 0x24040717, 0x800E72D4: 0x0C030161, 0x800E72D8: 0x24040719}, "source": "ST06T stage frame 0x800E729C (GAME table 0x800DC66C[6]): flag 0xD1 set -> set 0x717/0x719 (0x800C0558), clear -> clear them (0x800C0584); the Deck 2 living room and storage doors lock on them"}]}
 AREA_COLLISION_VARIANTS = {("ST10", 1): [{"tile": [63, 65], "variant": 1, "predicate": {"all": [{"kind": "native_save_byte_equals", "key": "native_save_byte14", "default": 0, "value": 1}]}, "overlay_words": {0x800F2A1C: 0x02002021, 0x800F2A20: 0x24050001, 0x800F2A24: 0x0C00FCA3, 0x800F2A44: 0x00021643, 0x800F2A48: 0x2463FFC0, 0x800F2A64: 0x00031E43, 0x800F2A68: 0x2442FFC0, 0x800F2A90: 0x8C440000, 0x800F2A94: 0x0C030043, 0x800F2A98: 0x24050001}, "source": "ST10T0x800F2910 class 29 resource variant 0 (state byte14 1 registration 0x800E7874) selects tile (63,65) collision variant 1 via GAME0x800C010C at 0x800F2A94 and enables semi-transparency through SLES0x8003F28C at 0x800F2A24"}, {"tile": [62, 68], "variant": 1, "predicate": {"all": [{"kind": "native_save_byte_equals", "key": "native_save_byte14", "default": 0, "value": 1}]}, "overlay_words": {0x800F2A1C: 0x02002021, 0x800F2A20: 0x24050001, 0x800F2A24: 0x0C00FCA3, 0x800F2A44: 0x00021643, 0x800F2A48: 0x2463FFC0, 0x800F2A64: 0x00031E43, 0x800F2A68: 0x2442FFC0, 0x800F2A90: 0x8C440000, 0x800F2A94: 0x0C030043, 0x800F2A98: 0x24050001}, "source": "ST10T0x800F2910 class 29 resource variant 0 (state byte14 1 registration 0x800E7874) selects tile (62,68) collision variant 1 via GAME0x800C010C at 0x800F2A94 and enables semi-transparency through SLES0x8003F28C at 0x800F2A24"}, {"tile": [67, 68], "variant": 1, "predicate": {"all": [{"kind": "native_save_byte_equals", "key": "native_save_byte14", "default": 0, "value": 1}]}, "overlay_words": {0x800F2A1C: 0x02002021, 0x800F2A20: 0x24050001, 0x800F2A24: 0x0C00FCA3, 0x800F2A44: 0x00021643, 0x800F2A48: 0x2463FFC0, 0x800F2A64: 0x00031E43, 0x800F2A68: 0x2442FFC0, 0x800F2A90: 0x8C440000, 0x800F2A94: 0x0C030043, 0x800F2A98: 0x24050001}, "source": "ST10T0x800F2910 class 29 resource variant 0 (state byte14 1 registration 0x800E7874) selects tile (67,68) collision variant 1 via GAME0x800C010C at 0x800F2A94 and enables semi-transparency through SLES0x8003F28C at 0x800F2A24"}, {"tile": [69, 65], "variant": 1, "predicate": {"all": [{"kind": "native_save_byte_equals", "key": "native_save_byte14", "default": 0, "value": 1}]}, "overlay_words": {0x800F2A1C: 0x02002021, 0x800F2A20: 0x24050001, 0x800F2A24: 0x0C00FCA3, 0x800F2A44: 0x00021643, 0x800F2A48: 0x2463FFC0, 0x800F2A64: 0x00031E43, 0x800F2A68: 0x2442FFC0, 0x800F2A90: 0x8C440000, 0x800F2A94: 0x0C030043, 0x800F2A98: 0x24050001}, "source": "ST10T0x800F2910 class 29 resource variant 0 (state byte14 1 registration 0x800E7874) selects tile (69,65) collision variant 1 via GAME0x800C010C at 0x800F2A94 and enables semi-transparency through SLES0x8003F28C at 0x800F2A24"}], ("ST08", 1): [{"tile": [63, 64], "variant": 1, "predicate": {"all": [{"kind": "native_save_byte_equals", "key": "native_save_byte14", "default": 0, "value": 0, "negate": True}]}, "overlay_words": {0x800E75B4: 0x14620019, 0x800E75BC: 0x90820014, 0x800E75C4: 0x10400015, 0x800E75C8: 0x24020040, 0x800E75F0: 0x24E3003F, 0x800E7614: 0x0C030043, 0x800E7618: 0x24050001}, "source": "ST08T800E75B0..7618: area1 and saveByte14 nonzero select tile63,64 collision variant1 via GAME800C010C; geometry remains unchanged"}]}
+RUINS_LID_WORDS = {0x800E7CC4: 0x0C03016D, 0x800E7CC8: 0x240403DA, 0x800E7D38: 0x0C030043, 0x800E7D3C: 0x24050001, 0x800E7D78: 0x0C030043, 0x800E7D7C: 0x24050001, 0x800E7DBC: 0x0C030043, 0x800E7DC0: 0x24050001, 0x800E7DFC: 0x0C030043, 0x800E7E00: 0x24050001}
+RUINS_LID_SOURCE = "ST19T area 1 handler 0x800E7C94 (story table 0x800F60F4 row 3): flag 0x3DA set (ST1B message 100, the Guildmaster after the last pirate attack) -> clear 0x710 and GAME 0x800C010C(tile, 1) on the four tiles around the centre at 0x800E7D38, 0x800E7D78, 0x800E7DBC and 0x800E7DFC"
+AREA_PLACEMENT_VARIANTS[("ST19", 1)] = [{"tile": tile, "event_flag": 0x3DA, "variant_when_set": 1, "variant_when_clear": 0, "item": "ruins lid", "overlay_words": RUINS_LID_WORDS, "source": RUINS_LID_SOURCE} for tile in ([63, 63], [64, 63], [63, 64], [64, 64])]
+AREA_COLLISION_VARIANTS[("ST19", 1)] = [{"tile": tile, "variant": 1, "predicate": {"all": [{"kind": "native_event_flag", "id": 0x3DA, "set": True}]}, "overlay_words": RUINS_LID_WORDS, "source": RUINS_LID_SOURCE} for tile in ([63, 63], [64, 63], [63, 64], [64, 64])]
+for _area, _rule in POKTE_HOUSE_RULES.items(): AREA_COLLISION_VARIANTS[("ST25", _area)] = [{"tile": list(tile), "variant": 2, "predicate": {"all": [{"kind": "native_save_byte_equals", "key": f"native_placement_state_ST25_{placement}", "default": 0, "value": 2}]}, **_rule} for tile, placement in POKTE_HOUSES]  # the ruin variant keeps no door or wall boxes; the runner host mirrors the placement state into the context key
 def check_overlay_words(overlay, words, label):
 	for address, expected in words.items():
 		actual = struct.unpack_from("<I", overlay, 48 + address - 0x800E7000)[0]
@@ -185,7 +196,7 @@ def export_maps(stage_name, input_dir, output_dir):
 	for index in range(len(stage.grids)):
 		area = stage.area(index)
 		if area is None: continue
-		tiles, ids = area; glb = Glb(vram, texture_cache); quads = 0; placement_streams = []
+		tiles, ids = area; area_banks = AREA_TEXTURE_BANKS.get((stage_name, index), []); glb = Glb(texture_vram([texture_path, *[input_dir / bank["file"] for bank in area_banks]])[0], {}) if area_banks else Glb(vram, texture_cache); quads = 0; placement_streams = []
 		ground = terrain_groups(tiles, terrain_binding(texture_path, index), stage.placements) if any(read_u16(tile, 0) != 0xffff and read_u16(tile, 0) & 0x8000 and (read_u16(tile, 0) & 0x4000 or stage.placements[read_u16(tile, 0) & 0x7ff][3] & 0x8000) for tile in tiles.values()) else {}
 		if ground: glb.instance("terrain", -1, ground, [0, 0, 0]); quads += sum(len(faces) for faces in ground.values())
 		if not ids and not ground: continue
@@ -498,6 +509,13 @@ def bind_route_contacts(routes, floors):
 			contact = {**box, "type": box["kind"] >> 8, "automatic": box["kind"] == 0xF00, "probe_forward_raw": -64 if box["mask"] & 0x8000 else 0, "source_consumer": "GAME0x800B8588;type15:0x800B8134->0x800B8460"}
 			if contact["type"] == 2: contact["native_probe"] = {"source": "GAME0x800B8588..0x800B8750; SLES0x8005FE44/0x8005F4D4", "player_position_fields": ["+0x12 X", "+0x16 Y", "+0x1A Z"], "position_scale": "signed16 native units at 1/256 map unit", "sweep_local_raw": [0, 0, -64], "sweep_yaw_source": "player+0x2A through SLES0x8005FE44", "vertical_test": "player+0x16 remains unchanged across the forward sweep; no vertical capsule half-height expansion in this probe"}
 			route["native_contacts"].append(contact)
+		if not route["native_contacts"]:  # contacts that only a collision variant adds (the ruins shaft under the lid): the route is available while the variant's predicate holds
+			for variant in floors.get(str(route["source_area"]), {}).get("placement_variants", []):
+				for box in variant["boxes"]:
+					if box["kind"] >= 0x100 and box["contact_raw"] == route["source_transform_raw"][:3]: route["native_contacts"].append({**box, "type": box["kind"] >> 8, "automatic": box["kind"] == 0xF00, "probe_forward_raw": -64 if box["mask"] & 0x8000 else 0, "source_consumer": "GAME0x800B8588;type15:0x800B8134->0x800B8460"}); route["availability"] = {"all": variant["predicate"]["all"], "source": variant["source"]}
+		for variant in floors.get(str(route["source_area"]), {}).get("placement_variants", []):  # a variant without the route's contact box removes the door (the ruined village houses)
+			if len(variant["predicate"]["all"]) == 1 and route["native_contacts"] and route["native_contacts"][0]["placement"] == variant["placement"] and not any(box["kind"] >= 0x100 and box["contact_raw"] == route["source_transform_raw"][:3] for box in variant["boxes"]):
+				route["availability"] = {"all": [{**variant["predicate"]["all"][0], "negate": not variant["predicate"]["all"][0].get("negate", False)}], "source": variant["source"]}
 	return routes
 
 NATIVE_SCRIPTED_INTERACTIONS = {"ST04": {(1, 0): (0x800E8190, 0x800E84C4, 2, False), (96, 0): (0x800E9DB0, 0x800EA15C, 0, False)}, "ST08": {(0, 0): (0x800E78CC, 0x800E7D4C, 0, False), (0, 1): (0x800E93EC, 0x800E9A1C, 0, True), (0, 2): (0x800EBFFC, 0x800EC58C, 0, True), (1, 0): (0x800EA4F4, 0x800EA828, 2, False)}, "ST09": {(0, 0): (0x800E81EC, 0x800E866C, 0, False)}, "ST0A": {(0, 0): (0x800E8920, 0x800E8DA0, 0, False)}, "ST0C": {(0, 0): (0x800E752C, 0x800E79AC, 0, False)}, "ST47": {(0, 0): (0x800E8600, 0x800E8A80, 0, False)}}
@@ -754,12 +772,13 @@ def export_geometry(input_dir, output_dir, stages):
 				if streams: placement_streams.append(streams)
 				variant_rule = next((rule for rule in variant_rules if rule["placement"] == placement_id), None)
 				if variant_rule is not None:
-					if variant_count != 2 or variant != 0: raise ValueError(f"{stage_name} area {area_index:02d} placement {placement_id} is not a two-variant placement")
-					variant_pointer = read_u16(stage.data, stage.base + (directory & 0xffff) * 4 + 12); variant_groups = stage.model(variant_pointer); glb.instance(node_name + "_variant_1", variant_pointer, variant_groups, translation, stage.face_metadata[variant_pointer])
-					variant_manifest.append({"placement": placement_id, "model": model_id, "item": variant_rule["item"], "base_node": node_name, "base_variant": 0, "variant_node": node_name + "_variant_1", "variant": 1, **({"event_flag": variant_rule["event_flag"], "variant_when_set": 0, "variant_when_clear": 1} if "event_flag" in variant_rule else {"runtime": variant_rule["runtime"]}), "tile": variant_rule["tile"], "source": variant_rule["source"]})
+					states = variant_rule.get("states", 2)
+					if (((header >> 24) & 3) + 1 if states > 2 else variant_count) != states or variant != 0: raise ValueError(f"{stage_name} area {area_index:02d} placement {placement_id} is not a {states}-variant placement")
+					for state in range(1, states): variant_pointer = read_u16(stage.data, stage.base + (directory & 0xffff) * 4 + state * 12); variant_groups = stage.model(variant_pointer); glb.instance(f"{node_name}_variant_{state}", variant_pointer, variant_groups, translation, stage.face_metadata[variant_pointer])
+					variant_manifest.append({"placement": placement_id, "model": model_id, "item": variant_rule["item"], "base_node": node_name, "base_variant": 0, "variant_node": node_name + "_variant_1", "variant": 1, **({"event_flag": variant_rule["event_flag"], "variant_when_set": variant_rule.get("variant_when_set", 0), "variant_when_clear": variant_rule.get("variant_when_clear", 1)} if "event_flag" in variant_rule else {"runtime": variant_rule["runtime"]}), "tile": variant_rule["tile"], "source": variant_rule["source"], **({"states": states, "state_nodes": [f"{node_name}_variant_{state}" for state in range(1, states)], "state_key": variant_rule["state_key"]} if states > 2 else {})})
 			file_name = f"area_{area_index:02d}.glb"; bounds = glb.save(stage_dir / file_name); area_manifest = {"index": area_index, "name": display_name.removeprefix(family + " ").removeprefix("- ") if display_name and family else display_name or "Area %02d" % area_index, "file": file_name, "placements": len(placement_ids), "models": len(glb.meshes), "quads": quads, "bounds": bounds, "native_map_code": {"stage": int(stage_name[2:], 16), "area": area_index}, "terrain_source": ground_binding, "native_map_face_flags_in_alpha": True, "placement_streams": placement_streams}
 			if variant_manifest: area_manifest["placement_variants"] = variant_manifest
-			if area_banks: area_manifest["texture_state"] = {"source_order": [{"file": f"DAT/{texture_path.name}", "file_id": 254, "sha256": digest(texture_bytes), "source": "GAME0x800BA600 default ST3A root/T loader"}, *[{"file": f"DAT/{bank['file']}", "file_id": bank["file_id"], "sha256": item["sha256"], "source": bank["source"]} for bank, item in zip(area_banks, loaded_banks[1:])]], "applied_in_vram_order": True}
+			if area_banks: area_manifest["texture_state"] = {"source_order": [{"file": f"DAT/{texture_path.name}", "file_id": 254, "sha256": digest(texture_bytes), "source": f"GAME0x800BA600 default {stage_name} root/T loader"}, *[{"file": f"DAT/{bank['file']}", "file_id": bank["file_id"], "sha256": item["sha256"], "source": bank["source"]} for bank, item in zip(area_banks, loaded_banks[1:])]], "applied_in_vram_order": True}
 			areas.append(area_manifest); print(f"{stage_name}_{area_index:02d}: {len(placement_ids)} placements, {quads} quads")
 		stage_manifest = {"stage": stage_name, "name": STAGE_NAMES.get(stage_name, stage_name), "source_reference": {"description": "native stage/substage values XX/YY and room labels"} if stage_name in STAGE_BINDINGS else None, "coordinate_unit": "1/256 map unit", "coordinate_basis": COORDINATE_BASIS, "source": {"root_file": f"DAT/{stage_name}.BIN", "textures_file": f"DAT/{stage_name}T.BIN", "root_sha256": digest(root_bytes), "textures_sha256": digest(texture_bytes), "texture_sections": texture_count}, "areas": areas, "native_floor_collision": floor_collision_manifest(root_path), "native_combat_policy": native_combat_policy(texture_bytes)}
 		for rule in STAGE_FLAG_RULES.get(stage_name, []): check_overlay_words(texture_bytes, rule["overlay_words"], f"{stage_name} stage flag rule")
@@ -1303,8 +1322,9 @@ def select_panel(faces, center, axis):
 	return {"center": face_center, "axis": axis, "bounds": bounds, "placement_id": int(match.group(1)), "model_id": int(match.group(2)), "node": node, "mesh_index": mesh_index, "primitive_index": primitive_index, "material_index": material_index, "quads": [{"quad_index": face["quad_index"], "primitive_index": face["primitive_index"], "first_vertex": face["quad_index"] * 6, "first_triangle": face["quad_index"] * 2, "triangle_count": 2, "triangles_local": face["triangles_local"]} for face in selected_quads], "score": best[0]}
 
 FLUTTER_LADDER_STAGES = {"ST04", "ST05", "ST06", "ST07"}
-TOWN_LAYOUTS = {"town": {"ST09": None, "ST0A": None, "ST0C": None, "ST47": {0}}, "ruminoa": {"ST19": {1}, "ST1A": None, "ST1B": {0, 1, 2, 3}}, "pokte": {"ST25": {0, 1, 2, 3, 4}}, "pokte_mayor": {"ST24": {1, 2}, "ST32": None}, "kito": {"ST20": {0, 1}}, "kimotoma": {"ST29": None, "ST2A": None, "ST2B": None, "ST2C": None, "ST3B": None, "ST3C": None}, "manda": {"ST12": None, "ST13": None, "ST14": None}, "saul_kada": {"ST26": None, "ST27": None, "ST28": None, "ST33": None, "ST34": None}, "calinca_ruins": {"ST2D": None, "ST2E": None, "ST2F": None}, "nino_ruins": {"ST35": None, "ST36": None, "ST37": None, "ST38": None}, "defense": {"ST41": None, "ST42": None}, "mother_zone": {"ST43": None, "ST44": None, "ST45": None, "ST4C": None, "ST58": None}, "guild_ruins": {"ST4D": None}, "pokte_caverns": {"ST4E": None, "ST51": None}, "kito_caverns": {"ST4F": None}, "kimotoma_caverns": {"ST50": None}, "license_test": {"ST55": None}, "glyde": {"ST1F": {0}, "ST30": {0, 1, 2}, "ST31": {0}}, "sulphur": {"ST3D": {0, 1, 2, 3}, "ST3E": {0, 1, 2, 3, 4, 5}, "ST3F": None}}
+TOWN_LAYOUTS = {"town": {"ST09": None, "ST0A": None, "ST0C": None, "ST47": {0}}, "ruminoa": {"ST19": {1}, "ST1A": None, "ST1B": {0, 1, 2, 3}}, "pokte": {"ST25": {0, 1, 2, 3, 4}}, "pokte_mayor": {"ST24": {1, 2}, "ST32": None}, "kito": {"ST20": {0, 1}}, "kimotoma": {"ST29": None, "ST2A": None, "ST2B": None, "ST2C": None, "ST3B": None, "ST3C": None}, "manda": {"ST12": None, "ST13": None, "ST14": None}, "saul_kada": {"ST26": None, "ST27": None, "ST28": None, "ST33": None, "ST34": None}, "calinca_ruins": {"ST2D": None, "ST2E": None, "ST2F": None}, "nino_ruins": {"ST35": None, "ST36": None, "ST37": None, "ST38": None}, "defense": {"ST41": None, "ST42": None}, "mother_zone": {"ST43": None, "ST44": None, "ST45": None, "ST4C": None, "ST58": None}, "guild_ruins": {"ST4D": None}, "pokte_caverns": {"ST4E": None, "ST51": None}, "kito_caverns": {"ST4F": None}, "kimotoma_caverns": {"ST50": None}, "license_test": {"ST55": None}, "tutorial": {"ST4A": None}, "glyde": {"ST1F": {0}, "ST30": {0, 1, 2}, "ST31": {0}}, "sulphur": {"ST3D": {0, 1, 2, 3}, "ST3E": {0, 1, 2, 3, 4, 5}, "ST3F": None}}
 TOWN_EXTERIORS = {("ST09", 0), ("ST19", 1), ("ST25", 0), ("ST24", 1), ("ST20", 0), ("ST1F", 0)}
+LAYOUT_LOOP_CUTS = {"tutorial": [frozenset({("ST4A", 0), ("ST4A", 6)})], "license_test": [frozenset({("ST55", 0), ("ST55", 6)})]}  # the seven areas form a ring whose doors do not close (the last door leaves a 22.25 m gap), so the layout opens it at the pair walked last (area 6 back to area 0: the tutorial ends and the test completes there) and every earlier door stays seamless
 
 def ladder_link(assets_dir, room_catalog, route, reverse, a, b):
 	"""Stack the two rooms of a ladder pair: the lower room's ceiling hatch (its black-out loop height) meets the bottom of the upper room's ladder pit, with the two ladder foot points (each route's source transform) on one vertical line."""
@@ -1317,12 +1337,13 @@ def ladder_link(assets_dir, room_catalog, route, reverse, a, b):
 	hatch = math.floor(max(heights) * 256) / 256; source = native_point(route["source_transform_raw"]); arrival = native_point(reverse["source_transform_raw"]); rise = hatch - pit
 	return {"delta": [source[0] - arrival[0], -rise if down else rise, source[2] - arrival[2]], "upper": {"stage": upper[0], "area": upper[1]}, "lower": {"stage": lower[0], "area": lower[1]}, "hatch_height": hatch, "pit_depth": pit}
 
-def export_room_layout(assets_dir, output_path, stages=STAGES):
+def export_room_layout(assets_dir, output_path, stages=STAGES, cuts=()):
 	STAGES = tuple(stages); town = isinstance(stages, dict)
-	room_catalog = {}; route_data = {}; route_hashes = {}; external = []
+	room_catalog = {}; route_data = {}; route_hashes = {}; external = []; stage_areas_all = {}
 	for stage in STAGES:
 		manifest_path = assets_dir / stage / "manifest.json"; manifest = json.loads(manifest_path.read_text(encoding="utf-8")); stage_areas = {area["index"]: area for area in manifest["areas"]}; route_path = assets_dir / stage / "doors.json"; route_file = json.loads(route_path.read_text(encoding="utf-8")); route_data[stage] = route_file["area_transitions"]; route_hashes[stage] = hashlib.sha256(route_path.read_bytes()).hexdigest()
 		for index, area in stage_areas.items():
+			stage_areas_all[(stage, index)] = {"manifest": f"assets/levels/{stage}/manifest.json", "file": area["file"], "bounds": area["bounds"]}
 			if town and stages[stage] is not None and index not in stages[stage]: continue
 			room_catalog[(stage, index)] = {"manifest": f"assets/levels/{stage}/manifest.json", "file": area["file"], "bounds": area["bounds"]}
 	all_routes = [(stage, route) for stage, routes in route_data.items() for route in routes]; edges = []; ladder_transitions = []; ladder_edges = []; paired = set()
@@ -1358,8 +1379,8 @@ def export_room_layout(assets_dir, output_path, stages=STAGES):
 		path_a = assets_dir / a[0] / f"area_{a[1]:02d}.glb"; path_b = assets_dir / b[0] / f"area_{b[1]:02d}.glb"; face_a = native_a or select_panel(room_faces(assets_dir, *a)[1], center_a, axis_a); face_b = native_b or select_panel(room_faces(assets_dir, *b)[1], center_b, axis_b)
 		if face_a["axis"] != face_b["axis"]: raise ValueError(f"{a} to {b} panel normal axes disagree")
 		translation = tuple((-route["source_transform_raw"][1] + reverse["source_transform_raw"][1]) / 256 if town and i == 1 else face_a["center"][i] - face_b["center"][i] for i in range(3)); edges.append({"a": a, "b": b, "route": route, "reverse": reverse, "panel_a": face_a, "panel_b": face_b, "delta": translation, "glb_a": path_a, "glb_b": path_b})
-	adjacency = {}
-	for edge in edges + ladder_edges:
+	adjacency = {}; cut_edges = [edge for edge in edges if frozenset((edge["a"], edge["b"])) in cuts]
+	for edge in [edge for edge in edges + ladder_edges if edge not in cut_edges]:
 		adjacency.setdefault(edge["a"], []).append((edge["b"], edge["delta"], edge)); adjacency.setdefault(edge["b"], []).append((edge["a"], tuple(-value for value in edge["delta"]), edge))
 	offsets = {}; components = []; residuals = []; tree = set(); unaligned = []
 	for anchor in sorted(room_catalog):
@@ -1374,9 +1395,19 @@ def export_room_layout(assets_dir, output_path, stages=STAGES):
 					if "route" in edge: unaligned.append(edge)
 					else: residuals.append({"from": list(node), "to": list(other), "residual": [offsets[other][axis] - proposal[axis] for axis in range(3)]})
 		components.append(sorted(component))
+	for edge in cut_edges:
+		if max(abs(offsets[edge["b"]][axis] - offsets[edge["a"]][axis] - edge["delta"][axis]) for axis in range(3)) > 1e-5: unaligned.append(edge)
 	for edge in unaligned:
 		if edge in edges: edges.remove(edge); external.extend((external_entry(edge["a"][0], edge["route"], "closes a loop"), external_entry(edge["b"][0], edge["reverse"], "closes a loop")))
 	if len(offsets) != len(room_catalog) or residuals: raise ValueError(f"room layout does not close: reached {len(offsets)}/{len(room_catalog)} rooms with {len(residuals)} residuals")
+	twins = {}  # story route patches that send a streamed door to another area of the same geometry (ST3E area 0 to Bluecher's room copy, area 6): the copy gets its own room at the original's offset and a clone of the portal, so the redirected door stays seamless
+	for edge in list(edges):
+		for rule in edge["route"].get("story_destinations", []):
+			twin = (rule.get("destination_stage", edge["route"]["destination_stage"]), rule["destination_area"])
+			if twin in room_catalog or twin not in stage_areas_all or stage_areas_all[twin]["bounds"] != stage_areas_all[edge["b"]]["bounds"] or (assets_dir / twin[0] / f"area_{twin[1]:02d}.glb").read_bytes() != edge["glb_b"].read_bytes(): continue
+			twins[twin] = edge["b"]; clone = dict(edge, b=twin, glb_b=assets_dir / twin[0] / f"area_{twin[1]:02d}.glb")
+			if not any(other["a"] == clone["a"] and other["b"] == twin for other in edges): edges.append(clone)
+	for twin, original in twins.items(): room_catalog[twin] = stage_areas_all[twin]; offsets[twin] = offsets[original]; [component.append(twin) for component in components if original in component]
 	rooms = [{"stage": stage, "area": area, "manifest": data["manifest"], "file": data["file"], "world_offset": offsets[(stage, area)], "rotation_y": 0.0, "local_bounds": data["bounds"], "routes_remain_area_local": True, "exterior": (town and (stage, area) in TOWN_EXTERIORS) or (stage, area) == ("ST08", 0)} for (stage, area), data in sorted(room_catalog.items())]
 	portals = []
 	for edge in edges:
@@ -1478,6 +1509,7 @@ def shop_item_text(sles, offset_base, index, header=0):
 			flush()
 			if opcode == 0x0A: color = sles[cursor + 2] & 0x7F; text.append(chr(0xE0F0 + (color if color < 8 else 0)))
 			elif opcode == 0x0B: text.append(chr(0xE0FF))
+			elif opcode == 0x22: text.append(__import__("ui").native_control_texts(sles[cursor + 2])[0])
 			cursor += SHOP_LENGTHS.get(opcode, 2); continue
 		raw.append(value); cursor += 1
 	flush(); return "".join(text).replace("\u27e663\u27e7", ":").replace("\u27e664\u27e7", "\ue064").replace("\u27e665\u27e7", "\ue065").strip()
@@ -1607,7 +1639,7 @@ def geometry(path, native_map_face_flags=False):
 				if len(ids) != 3: continue
 				vertices = [positions[item] for item in ids]; u = [vertices[1][axis] - vertices[0][axis] for axis in range(3)]; v = [vertices[2][axis] - vertices[0][axis] for axis in range(3)]; normal = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]]; length = math.sqrt(sum(value * value for value in normal))
 				if length < 1e-10: continue
-				triangles.append({"vertices": vertices, "uv": [uv[item] for item in ids], "colors": [colors[item] for item in ids], "normal_y": normal[1] / length, "area": length / 2, "node": node["name"], "surface": surface})
+				triangles.append({"vertices": vertices, "uv": [uv[item] for item in ids], "colors": [colors[item] for item in ids], "normal_y": normal[1] / length, "area": length / 2, "node": node["name"], "surface": surface, "material": primitive.get("material")})
 	return triangles
 def signed_edge(a, b, p): return (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])
 def split(polygon, a, b, sign):
@@ -1769,6 +1801,72 @@ def perimeter_roof_height(triangles, roof):
 	if height >= float(roof["height"]): return
 	roof["height"] = height; roof["wall_top_height"] = height
 	for point in roof["vertices"]: point[1] = height
+def texture_transparency(document, binary):
+	cache = {}
+	def alpha(material):
+		if material not in cache:
+			try:
+				view = document["bufferViews"][document["images"][document["textures"][document["materials"][material]["pbrMetallicRoughness"]["baseColorTexture"]["index"]]["source"]]["bufferView"]]; start = view.get("byteOffset", 0); cache[material] = native_png_pixels(binary[start:start + view["byteLength"]])
+			except (KeyError, TypeError, ValueError, zlib.error): cache[material] = None
+		return cache[material]
+	def transparent(triangle):
+		image = alpha(triangle["material"]) if triangle["material"] is not None else None
+		if image is None: return False
+		width, height, pixels = image; uv = triangle["uv"]; clear = 0
+		for i in range(6):
+			for j in range(6 - i):
+				a = (i + 1 / 3) / 6; b = (j + 1 / 3) / 6; x = int((uv[0][0] + (uv[1][0] - uv[0][0]) * a + (uv[2][0] - uv[0][0]) * b) * width) % width; y = int((uv[0][1] + (uv[1][1] - uv[0][1]) * a + (uv[2][1] - uv[0][1]) * b) * height) % height; clear += pixels[(y * width + x) * 4 + 3] == 0
+		return clear == 21
+	return transparent
+def ray_blocked(triangles, origin, axis, sign, clear):
+	for triangle in triangles:
+		points = triangle["vertices"];
+		if (min(p[axis] for p in points) - origin[axis]) * sign < -1e-4 and (max(p[axis] for p in points) - origin[axis]) * sign < -1e-4: continue
+		other = [k for k in (0, 2) if k != axis][0]; a, b, c = [(p[other], p[1]) for p in points]; point = (origin[other], origin[1]); d = [signed_edge(a, b, point), signed_edge(b, c, point), signed_edge(c, a, point)]
+		if not (all(v >= -1e-9 for v in d) or all(v <= 1e-9 for v in d)): continue
+		normal = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+		if abs(normal) < 1e-9: continue
+		w = [d[1] / normal, d[2] / normal, d[0] / normal]; distance = (sum(w[k] * points[k][axis] for k in range(3)) - origin[axis]) * sign
+		if distance > 1e-3 and not clear(triangle): return True
+	return False
+def window_backings(triangles, transparent, cell=1 / 16, depth=0.125, margin=0.03):
+	walls = {}
+	for triangle in triangles:
+		if abs(triangle["normal_y"]) > 0.25: continue
+		points = triangle["vertices"]; u = [points[1][k] - points[0][k] for k in range(3)]; v = [points[2][k] - points[0][k] for k in range(3)]; normal = [u[1] * v[2] - u[2] * v[1], 0, u[0] * v[1] - u[1] * v[0]]; axis = 0 if abs(normal[0]) > abs(normal[2]) else 2
+		if abs(normal[2 - axis]) > 1e-6 * abs(normal[axis]) or any(abs(p[axis] - points[0][axis]) > 1e-4 for p in points): continue
+		walls.setdefault((axis, 1 if normal[axis] > 0 else -1, round(points[0][axis], 2)), []).append(triangle)
+	backings = []
+	for (axis, sign, plane), group in sorted(walls.items()):
+		other = 2 - axis; faces = [[(p[other], p[1]) for p in triangle["vertices"]] for triangle in group]; low = [min(p[k] for f in faces for p in f) for k in (0, 1)]; columns = int(math.ceil((max(p[0] for f in faces for p in f) - low[0]) / cell)); rows = int(math.ceil((max(p[1] for f in faces for p in f) - low[1]) / cell))
+		if columns < 4 or rows < 4: continue
+		covered = [[False] * columns for _ in range(rows)]
+		for face in faces:
+			for row in range(max(0, int((min(p[1] for p in face) - low[1]) / cell)), min(rows, int((max(p[1] for p in face) - low[1]) / cell) + 1)):
+				for column in range(max(0, int((min(p[0] for p in face) - low[0]) / cell)), min(columns, int((max(p[0] for p in face) - low[0]) / cell) + 1)):
+					point = (low[0] + (column + 0.5) * cell, low[1] + (row + 0.5) * cell); d = [signed_edge(face[k], face[(k + 1) % 3], point) for k in range(3)]
+					if all(v >= -1e-9 for v in d) or all(v <= 1e-9 for v in d): covered[row][column] = True
+		seen = set()
+		for row in range(rows):
+			for column in range(columns):
+				if covered[row][column] or (row, column) in seen: continue
+				pending = [(row, column)]; seen.add((row, column)); component = []; enclosed = True
+				while pending:
+					r, c = pending.pop(); component.append((r, c))
+					for nr, nc in ((r + 1, c), (r - 1, c), (r, c + 1), (r, c - 1)):
+						if not (0 <= nr < rows and 0 <= nc < columns): enclosed = False
+						elif not covered[nr][nc] and (nr, nc) not in seen: seen.add((nr, nc)); pending.append((nr, nc))
+				r0 = min(r for r, c in component); r1 = max(r for r, c in component) + 1; c0 = min(c for r, c in component); c1 = max(c for r, c in component) + 1
+				if not enclosed or (c1 - c0) < 4 or (r1 - r0) < 4 or len(component) < 0.75 * (r1 - r0) * (c1 - c0): continue
+				samples = [(low[0] + (c0 + (c1 - c0) * fx) * cell, low[1] + (r0 + (r1 - r0) * fy) * cell) for fx in (0.25, 0.5, 0.75) for fy in (0.25, 0.5, 0.75)]; origins = [[0, y, 0] for _, y in samples]
+				for origin, (x, y) in zip(origins, samples): origin[other] = x; origin[axis] = plane
+				if any(ray_blocked(triangles, origin, axis, -sign, transparent) for origin in origins) or not ray_blocked(triangles, origins[4], axis, sign, transparent): continue
+				span = [low[0] + c0 * cell - margin, low[0] + c1 * cell + margin]; height = [low[1] + r0 * cell - margin, low[1] + r1 * cell + margin]; front = plane - sign * 0.01; back = plane - sign * depth
+				def corner(x, y, z): return [round(x, 6), round(y, 6), round(z, 6)] if other == 0 else [round(z, 6), round(y, 6), round(x, 6)]
+				quad = lambda a, b, c, d: [a, b, c, a, c, d]; loop = [(span[0], height[0]), (span[1], height[0]), (span[1], height[1]), (span[0], height[1])]; vertices = quad(*[corner(x, y, back) for x, y in loop])
+				for k in range(4): (x0, y0), (x1, y1) = loop[k], loop[(k + 1) % 4]; vertices += quad(corner(x0, y0, front), corner(x1, y1, front), corner(x1, y1, back), corner(x0, y0, back))
+				backings.append({"axis": "xz"[axis // 2], "plane": plane, "bounds": [round(span[0], 4), round(height[0], 4), round(span[1], 4), round(height[1], 4)], "vertices": vertices})
+	return backings
 def export_area_roofs(dat_dir=None, output_dir=None, stages=None):
 	dat_dir = Path(dat_dir or ROOT / "build/disc-assets/DAT"); output_dir = Path(output_dir or ROOT / "assets/levels"); summary = Counter()
 	for path in sorted(dat_dir.glob("ST??T.BIN")):
@@ -1782,7 +1880,9 @@ def export_area_roofs(dat_dir=None, output_dir=None, stages=None):
 			values = struct.unpack_from("<BB5h", data, offset); record = {"area": index, "native_camera_record": list(values), "fixed_pitch": values[1] == 2, "source_offset": hex(offset), "roof": {"reason": "camera_allows_pitch", "vertices": []}}; mesh_path = output_dir / stage / ("area_%02d.glb" % index)
 			if record["fixed_pitch"] and mesh_path.is_file():
 				triangles = geometry(mesh_path, area_flags.get(index, False)); record["roof"] = roof_geometry(triangles); close_raised_roof(triangles, record["roof"])
-			if stage in ("ST04", "ST06", "ST07") and index == 0 and mesh_path.is_file():
+				windows = window_backings(triangles, texture_transparency(*read_glb(mesh_path)))
+				if windows: record["roof"]["window_backings"] = windows
+			if (stage, index) in (("ST04", 0), ("ST06", 0), ("ST07", 0), ("ST39", 1), ("ST3A", 3)) and mesh_path.is_file():
 				triangles = geometry(mesh_path, area_flags.get(index, False)); ceiling = roof_geometry(triangles)
 				if ceiling["reason"] == "existing_ceiling": record["roof"]["blackouts"] = ceiling_holes(triangles, ceiling["height"])
 			summary[record["roof"]["reason"]] += 1; records.append(record)

@@ -159,7 +159,7 @@ func _spend(weapon: int, stat: int) -> void:
 	var cost := _cost(weapon, stat)
 	if cost < 0: _say(3, 8); await _wait_closed(3); return
 	_say(0, 5); _say(3, 3, cost)
-	var answer := await _choice(3); _close(3)
+	var answer := await _choice(3); _close(3); _close(0)  # the heading window closes before any reply opens, so only one message is on screen
 	if answer == 0 and host.player.zenny < cost: _say(3, 9); await _wait_closed(3)
 	elif answer == 0:
 		_wallet(host.player.zenny - cost); _levels(weapon)[stat] = int(_levels(weapon)[stat]) + 1; _say(3, 7); await _wait_closed(3)

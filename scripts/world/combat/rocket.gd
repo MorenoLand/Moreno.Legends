@@ -1,5 +1,5 @@
 extends Node3D
-const TICK := 1.0 / 30.0
+const TICK := 1.0 / 25.0
 const SPEED_UNIT := 4096.0
 const SIZE_UNIT := 256.0
 const FLAGS := 0x40000

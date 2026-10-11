@@ -34,6 +34,8 @@ func request(code: int, retain_mode: bool = false) -> bool:
 	var token := generation; keep_mode = retain_mode; tick = 0; settle = int(profile["busy_settle_ticks"]); visual_finished = false; elapsed = 0.0
 	effect.set_shader_parameter("additive", str(profile.get("blend", "subtract")) == "add"); effect.set_shader_parameter("feedback", bool(profile.get("feedback", false)))
 	if bool(profile.get("feedback", false)):
+		# The mask fade needs a captured frame, which a headless run never renders.
+		if DisplayServer.get_name() == "headless": return true
 		atlas = manifest_cache.get("atlases", {}).get(str(profile.get("atlas", "")), {}); var path := "res://assets/fades/" + str(atlas.get("file", ""))
 		if not atlas_cache.has(path):
 			var atlas_texture := load(path) as Texture2D

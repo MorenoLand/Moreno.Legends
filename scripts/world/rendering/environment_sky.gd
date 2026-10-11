@@ -5,6 +5,9 @@ var previous_sky: Sky
 var material: ShaderMaterial
 var sky: Sky
 var flying := false
+var canvas_backdrop := false
+# A parked Flutter shows the dock (not the flight sky) through its windows and door.
+var parked := false
 func configure(view_camera: Camera3D, view_environment: Environment) -> bool:
 	environment = view_environment
 	if not is_instance_valid(view_camera) or environment == null: return false
@@ -18,8 +21,16 @@ func configure(view_camera: Camera3D, view_environment: Environment) -> bool:
 	set_flying(true); return true
 func set_flying(value: bool) -> void:
 	flying = value
-	if environment == null or sky == null: return
-	environment.background_mode = Environment.BG_SKY if flying else previous_background; environment.sky = sky if flying else previous_sky
+	if environment == null or sky == null or canvas_backdrop: return
+	environment.background_mode = Environment.BG_SKY if flying and not parked else previous_background; environment.sky = sky if flying and not parked else previous_sky
+func set_parked(value: bool) -> void:
+	parked = value; set_flying(flying)
+# The original frame's own backdrop strips (the runner host draws them on a canvas layer below the 3D view) replace the generic sky while they exist.
+func set_canvas_backdrop(active: bool) -> void:
+	if environment == null or active == canvas_backdrop: return
+	canvas_backdrop = active
+	if active: environment.background_mode = Environment.BG_CANVAS; environment.background_canvas_max_layer = -1
+	else: set_flying(flying)
 func _exit_tree() -> void:
 	if environment != null and environment.sky == sky: environment.background_mode = previous_background; environment.sky = previous_sky
 func set_fog(enabled: bool, native_depth_queue: Dictionary = {}, traced_depth_queue := false) -> void:
@@ -35,6 +46,7 @@ func set_fog(enabled: bool, native_depth_queue: Dictionary = {}, traced_depth_qu
 			var dqa := float(setup["dqa"]); var dqb := float(setup["dqb"]) / 16777216.0; var scale := dqa * float(setup["reference_h"]) / 65536.0
 			var begin := -scale / dqb if dqb != 0.0 else 0.0; var finish := scale / (1.0 - dqb) if dqb != 1.0 else begin + 1.0; var rgb: Array = native_depth_queue.get("far_rgb", [0, 0, 0]); var middle := (begin + finish) * 0.5
 			environment.fog_depth_begin = begin; environment.fog_depth_end = finish; environment.fog_depth_curve = log(clampf(dqb + scale / middle, 0.001, 0.999)) / log(0.5); environment.fog_light_color = Color(float(rgb[0]) / 255.0, float(rgb[1]) / 255.0, float(rgb[2]) / 255.0)
+	if canvas_backdrop: return
 	var background: Dictionary = native_depth_queue.get("background", {})
 	if bool(native_depth_queue.get("enabled", false)) and native_depth_queue.get("far_rgb", []) == [0, 0, 0]:
 		environment.background_mode = Environment.BG_COLOR; environment.background_color = Color.BLACK
@@ -42,4 +54,4 @@ func set_fog(enabled: bool, native_depth_queue: Dictionary = {}, traced_depth_qu
 		var rgb: Array = background["rgb"]; var displayed := PackedInt32Array()
 		for channel: int in rgb: displayed.append(((channel >> 3) * 255 + 15) / 31)
 		environment.background_mode = Environment.BG_COLOR; environment.background_color = Color8(displayed[0], displayed[1], displayed[2])
-	elif flying: environment.background_mode = Environment.BG_SKY; environment.sky = sky
+	elif flying and not parked: environment.background_mode = Environment.BG_SKY; environment.sky = sky

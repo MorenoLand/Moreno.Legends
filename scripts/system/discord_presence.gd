@@ -92,7 +92,7 @@ func _stop(delay: float) -> void:
 func _build() -> Dictionary:
 	var scene := get_tree().current_scene
 	var game: Variant = scene.get("gameplay") if scene != null else null
-	if not is_instance_valid(game) or game.get("area_picker") == null: return {"details": "Mega Man Legends 2 (port)", "state": "Title screen"}
+	if not is_instance_valid(game) or game.get("area_picker") == null: return {"details": "Mega Man Legends 2", "state": "Title screen"}
 	var names: Dictionary = game.get_location_names()
 	var main := str(names["main"])
 	var area := str(names["area"])

@@ -4,6 +4,11 @@ extends RefCounted
 const ENTRIES := 0x1000
 const END := 0xFFFFFF
 const TABLE_POINTER := 0x1F800048
+const PRIMITIVE_POINTER := 0x1F80004C
+const BAND_BYTES := 0x24
+## The GPU draws no polygon whose vertices lie more than 1023 apart horizontally or 511 apart vertically.
+const MAX_WIDTH := 1023
+const MAX_HEIGHT := 511
 
 
 static func clear(machine) -> void:
@@ -35,9 +40,54 @@ static func read(machine) -> Array:
 					if packet["textured"]:
 						abr = (int(packet["tpage"]) >> 5) & 3
 					packet["abr"] = abr
-					result.append(packet)
+					if _fits(packet["vertices"]):
+						result.append(packet)
 			next = tag & 0xFFFFFF
 	return result
+
+
+## The packets of the primitive buffer from one address to another in the order they were written, for a renderer pass run on a single record; `state` carries the blend mode between spans.
+static func span(machine, from: int, to: int, state: Dictionary) -> Array:
+	var result := []
+	var address := from
+	while address < to:
+		var tag: int = machine.u32(address)
+		var words := tag >> 24
+		if words == 0 or words > 12:
+			break
+		var packet := _decode(machine, address)
+		if packet.is_empty():
+			if machine.u8(address + 7) == 0xE1:
+				state["abr"] = (machine.u16(address + 4) >> 5) & 3
+		else:
+			if packet["textured"]:
+				state["abr"] = (int(packet["tpage"]) >> 5) & 3
+			packet["abr"] = state.get("abr", 0)
+			if _fits(packet["vertices"]):
+				result.append(packet)
+		address += (words + 1) * 4
+	return result
+
+
+## The backdrop strips (GAME 0x800BEFB8): the routine links its quads into a list of its own, so they are read where it wrote them, between the primitive pointer before and after the call.
+static func bands(machine) -> Array:
+	var start: int = machine.u32(PRIMITIVE_POINTER)
+	machine.call_function(0x800BEFB8)
+	var result := []
+	for address in range(start, machine.u32(PRIMITIVE_POINTER), BAND_BYTES):
+		var packet := _decode(machine, address)
+		if not packet.is_empty():
+			result.append(packet)
+	return result
+
+
+static func _fits(vertices: Array[Vector2]) -> bool:
+	var low := vertices[0]
+	var high := vertices[0]
+	for vertex in vertices:
+		low = low.min(vertex)
+		high = high.max(vertex)
+	return high.x - low.x <= MAX_WIDTH and high.y - low.y <= MAX_HEIGHT
 
 
 static func _decode(machine, address: int) -> Dictionary:

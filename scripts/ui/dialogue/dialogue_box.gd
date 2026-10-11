@@ -145,8 +145,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		if event.is_action_pressed("ui_cancel"):
 			if bool(current_native_choice.get("cancel_disabled", false)): return
 			current_choice_index = count
-		if choice_sounds:
-			var cancelled := current_choice_index >= count or current_choice_index >= 0 and bool(current_native_choice["rows"][current_choice_index].get("cancel", false))
+		# SLES 0x8004CA14: confirm plays 0x81 and cancel 0x82, skipped only when window flags have 0x10000 clear and 0x800000 set.
+		if choice_sounds or current_layout_flags & 0x10000 or not current_layout_flags & 0x800000:
+			var cancelled := current_choice_index >= count or choice_sounds and current_choice_index >= 0 and bool(current_native_choice["rows"][current_choice_index].get("cancel", false))
 			menu_sound_requested.emit("menu_cancel" if cancelled else "menu_confirm")
 		choice_completed.emit(current_choice_index); return
 	if not (event.is_action_pressed("interact") or event.is_action_pressed("ui_accept")): return
@@ -176,13 +177,18 @@ func _type_native_tick() -> void:
 		if character != " ": pending_typing_sound = true
 		if speed > 0: glyph_delay = speed - 1; break
 	text_complete = visible_glyphs >= text.length()
+## The heading box belongs to the page that carries the choice (the menu text after a story page); earlier pages of the same program show only their own window.
+func _heading_shown() -> bool:
+	if heading_panel.is_empty(): return false
+	return not current_native_choice.is_empty() or native_page_choices.all(func(choice: Dictionary) -> bool: return choice.is_empty())
+
 func _draw() -> void:
 	if not active or font == null or layout.is_empty() or size.y <= 0: return
 	var factor := size.y / 240.0; draw_set_transform(Vector2((size.x - 320.0 * factor) * 0.5, 0), 0, Vector2.ONE * factor)
 	FRAME.draw(self, layout, "prompt", current_frame)
-	if not heading_panel.is_empty(): FRAME.draw(self, layout, "prompt", heading_panel.get("frame", Rect2(85, 32, 151, 23)))
+	if _heading_shown(): FRAME.draw(self, layout, "prompt", heading_panel.get("frame", Rect2(85, 32, 151, 23)))
 	if pages.is_empty() or not FRAME.content_visible(self): return
-	if not heading_panel.is_empty():
+	if _heading_shown():
 		var heading_y: float = 3.0 + font.get_ascent(12)
 		for heading_line: String in str(heading_panel["text"]).split("
 "): draw_string(font, heading_panel.get("origin", Vector2(92, 35)) + Vector2(0, heading_y), heading_line, HORIZONTAL_ALIGNMENT_LEFT, heading_panel["frame"].size.x - 3 if heading_panel.has("frame") else 144, 12, Color.WHITE); heading_y += 16.0
@@ -235,7 +241,7 @@ func _move_native_choice(dx: int, dy: int) -> void:
 		if distance > 0 and distance < best_distance: best = candidate; best_distance = distance
 	if best >= 0:
 		current_choice_index = best
-		if choice_sounds: menu_sound_requested.emit("menu_move")
+		menu_sound_requested.emit("menu_move")	# SLES 0x8004B7AC: 0x80 whenever the selection changes
 		queue_redraw()
 func _source_speed(value: Variant) -> int:
 	if typeof(value) == TYPE_INT or typeof(value) == TYPE_FLOAT: return int(value)

@@ -4,9 +4,12 @@ extends Node
 const Props := preload("res://scripts/world/actors/native_props.gd")
 const Machine := preload("res://scripts/runner/mips_machine.gd")
 const Effects := preload("res://scripts/runner/runner_effects.gd")
+const Backdrop := preload("res://scripts/runner/runner_backdrop.gd")
 const Session := preload("res://scripts/runner/runner_session.gd")
 const View := preload("res://scripts/runner/runner_actor_view.gd")
 const Barriers := preload("res://scripts/runner/runner_barriers.gd")
+const RoomVariants := preload("res://scripts/world/flutter/room_variants.gd")
+const NativeFloor := preload("res://scripts/world/core/native_floor.gd")
 const PlayerScene := preload("res://scripts/runner/runner_player_scene.gd")
 const DIRECTORY := "res://assets/runner/"
 const PLAYER := 0x8008C0A0
@@ -30,14 +33,22 @@ const START_TICKS := 3
 const FIELD_IDLE := 0x200
 const FIELD_RUNNING := 0x203
 const REQUEST := 0x80078D08
+const LIFE := 0x70
+const ZENNY := 0x8009C810  # the wallet word of the game block (+0x28), read by the Status screen at SLES 0x8004FB60
+## SLES main loop state word: the tutorial's end (ST4A area 0 handler 0x800E74B8..0x800E7504, after message 0x2D set flag 0x68E) starts the screen wipe, then stores 2 here and points the main loop at the title (0x800128D4(0x80012B48)).
+const LOOP_STATE := 0x80078F80
+const LOOP_TITLE := 2
 const FLAG_BYTES := 256
+## Saved halfwords of the game block the dialogue adds to (event_script opcode 0x37 modes 1 and 2: the Pokte donation total spent by ST25's rebuild handler) and the context keys that mirror them.
+const COUNTERS := {"native_save_word78": 0x8009C860, "native_save_word7A": 0x8009C862}
 const NATIVE_HZ := 25.0
 const CAMERA_DISTANCE := 1024
 const DOORS := [0x161, 0x261, 0x361]
 const RADIO_WINDOW := 4
-const EXAMINE_REACH := 512.0
 const STORY_BYTE := 0x8009C7FD
 const BANK_POINTER := 0x1F800074
+## The map's placement table (4 + 8 bytes per placement; byte +3 low bits are the placement state GAME 0x800C010C writes and 0x800C00D4 reads).
+const PLACEMENTS := 0x1F80008C
 const SHAKE := 0x800750E8
 const EFFECT_MESH_SKEW := 0x24
 const HIT_FIRST := 0x1D4
@@ -56,6 +67,8 @@ var animations: Dictionary = {}
 var views: Dictionary = {}
 var elapsed := 0.0
 var flags_shadow := PackedByteArray()
+var counter_shadow := {}
+var placement_states := {}
 var scene_mode := false
 var scene_camera: Camera3D
 var camera_state: Array = []
@@ -63,10 +76,24 @@ var boss_view: Node3D
 var barriers := Barriers.new()
 var player_scene: Node
 var port_classes: Array = []
+## Lifter blocks (attach rule lift_classes). Phases: 1 pickup requested, 2 carried, 3 thrown this tick, 4 dropped this tick.
+var lift_classes: Array = []
+var solid_classes: Array = []
+## Life and zenny of the original's player struct as last exchanged with the port: the original collects dropped items by itself, the increases it makes go to the port's player.
+var pickup_life := 0
+var pickup_zenny := 0
+var lift_view: Node3D
+var lift_phase := 0
+var lift_frames := 0
+## A menu start (no arrival transform) of a stage whose attach rule asks for it: the player stands where the original stage set-up put him.
+var original_start := false
 var last_story := 0
 var last_committed := 0
 var bank_animations: Dictionary = {}
-var interact_held := false
+## Source surfaces of the exported models (part, face stream and default visibility of each mesh surface), keyed like the model keys: index, plus SUB_KEY for the sub-stage bank.
+var surfaces: Dictionary = {}
+## The interact press, latched until the next original tick: the original runs at 25 Hz, so a physics frame's press would mostly fall between two ticks. A press that advances or closes a message never gets here.
+var interact_pending := false
 var own_request := false
 var pending_shots: Array = []
 var pending_area := -1
@@ -76,6 +103,8 @@ var finished := false
 var busy := false
 var loader: Thread
 var effects: CanvasLayer
+var backdrop: CanvasLayer
+var strips: Array = []
 var pending_story := 0
 var job: Thread
 var ticking := false
@@ -84,6 +113,7 @@ var hold_released := false
 var requested_area := -1
 var grab_view: Node3D
 var built: Array = []
+var built_world: Array = []
 var shake := 0
 var holding := 0
 var start_ticks := 0
@@ -115,6 +145,7 @@ static func attach(parent: Node3D, stage_name: String, area_index: int, context:
 	host.gameplay = gameplay
 	host.stage = stage_name
 	host.manifest = entry
+	host.original_start = bool(rule.get("original_start", false)) and gameplay.entry_route.is_empty()
 	gameplay.add_child(host)
 	host.start(parent, area_index, int(context["native_save_byte14"]))
 
@@ -143,9 +174,16 @@ func _loaded() -> void:
 	effects.name = "RunnerEffects"
 	add_child(effects)
 	effects.configure(DIRECTORY + str(manifest["vram"]))
+	add_child(effects.world)
+	backdrop = Backdrop.new()
+	backdrop.name = "RunnerBackdrop"
+	add_child(backdrop)
+	backdrop.configure()
 	session.hle.bridge.grab_handler = Callable(self, "_grab")
 	gameplay.player.hold_ended.connect(_hold_ended)
 	port_classes = manifest["attach"]["port_classes"]
+	lift_classes = manifest["attach"].get("lift_classes", [])
+	solid_classes = manifest["attach"].get("solid_classes", [])
 	barriers.load_stage(stage)
 	for scene in manifest["attach"]["port_scenes"]:
 		session.hle.bridge.blocked_scenes[int(scene)] = true
@@ -153,32 +191,72 @@ func _loaded() -> void:
 	area = int(gameplay.get_meta("runner_start_area", area))
 	_read_animations(str(manifest["models_directory"]), animations)
 	if manifest.has("bank1"):
-		_read_animations(str(manifest["bank1"]["models_directory"]), bank_animations)
+		_read_animations(str(manifest["bank1"]["models_directory"]), bank_animations, SUB_KEY)
 	session.begin(int(("0x" + stage.substr(2)).hex_to_int()), area, pending_story, flags)
 	flags_shadow = session.read_flags()
 	_stop_on_fault()
 	last_story = pending_story
 	last_committed = pending_story
+	if original_start:
+		_adopt_start()
 	_sync_player_in()
 
+func _adopt_start() -> void:
+	_sync_player_out()
+	var point: Vector3 = gameplay.player.global_position
+	gameplay.player.reset_at(point)
+	gameplay.player.camera_pivot.rotation.y = gameplay.player.player_model.rotation.y
+	gameplay.spawn_position = point
+
+# A stage handover reparents the host while its session is still loading; only a host that is going away joins its threads.
 func _exit_tree() -> void:
-	if loader != null:
-		loader.wait_to_finish()
-	_join()
+	if is_queued_for_deletion():
+		if loader != null:
+			loader.wait_to_finish()
+		_join()
+	if is_instance_valid(gameplay) and is_instance_valid(gameplay.get("sky")):
+		gameplay.sky.set_canvas_backdrop(false)
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE:
+		if loader != null and loader.is_started(): loader.wait_to_finish()
+		_join()
 
 func _join() -> void:
 	if job != null and job.is_started():
 		job.wait_to_finish()
 
 ## Animation tables of an exported model bank's models.
-func _read_animations(directory: String, into: Dictionary) -> void:
+func _read_animations(directory: String, into: Dictionary, key_base := 0) -> void:
 	var section := DIRECTORY.path_join("../levels/%s/models/%s/manifest.json" % [stage, directory]).simplify_path()
 	for model: Dictionary in Props._read_manifest(section).get("models", []):
 		if model.get("status", "") == "exported":
 			into[int(model["index"])] = model["export"].get("animations", [])
+			surfaces[key_base + int(model["index"])] = model["export"].get("source_surfaces", [])
+
+## The original queued a read of a pack (SLES 0x8001B2D8) and the session loaded its model archive over the sub-stage bank (entry bank 1, 0x8013C800) or over the stage's own bank (entry bank 0, ST1C02), so the port's model files and animation tables follow the replaced bank.
+func _bank_loaded(entry: Dictionary) -> void:
+	if entry.has("vram"):
+		effects.vram = FileAccess.get_file_as_bytes(DIRECTORY + str(entry["vram"]))
+		effects.textures.clear()
+	var sub := int(entry["bank"]) == 1
+	if sub:
+		manifest["bank1"] = entry
+	else:
+		manifest["models_directory"] = entry["models_directory"]
+	(bank_animations if sub else animations).clear()
+	for key in surfaces.keys():
+		if (int(key) >= SUB_KEY) == sub:
+			surfaces.erase(key)
+	_read_animations(str(entry["models_directory"]), bank_animations if sub else animations, SUB_KEY if sub else 0)
+	for actor in views.keys():
+		if is_instance_valid(views[actor]) and (views[actor].model_index >= SUB_KEY) == sub:
+			views[actor].queue_free()
+			views.erase(actor)
 
 func level_loaded(parent: Node3D, area_index: int) -> void:
 	level = parent
+	placement_states.clear()
 	for view in views.values():
 		if is_instance_valid(view):
 			view.queue_free()
@@ -195,6 +273,7 @@ func level_loaded(parent: Node3D, area_index: int) -> void:
 
 func _request_area(area_index: int) -> void:
 	var machine: Machine = session.machine
+	session.apply_area_bank(area_index)
 	_sync_player_in()
 	own_request = true
 	machine.put8(REQUEST, 0xFF)
@@ -220,8 +299,6 @@ func _physics_process(delta: float) -> void:
 		return
 	if not scene_mode and (bool(gameplay.dialogue_box.get("active")) and int(gameplay.event_script.active_window_state.get("window", 0)) != RADIO_WINDOW or not gameplay.player.is_physics_processing()):
 		return
-	if scene_mode and Input.is_action_just_pressed("ui_cancel"):
-		start_ticks = START_TICKS
 	elapsed += delta * NATIVE_HZ
 	if ticking:
 		elapsed = minf(elapsed, 2.0)
@@ -232,11 +309,20 @@ func _physics_process(delta: float) -> void:
 		await _tick()
 		ticking = false
 
+## Start in a scene is the original's skip (GAME 0x800C10B4); taking the event here keeps the pause menu from opening over it.
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("interact") and not bool(gameplay.dialogue_box.get("active")):
+		interact_pending = true
+	if scene_mode and event.is_action_pressed("ui_cancel"):
+		start_ticks = START_TICKS
+		get_viewport().set_input_as_handled()
+
 func _flush_ports() -> void:
 	var machine: Machine = session.machine
 	for view in views.values():
 		if is_instance_valid(view):
 			view.flush_hits()
+	barriers.flush(machine)
 	for window: int in closing:
 		if window >= 0:
 			session.hle.bridge.windows.erase(window)
@@ -264,7 +350,10 @@ func _frame(view: Array) -> void:
 
 func _work(view: Array) -> void:
 	session.frame()
-	built = effects.build(session.render(), session.gte_projection(), view[0], view[1]) if not view.is_empty() else []
+	var drawn: Dictionary = session.render_world() if not view.is_empty() else {}
+	built = effects.build(drawn["screen"], session.gte_projection(), view[0], view[1]) if not view.is_empty() else []
+	built_world = effects.build_world(drawn) if not view.is_empty() else []
+	strips = session.background() if not view.is_empty() else []
 
 func _tick() -> void:
 	var machine: Machine = session.machine
@@ -312,11 +401,15 @@ func _tick() -> void:
 	_forward_hits()
 	_bridge_segments()
 	_sync_actors()
-	barriers.sync(machine, level, area)
+	_sync_placements()
+	barriers.sync(machine, level, area, gameplay.native_context)
 	_drain_bridge()
 	_shake()
 	if camera != null:
 		effects.show_batches(built)
+		effects.show_world(built_world, level.global_transform)
+		backdrop.show_bands(strips, session.gte_projection(), camera.fov, get_viewport().get_visible_rect().size)
+		gameplay.sky.set_canvas_backdrop(not strips.is_empty())
 	var active: bool = machine.u8(SCENE_ACTIVE) != 0
 	if active and not scene_mode:
 		_begin_scene()
@@ -327,6 +420,8 @@ func _tick() -> void:
 		_sync_player_pose()
 		if player_scene != null:
 			player_scene.sync(machine)
+		else:
+			gameplay.player.player_model.visible = machine.u8(PLAYER) & 2 != 0  # the struct's render flag, as in runner_player_scene.gd
 		_apply_camera()
 	var runner_area: int = machine.u8(Session.AREA_BYTE)
 	if pending_area >= 0:
@@ -336,6 +431,8 @@ func _tick() -> void:
 		_change_area(runner_area)
 	elif machine.u8(REQUEST) == 2 and not busy:
 		_stage_request()
+	elif machine.u32(LOOP_STATE) == LOOP_TITLE and not busy:
+		_return_to_title()
 	_stop_on_fault()
 
 ## The original camera code shakes by subtracting the magnitude from the focus height (SLES 0x80016B1C sets magnitude and decay); the port's camera takes the same value while the original code does not drive the camera.
@@ -560,26 +657,65 @@ func _port_camera() -> void:
 	var yaw := roundi(atan2(direction.x, direction.z) * 4096.0 / TAU) & 4095
 	session.hle.bridge.camera_override = [Vector3i(roundi(focus.x), roundi(focus.y), roundi(focus.z)), CAMERA_DISTANCE, yaw, pitch, 0]
 
-## Examine objects (terminals, switches: GAME 0x800D0154) run when the player's selection word (+0x1D0) holds their address with bit 24 set. Actors raise +0x60 to 1 while the player faces them in reach; the interact button selects the nearest of those for one tick.
+## Examine objects (terminals, switches, NPCs: GAME 0x800D0154) run when the player's selection word (+0x1D0) holds their address with bit 24 set. The interact press runs the original's own selection (GAME 0x800CC2F0, mode 0) for one tick: it scans the actor, object and effect pools for bodies flagged +0x60 bit 0 and keeps the nearest one inside its shape record (+0x5C: reach 0xC0 plus the record's radius, height window, a 45 degree cone around the player's heading) and writes the word.
 func _examine() -> void:
 	var machine: Machine = session.machine
 	machine.put32(PLAYER + 0x1D0, 0)
-	if scene_mode or not Input.is_action_just_pressed("interact") or bool(gameplay.dialogue_box.get("active")):
+	if lift_phase != 0:
+		_lift_fields(machine)
 		return
-	var best := 0
-	var nearest := EXAMINE_REACH
-	for actor: int in session.actor_slots():
-		if machine.u8(actor + 0x60) != 1:
-			continue
-		var reach := Vector2(machine.s16(actor + 0x12) - machine.s16(PLAYER + 0x12), machine.s16(actor + 0x1A) - machine.s16(PLAYER + 0x1A)).length()
-		if reach < nearest:
-			nearest = reach
-			best = actor
-	if best != 0:
-		machine.put32(PLAYER + 0x1D0, (best & 0xFFFFFF) | 0x1000000)
+	var pressed := interact_pending
+	interact_pending = false
+	if scene_mode or not pressed or bool(gameplay.dialogue_box.get("active")):
+		return
+	machine.call_function(0x800CC2F0, PLAYER, 0)
+
+## The original block code reads the player's lift fields: GAME 0x800CFABC takes the pickup from a selection word with bit 25 (and starts the player's lift mode 0x10), 0x800CFB24 holds the block at the hands by the lift frame (+0x9C, 0 to 12), 0x800CF998 reports a throw when the selection word is zero again and a drop when the mode is 0x0E or 0x0F.
+func lift_begin(view: Node3D) -> bool:
+	if lift_phase != 0:
+		return false
+	lift_view = view
+	lift_phase = 1
+	lift_frames = 0
+	return true
+
+func lift_release(view: Node3D) -> void:
+	if view == lift_view and lift_phase in [1, 2]:
+		lift_phase = 3
+
+func _lift_fields(machine: Machine) -> void:
+	if not is_instance_valid(lift_view) or lift_phase != 4 and lift_phase != 3 and machine.u8(int(lift_view.get("address")) + 8) not in [1, 2]:
+		lift_phase = 0
+		lift_view = null
+		return
+	var selection: int = (int(lift_view.get("address")) & 0xFFFFFF) | 0x2000000
+	machine.put8(PLAYER + 0x50, 0)
+	match lift_phase:
+		1:
+			machine.put32(PLAYER + 0x1D0, selection)
+			lift_phase = 2
+		2:
+			lift_frames = mini(lift_frames + 1, 12)
+			machine.put8(PLAYER + 9, 0x10)
+			machine.put8(PLAYER + 0x9C, lift_frames)
+			machine.put32(PLAYER + 0x1D0, selection)
+		3:
+			machine.put8(PLAYER + 9, 0x10)
+			machine.put8(PLAYER + 0x9C, lift_frames)
+			lift_phase = 0
+			lift_view = null
+		4:
+			machine.put8(PLAYER + 9, 0x0E)
+			lift_phase = 0
+			lift_view = null
 
 func _sync_player_in() -> void:
 	var machine: Machine = session.machine
+	pickup_life = gameplay.player.health
+	pickup_zenny = gameplay.player.zenny
+	machine.put16(PLAYER + LIFE, pickup_life)
+	machine.put16(PLAYER + LIFE + 2, gameplay.player.max_health)
+	machine.put32(ZENNY, pickup_zenny)
 	var local := level.to_local(gameplay.player.global_position)
 	machine.put32(PLAYER + 0x10, roundi(-local.x * 256.0 * 65536.0))
 	machine.put32(PLAYER + 0x14, roundi(-local.y * 256.0 * 65536.0))
@@ -618,6 +754,15 @@ func _hold_ended(_holder: Node3D, _escaped: bool) -> void:
 
 func _forward_hits() -> void:
 	var machine: Machine = session.machine
+	var life := machine.s16(PLAYER + LIFE)
+	var zenny := machine.s32(ZENNY)
+	if life > pickup_life and gameplay.player.health >= 0:
+		gameplay.player.health = mini(gameplay.player.max_health, gameplay.player.health + life - pickup_life)
+		gameplay.player.health_changed.emit(gameplay.player.health, gameplay.player.max_health)
+	if zenny > pickup_zenny:
+		gameplay.player.zenny = clampi(gameplay.player.zenny + zenny - pickup_zenny, 0, 9999999)
+	pickup_life = life
+	pickup_zenny = zenny
 	if gameplay.player.holder == null:
 		machine.put8(PLAYER + 9, 0)
 	var first := machine.u32(PLAYER + HIT_FIRST)
@@ -631,6 +776,11 @@ func _forward_hits() -> void:
 	gameplay.player.take_hit(damage, (first | second) & 0xFFFFF000, gameplay.player.global_position - source)
 
 func _sync_flags_in() -> void:
+	for key: String in COUNTERS:
+		var value := int(gameplay.native_context.get(key, 0))
+		if value != int(counter_shadow.get(key, 0)):
+			session.machine.put16(COUNTERS[key], value)
+			counter_shadow[key] = value
 	var flags: Dictionary = gameplay.native_context.get("event_flags", {})
 	var seen := {}
 	for key in flags:
@@ -654,6 +804,11 @@ func _set_runner_flag(id: int, value: bool) -> void:
 		flags_shadow[id >> 3] &= ~(1 << (id & 7))
 
 func _sync_flags_out() -> void:
+	for key: String in COUNTERS:
+		var value: int = session.machine.u16(COUNTERS[key])
+		if value != int(counter_shadow.get(key, 0)):
+			counter_shadow[key] = value
+			gameplay.native_context[key] = value
 	var now: PackedByteArray = session.read_flags()
 	if now == flags_shadow:
 		return
@@ -670,12 +825,38 @@ func _sync_flags_out() -> void:
 	gameplay.native_context["event_flags"] = flags
 	flags_shadow = now
 
+## Placements with several runtime states (the Pokte houses: the rebuild handler and the Krabbe fight write the state byte): the port shows the state's model and collision, and mirrors it into the context key the door and floor predicates read.
+func _sync_placements() -> void:
+	var machine: Machine = session.machine
+	var table := machine.u32(PLACEMENTS)
+	if table == 0 or not is_instance_valid(level):
+		return
+	for entry: Dictionary in gameplay.areas[_area_slot()].get("placement_variants", []):
+		if not entry.has("state_key"):
+			continue
+		var key := str(entry["state_key"])
+		var state := machine.u8(table + 4 + int(entry["placement"]) * 8 + 3) & 3
+		if int(placement_states.get(key, -1)) == state:
+			continue
+		placement_states[key] = state
+		gameplay.native_context[key] = state
+		if RoomVariants.set_state(level, str(entry["base_node"]), state):
+			NativeFloor.replace_placement(level, Props._read_manifest("res://assets/levels/%s/manifest.json" % stage)["native_floor_collision"], area, int(entry["placement"]), gameplay.native_context)
+
+func _area_slot() -> int:
+	for slot in gameplay.areas.size():
+		if int(gameplay.areas[slot]["index"]) == area:
+			return slot
+	return 0
+
 func _sync_actors() -> void:
 	var machine: Machine = session.machine
 	var live := {}
+	# The port only owns its classes outside scenes: a scene's actors (Bluecher, Barrel, Roll) are the original's own spawns and the port has no copy of them yet.
+	var in_scene := scene_mode or machine.u8(SCENE_ACTIVE) != 0
 	for actor: int in session.actor_slots() + session.effect_slots():
 		var passive := actor >= Session.EFFECT_BASE
-		if port_classes.has(float(machine.u8(actor + 4))):
+		if not in_scene and port_classes.has(float(machine.u8(actor + 4))):
 			if not passive:
 				machine.put8(actor, machine.u8(actor) & 0xFE)
 			continue
@@ -710,6 +891,16 @@ func bank_address(sub := false) -> int:
 func _model_index(actor: int) -> int:
 	var machine: Machine = session.machine
 	var mesh: int = machine.u32(actor + View.MESH)
+	var header: int = machine.u32(actor + View.HEADER) if actor >= Session.EFFECT_BASE else 0  # the model header an effect object draws (GAME 0x80025540 reads LODs from +0xA0..+0xA8 of it)
+	for sub in ([false, true] if header != 0 else []):
+		if sub and not manifest.has("bank1"):
+			break
+		var bank := bank_address(sub)
+		if header < bank or sub and header >= bank + int(manifest["bank1"]["size"]):
+			continue
+		for index in machine.u32(bank):
+			if machine.u32(bank + 4 + index * 16 + 4) + bank == header:
+				return index + (SUB_KEY if sub else 0)
 	for sub in [false, true]:
 		if sub and not manifest.has("bank1"):
 			break
@@ -733,11 +924,15 @@ func _create_view(actor: int, key: int, passive: bool) -> Node3D:
 	var scale := Vector3(machine.s16(mesh + 0x30), machine.s16(mesh + 0x32), machine.s16(mesh + 0x34))
 	view.name = "RunnerActor_%08X" % actor
 	level.add_child(view)
-	if not view.configure(machine, actor, path.simplify_path(), (bank_animations if sub else animations).get(index, []), scale, gameplay.depth_cue_parameters):
+	if not view.configure(machine, actor, path.simplify_path(), (bank_animations if sub else animations).get(index, []), scale, gameplay.depth_cue_parameters, surfaces.get(key, [])):
 		view.queue_free()
 		return null
 	view.model_index = key
 	view.passive = passive
+	if lift_classes.has(float(machine.u8(actor + 4))):
+		view.make_lift(self)
+	if solid_classes.has(float(machine.u8(actor + 4))):
+		view.make_solid()
 	return view
 
 func _drain_bridge() -> void:
@@ -756,6 +951,7 @@ func _drain_bridge() -> void:
 			"xa": _play_xa(int(event[1]))
 			"xa_fade": _fade_xa(int(event[1]))
 			"boss": _bind_boss(int(event[1]) & 0xFFFFFFFF, int(event[3]), int(event[4]) & 0xFFFFFF)
+			"bank": _bank_loaded(event[1])
 
 func _sound(event: Array) -> void:
 	if event[5]:
@@ -845,6 +1041,7 @@ func _apply_camera() -> void:
 
 func _change_area(runner_area: int) -> void:
 	busy = true
+	session.apply_area_bank(runner_area)  # areas the original code enters itself (scene requests) still follow the sub-stage archive rule
 	var machine: Machine = session.machine
 	var scene_after := scene_mode
 	var raw := [machine.s16(PLAYER + 0x12), machine.s16(PLAYER + 0x16), machine.s16(PLAYER + 0x1A), machine.s16(PLAYER + 0x2A) & 4095]
@@ -870,6 +1067,14 @@ func _begin_scene_camera() -> void:
 	level.add_child(scene_camera)
 	scene_camera.make_current()
 
+## The original's own exit to the title: its wipe is already running (bridge transition event), the port then leaves the session for the title screen.
+func _return_to_title() -> void:
+	busy = true
+	finished = true
+	while not gameplay.transition_overlay.is_idle():
+		await get_tree().physics_frame
+	gameplay.title_requested.emit()
+
 func _stage_request() -> void:
 	busy = true
 	var machine: Machine = session.machine
@@ -877,6 +1082,7 @@ func _stage_request() -> void:
 	var route := {"destination_stage": "ST%02X" % machine.u8(REQUEST + 4), "destination_area": machine.u8(REQUEST + 5), "destination_transform_raw": raw, "destination_transform": {"position": [float(raw[0]) / 256.0, float(raw[1]) / 256.0, float(raw[2]) / 256.0], "yaw_raw": raw[3], "floor_height": int(raw[1]) == -1}, "native_transition_mode": 2, "native_entry_fade": machine.u8(REQUEST + 0x18), "native_exit_fade": machine.u8(REQUEST + 0x19)}
 	machine.put8(REQUEST, 0)
 	session.frame()
+	_sync_flags_out()  # flags the exit state clears in this frame (ST3E scenes 0x65 to 0x67 clear 0x3D0 to 0x3D2)
 	var story: int = machine.u8(STORY_BYTE)
 	if story != last_story:
 		last_story = story

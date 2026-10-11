@@ -56,6 +56,11 @@ func h_800677D4() -> void:
 	pass
 
 
+## SLES 0x80067784: kernel call B0 0x10 that 0x800128D4 makes after storing the main loop callback (the tutorial's exit to the title); there is no kernel here, the host leaves the session itself when the loop state word becomes 2.
+func h_80067784() -> void:
+	pass
+
+
 ## SLES 0x80020984(mask, step, delay): fades the sequence slots in the mask; their finished bits (word 0x80078CA4) return once the fade has run.
 func h_80020984() -> void:
 	var mask := R[4]

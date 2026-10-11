@@ -355,8 +355,8 @@ func _actor_tick() -> void:
 		if profile.has("hinge_raw"):
 			var hinge := _world(profile["hinge_raw"]); actor["hinge_shift"] = Basis(Vector3.UP, actor["rest_yaw"]) * hinge - Basis(Vector3.UP, node.rotation.y) * hinge; node.position += actor["hinge_shift"]
 		for event: Dictionary in profile.get("events", []):
-			if int(event["step"]) != step: continue
-			if event.has("tick") and int(event["tick"]) != segment_tick: continue
+			if event.has("step") and int(event["step"]) != step: continue
+			if event.has("tick") and (int(event["tick"]) > segment_tick if str(event["op"]) == "exhaust" else int(event["tick"]) != segment_tick): continue
 			if event.has("state") and int(event["state"]) != director_state: continue
 			match str(event["op"]):
 				"actor_face_init": actor["face_tables"] = {"eyes": str(event["eye_table_ram"]).to_lower() if event["eye_table_ram"] != null else "", "mouth": str(event["mouth_table_ram"]).to_lower() if event["mouth_table_ram"] != null else ""}
@@ -365,6 +365,11 @@ func _actor_tick() -> void:
 					if clock != null: clock.play_control(int(event["control"]), int(event.get("start_record", 0)))
 				"position": node.position = _world(event["position_raw"])
 				"actor_head": actor["head_target"] = int(event["target"]); actor["head_speed"] = int(event["speed"]); actor["head_enabled"] = true; node.set_meta("native_head_target", event.duplicate())
+				"exhaust":
+					if not actor.has("exhaust"):
+						var exhaust: MeshInstance3D = preload("res://scripts/cinematics/native_exhaust.gd").new(); node.add_child(exhaust)
+						if exhaust.configure(str(event["effect"])): actor["exhaust"] = exhaust
+						else: exhaust.free()
 		var flag_start: Dictionary = profile.get("event_flag_start", {})
 		if not flag_start.is_empty() and int(flag_start["step"]) == step and not bool(actor["flag_started"]):
 			var flags: Dictionary = host.native_context.get("event_flags", {}); var id := int(flag_start["id"])
@@ -385,6 +390,7 @@ func _actor_tick() -> void:
 				if str(reaction["op"]) == "event_clear": _clear_flag(int(reaction["id"]))
 				elif str(reaction["op"]) == "actor_face": _set_face(node, str(actor["face_tables"].get(str(reaction["channel"]), "")), str(reaction["channel"]), int(reaction["sequence"]))
 		if clock != null: clock.native_tick()
+		if actor.has("exhaust"): actor["exhaust"].native_tick(total_tick)
 		if node.has_method("native_tick"): actor["fields"]["scene_step"] = step; actor["fields"]["scene_tick"] = segment_tick; node.native_tick(actor["fields"])
 		var render_raw: Array = profile.get("render_offset_by_step", {}).get(str(step), [0, 0, 0]); actor["render_offset"] = _world(render_raw); node.position += actor["render_offset"]
 func _head_tick() -> void:

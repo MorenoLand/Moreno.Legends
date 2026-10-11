@@ -29,6 +29,7 @@ var previous_room_key := ""
 var requested_room_key := ""
 var visible_neighbor_keys: Dictionary = {}
 var body_radius := 0.12
+var portal_blockers: Dictionary = {}
 var props: Dictionary = {}
 var props_loaded := false
 var native_context: Dictionary = {}
@@ -44,7 +45,7 @@ var exterior_request := 0
 var external_routes: Array = []
 var parked_exterior_enabled := false
 func can_show_parked_exterior() -> bool: return parked_exterior_enabled
-const LAYOUTS := ["room_layout", "mine_room_layout", "landing_room_layout", "town_room_layout", "ruminoa_room_layout", "pokte_room_layout", "pokte_mayor_room_layout", "kito_room_layout", "kimotoma_room_layout", "sulphur_room_layout", "glyde_room_layout", "manda_room_layout", "saul_kada_room_layout", "calinca_ruins_room_layout", "nino_ruins_room_layout", "defense_room_layout", "mother_zone_room_layout", "guild_ruins_room_layout", "pokte_caverns_room_layout", "kito_caverns_room_layout", "kimotoma_caverns_room_layout", "license_test_room_layout"]
+const LAYOUTS := ["room_layout", "mine_room_layout", "landing_room_layout", "town_room_layout", "ruminoa_room_layout", "pokte_room_layout", "pokte_mayor_room_layout", "kito_room_layout", "kimotoma_room_layout", "sulphur_room_layout", "glyde_room_layout", "manda_room_layout", "saul_kada_room_layout", "calinca_ruins_room_layout", "nino_ruins_room_layout", "defense_room_layout", "mother_zone_room_layout", "guild_ruins_room_layout", "pokte_caverns_room_layout", "kito_caverns_room_layout", "kimotoma_caverns_room_layout", "license_test_room_layout", "tutorial_room_layout"]
 static var layout_rooms: Dictionary = {}
 static func layout_path_for(stage: String, area: int) -> String:
 	if layout_rooms.is_empty():
@@ -124,6 +125,7 @@ func clear_parked_exterior() -> void:
 	for room: Node3D in rooms.values(): preload("res://scripts/world/flutter/window_view.gd").set_snowfall(room, false)
 	if is_instance_valid(parked_exterior): parked_exterior.queue_free()
 	parked_exterior = null
+const HULL_IN_INTERIOR := Vector3(-0.0078, -1.1055, 1.3078)
 func set_parked_exterior(stage: String, area: int) -> bool:
 	if not parked_exterior_enabled: return false
 	clear_parked_exterior()
@@ -144,10 +146,14 @@ func set_parked_exterior(stage: String, area: int) -> bool:
 	if int(inside[1]) == -1 or int(outside[1]) == -1: return false
 	var interior_anchor := Vector3(-float(inside[0]), -float(inside[1]), float(inside[2])) / 256.0 + offset_for(str(paired["source_stage"]), int(paired["source_area"]))
 	var exterior_anchor := Vector3(-float(outside[0]), -float(outside[1]), float(outside[2])) / 256.0
-	var interior_yaw := -float(inside[3]) * TAU / 4096.0
-	var exterior_yaw := -float(outside[3]) * TAU / 4096.0 + PI
-	var dock := preload("res://scripts/world/flutter/flutter_dock.gd").exterior_hatch(stage)
-	if not dock.is_empty(): exterior_anchor = dock["position"]; exterior_yaw = float(dock["yaw"]) + PI
+	# Door anchor, used while the active room looks out of the exit door: the door contact sits on the hull hatch at gangway height.
+	var hatch_point := exterior_anchor; var hatch_yaw := -float(outside[3]) * TAU / 4096.0 + PI
+	var hatch := preload("res://scripts/world/flutter/flutter_dock.gd").exterior_hatch(stage)
+	if not hatch.is_empty(): hatch_point = hatch["position"]; hatch_yaw = float(hatch["yaw"]) + PI
+	# The interior is larger than the hull, so one anchor cannot serve every room: the Bridge window panes are fitted to the hull model's cockpit glass instead (the hull faces whose texels are transparent). Least squares over the five pane midpoints gives yaw 0 and the translation in HULL_IN_INTERIOR (z residual <= 0.07; the Bridge is wider than the hull, x residual <= 0.7); y matches the pane centres (Bridge 0.8125, hull glass 1.918).
+	var hull := preload("res://scripts/world/flutter/flutter_dock.gd").descriptor(stage)
+	if hull.is_empty(): return false
+	var hull_point: Array = hull["position_raw"]; exterior_anchor = Vector3(-float(hull_point[0]), -float(hull_point[1]), float(hull_point[2])) / 256.0
 	var manifest_path := "res://assets/levels/%s/manifest.json" % stage
 	var manifest: Variant = JSON.parse_string(FileAccess.get_file_as_string(manifest_path)) if FileAccess.file_exists(manifest_path) else null
 	if not manifest is Dictionary: return false
@@ -160,8 +166,8 @@ func set_parked_exterior(stage: String, area: int) -> bool:
 	var exterior := scene.instantiate() as Node3D
 	if exterior == null: return false
 	exterior.set_meta("native_map_face_flags", bool(entry.get("native_map_face_flags_in_alpha", false)))
-	var rotation_basis := Basis(Vector3.UP, interior_yaw - exterior_yaw)
-	exterior.transform = Transform3D(rotation_basis, interior_anchor - rotation_basis * exterior_anchor)
+	var rotation_basis := Basis(Vector3.UP, float(hull["yaw_raw"]) * TAU / 4096.0)
+	exterior.transform = Transform3D(rotation_basis, HULL_IN_INTERIOR - rotation_basis * exterior_anchor)
 	exterior.name = "ParkedExterior"
 	exterior.process_mode = Node.PROCESS_MODE_DISABLED
 	for collider: CollisionObject3D in exterior.find_children("*", "CollisionObject3D", true, false): collider.collision_layer = 0; collider.collision_mask = 0; collider.queue_free()
@@ -180,7 +186,22 @@ func set_parked_exterior(stage: String, area: int) -> bool:
 	for behavior: Node in exterior.find_children("NativeNpcBehavior", "Node", true, false):
 		var actor: Node3D = behavior.get("actor"); actor.set_meta("native_motion_collision_mask", 32); behavior.process_mode = Node.PROCESS_MODE_PAUSABLE
 	for clock: Node in exterior.find_children("NativeAnimationClock", "Node", true, false): clock.process_mode = Node.PROCESS_MODE_PAUSABLE
+	var gates := await _parked_gates(paired, interior_anchor, request)
+	if request != exterior_request:
+		exterior.queue_free()
+		return false
+	exterior.set_meta("aperture_gates", gates)
+	# The threshold sits on the real gangway collision floor under the hatch (the record height can differ from it by a step).
+	var floor_y := await _floor_height(exterior, hatch_point + Vector3.UP)
+	if request != exterior_request:
+		exterior.queue_free()
+		return false
+	if not is_nan(floor_y): hatch_point.y = floor_y
+	var door_basis := Basis(Vector3.UP, -float(inside[3]) * TAU / 4096.0 - hatch_yaw)
+	exterior.set_meta("window_transform", exterior.transform); exterior.set_meta("door_transform", Transform3D(door_basis, interior_anchor - door_basis * hatch_point))
+	exterior.set_meta("dock_stage", stage)
 	parked_exterior = exterior
+	_anchor_parked_exterior()
 	_clip_parked_exterior()
 	preload("res://scripts/world/rendering/native_material.gd").depth_cue(exterior, preload("res://scripts/world/rendering/native_material.gd").area_parameters("res://assets/levels/%s/lighting.json" % stage, area))
 	var weather: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://assets/weather/manifest.json")); var snow := false
@@ -192,21 +213,59 @@ func set_parked_exterior(stage: String, area: int) -> bool:
 		var flakes := CPUParticles3D.new(); flakes.name = "ExteriorSnow"; flakes.process_mode = Node.PROCESS_MODE_PAUSABLE; flakes.amount = 1000; flakes.lifetime = 20.0; flakes.preprocess = 20.0; flakes.local_coords = false; flakes.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX; flakes.emission_box_extents = Vector3(10, 3, 10); flakes.direction = Vector3.DOWN; flakes.spread = 8.0; flakes.initial_velocity_min = 0.35; flakes.initial_velocity_max = 0.55; flakes.gravity = Vector3(0.015, -0.01, 0.015); flakes.position = exterior_anchor + Vector3.UP * 3.0
 		var quad := QuadMesh.new(); quad.size = Vector2(0.035, 0.035); var material := ShaderMaterial.new(); material.shader = preload("res://shaders/exterior_snow.gdshader"); material.set_shader_parameter("snow_texture", load("res://assets/weather/snow.png")); quad.material = material; flakes.mesh = quad; exterior.set_meta("snow_material", material); exterior.add_child(flakes); _clip_parked_exterior()
 	return true
-func _clip_parked_exterior(visible_rooms: Dictionary = {}) -> void:
+# The parked exterior is a portal: it renders only where the eye ray crosses the entrance door aperture or a window pane (room_clip_view_gate / room_clip_view_cut in native_model.gdshader), so the dock and the longer Flutter interior never show through each other.
+func _parked_door_gate(route: Dictionary, anchor: Vector3) -> Dictionary:
+	var data: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://assets/levels/%s/doors.json" % str(route["source_stage"])))
+	var key := _room_key(str(route["source_stage"]), int(route["source_area"]))
+	if not data is Dictionary or not room_bounds.has(key) or portal_layout.is_empty(): return {}
+	for entry: Dictionary in data.get("area_transitions", []):
+		if int(entry["file_offset"]) != int(route["file_offset"]) or entry.get("native_contacts", []).is_empty(): continue
+		var contact: Dictionary = entry["native_contacts"][0]; var span := Vector2(float(contact["x"][1] - contact["x"][0]), float(contact["z"][1] - contact["z"][0])) / 256.0
+		var axis := 0 if span.x <= span.y else 2; var depth := span.x if axis == 0 else span.y; var width := span.y if axis == 0 else span.x
+		var outward := -1.0 if anchor[axis] < room_bounds[key].get_center()[axis] else 1.0; var plane := Vector4.ZERO; plane[axis] = outward; plane.w = -(anchor[axis] - outward * depth * 0.5) * outward
+		var lateral := anchor.x * -plane.z + anchor.z * plane.x; var height := float(portal_layout[0]["shared_panel_size"][1])
+		return {"plane": plane, "bounds": Vector4(lateral - width * 0.5, lateral + width * 0.5, anchor.y, anchor.y + height), "door": true}
+	return {}
+func _parked_gates(route: Dictionary, anchor: Vector3, request: int) -> Array[Dictionary]:
+	var gates: Array[Dictionary] = []; var door := _parked_door_gate(route, anchor)
+	if door.is_empty(): return gates
+	gates.append(door)
+	for key: String in room_info:
+		var entry: Dictionary = room_info[key]; var scene_path := "res://assets/levels/%s/%s" % [str(entry["stage"]), str(entry["file"])]
+		if bool(entry.get("exterior", false)) or not preload("res://scripts/world/flutter/window_view.gd").ROOMS.has("%s:%d" % [str(entry["stage"]), int(entry["area"])]): continue
+		var scene: PackedScene = await _threaded_scene(scene_path)
+		if scene == null or request != exterior_request: return []
+		var root := scene.instantiate() as Node3D
+		for face: Dictionary in preload("res://scripts/world/flutter/window_view.gd").pane_faces(root, str(entry["stage"]), int(entry["area"]), room_offsets[key], room_bounds[key].get_center()): gates.append({"plane": face["plane"], "bounds": Vector4(face["lateral"].x, face["lateral"].y, face["y"].x, face["y"].y), "door": false})
+		root.free()
+	return gates
+# The dock is only ever seen through apertures, so each room gets the anchor that makes its own aperture line up; the swap happens where no shared view exists.
+func _floor_height(root: Node3D, from: Vector3) -> float:
+	# A disabled subtree has no live colliders, so the exterior runs for two physics frames while the floor is probed.
+	var mode := root.process_mode; root.process_mode = Node.PROCESS_MODE_PAUSABLE
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var transform := root.global_transform; var hit := get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(transform * from, transform * (from + Vector3.DOWN * 4.0), 32))
+	if is_instance_valid(root): root.process_mode = mode
+	return (transform.affine_inverse() * (hit["position"] as Vector3)).y if not hit.is_empty() else NAN
+func _anchor_parked_exterior() -> void:
+	if is_instance_valid(parked_exterior) and parked_exterior.has_meta("door_transform"): parked_exterior.transform = parked_exterior.get_meta("window_transform") if active_room_key == "ST04:0" else parked_exterior.get_meta("door_transform")
+func _clip_parked_exterior() -> void:
 	if not is_instance_valid(parked_exterior): return
-	var minimum := PackedVector3Array(); var maximum := PackedVector3Array()
-	for key in rooms:
-		if bool(room_info[key].get("exterior", false)) or (not visible_rooms.has(key) if not visible_rooms.is_empty() else not rooms[key].visible): continue
-		var bounds: AABB = room_bounds[key]; minimum.append(bounds.position); maximum.append(bounds.end)
-	var count := minimum.size(); minimum.resize(16); maximum.resize(16)
+	var gates: Array = parked_exterior.get_meta("aperture_gates", [])
+	if gates.is_empty() or gates.size() > 15: return
+	# A gate plane extends over every room, so a gate never grants full view when the eye is past it (that would flood the dock into the interior): each is view_cut, and a sentinel view_gate (eye always behind, empty bounds, never crossed) makes an aperture always required.
+	var planes := PackedVector4Array([Vector4(0, 0, 0, -1)]); var limits := PackedFloat32Array([-1.0e9]); var bounds := PackedVector4Array([Vector4(1, -1, 1, -1)]); var depths := PackedVector2Array([Vector2.ZERO]); var flags: Array[bool] = [true]; var cut: Array[bool] = [false]; var bounded: Array[bool] = [false]
+	for gate: Dictionary in gates: planes.append(gate["plane"]); limits.append(-1.0e9); bounds.append(gate["bounds"]); depths.append(Vector2.ZERO); flags.append(false); cut.append(true); bounded.append(false)
+	var count := gates.size() + 1; planes.resize(16); limits.resize(16); bounds.resize(16); depths.resize(16); flags.resize(16); cut.resize(16); bounded.resize(16)
 	var snow_material := parked_exterior.get_meta("snow_material") as ShaderMaterial if parked_exterior.has_meta("snow_material") else null
-	if snow_material != null: snow_material.set_shader_parameter("interior_clip_count", mini(count, 16)); snow_material.set_shader_parameter("interior_clip_min", minimum); snow_material.set_shader_parameter("interior_clip_max", maximum)
+	if snow_material != null: snow_material.set_shader_parameter("gate_count", mini(count - 1, 8)); snow_material.set_shader_parameter("gate_planes", planes.slice(1, 9)); snow_material.set_shader_parameter("gate_bounds", bounds.slice(1, 9))
 	for mesh: MeshInstance3D in parked_exterior.find_children("*", "MeshInstance3D", true, false):
 		if mesh.mesh == null: continue
 		for surface in mesh.mesh.get_surface_count():
 			var material := mesh.get_active_material(surface) as ShaderMaterial
 			if material == null or not preload("res://scripts/world/rendering/native_material.gd").is_model_shader(material.shader): continue
-			material.set_shader_parameter("interior_clip_count", mini(count, 16)); material.set_shader_parameter("interior_clip_min", minimum); material.set_shader_parameter("interior_clip_max", maximum)
+			material.set_shader_parameter("interior_clip_count", 0); material.set_shader_parameter("portal_clip_enabled", false); material.set_shader_parameter("portal_floor_clip_count", 0); material.set_shader_parameter("room_clip_count", count); material.set_shader_parameter("room_clip_planes", planes); material.set_shader_parameter("room_clip_limits", limits); material.set_shader_parameter("room_clip_bounds", bounds); material.set_shader_parameter("room_clip_depths", depths); material.set_shader_parameter("room_clip_bounded", bounded); material.set_shader_parameter("room_clip_view_gate", flags); material.set_shader_parameter("room_clip_view_cut", cut)
 func _clip_exterior_rooms() -> void:
 	var active_interior: bool = room_bounds.has(active_room_key) and not bool(room_info[active_room_key].get("exterior", false)); var minimum := PackedVector3Array(); var maximum := PackedVector3Array()
 	if active_interior:
@@ -264,6 +323,7 @@ func _ensure_room_loaded(stage: String, area: int) -> bool:
 	await get_tree().process_frame
 	await preload("res://scripts/world/core/native_coplanar_overlays.gd").warm(room)
 	preload("res://scripts/world/rendering/native_material.gd").apply(room)
+	if not bool(room_info[key].get("exterior", false)): preload("res://scripts/world/rendering/native_material.gd").open_streams(room)
 	await get_tree().process_frame
 	var slice_start := Time.get_ticks_usec()
 	for item in room.find_children("*", "MeshInstance3D", true, false):
@@ -369,6 +429,7 @@ func open_route(stage: String, area: int, route: Dictionary, player_position: Ve
 		requested_room_key = _room_key(destination_stage, destination_area)
 		if not await _ensure_room_loaded(destination_stage, destination_area): requested_room_key = ""; return false
 		opened_portals[key] = true
+		_stream_door(portal, true)
 		opened_from[key] = _room_key(stage, area); var source_side := str(portal["source"]["stage"]) == stage and int(portal["source"]["area"]) == area; var axis := 0 if str(portal["normal_axis"]) == "x" else 2; var sign := _outward_sign(portal, source_side); var plane := float(portal["world_center"][axis]); opened_origin_distance[key] = (player_position[axis] - plane) * sign
 		var leaf_profile: Dictionary = portal.get("source_native_door", {}) if forward else portal.get("reverse_native_door", {})
 		if int(leaf_profile.get("controller_class", 1)) == 3 and not portal_leaves.has(key): await _sliding_door_models(stage, leaf_profile)
@@ -508,6 +569,7 @@ func _close_portal(key: String) -> void:
 		await _close_leaf(leaf)
 		portal_leaves.erase(key); closing_portals.erase(key); leaf.queue_free()
 	if portal_depth_views.has(key): portal_depth_views[key].queue_free(); portal_depth_views.erase(key)
+	_stream_door(portal, false)
 	opened_portals.erase(key); opened_from.erase(key); opened_origin_distance.erase(key); portal_camera_sides.erase(key)
 	var source_key := _room_key(str(portal["source"]["stage"]), int(portal["source"]["area"])); var destination_key := _room_key(str(portal["destination"]["stage"]), int(portal["destination"]["area"]))
 	_refresh_open_meshes(source_key, str(portal["source_panel"]["node"])); _refresh_open_meshes(destination_key, str(portal["destination_panel"]["node"])); _refresh_room_state(); _evict_unused(); _prepare_around_active()
@@ -728,10 +790,17 @@ func _create_doorway_depth(portal: Dictionary, leaf: Node3D) -> void:
 	if mesh.get_surface_count() == 0: return
 	var depth := MeshInstance3D.new(); depth.name = "DoorwayDepth"; depth.mesh = mesh; depth.set_meta("pc_doorway_depth", maximum - minimum); add_child(depth); portal_depth_views[key] = depth
 func _create_doorway_backing(portal: Dictionary, key: String) -> void:
+	# The parked dock shows through its own door aperture, so that door gets no backing.
+	if is_instance_valid(parked_exterior) and str(parked_exterior.get_meta("dock_stage", "")) == str(portal["destination"]["stage"]): return
 	if portal.has("destination_panel") or rooms.has(_room_key(str(portal["destination"]["stage"]), int(portal["destination"]["area"]))) or portal_backings.has(key) or not portal_leaves.has(key): return
 	var axis := 0 if str(portal["normal_axis"]) == "x" else 2; var sign := _outward_sign(portal, true); var center: Array = portal["world_center"]; var sweep: AABB = portal_leaves[key].get_meta("sweep_bounds"); var far := (sweep.end[axis] if sign > 0.0 else sweep.position[axis]) - float(center[axis])
 	var quad := QuadMesh.new(); quad.size = Vector2(float(portal["shared_panel_size"][0]) + 0.2, float(portal["shared_panel_size"][1]) + 0.2); var material := StandardMaterial3D.new(); material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; material.albedo_color = Color.BLACK; material.cull_mode = BaseMaterial3D.CULL_DISABLED; material.disable_fog = true; quad.material = material
 	var backing := MeshInstance3D.new(); backing.name = "DoorwayBacking"; backing.mesh = quad; backing.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF; add_child(backing); backing.global_position = Vector3(float(center[0]), float(center[1]), float(center[2])) + (Vector3.RIGHT if axis == 0 else Vector3.BACK) * (far + 0.05 * sign); backing.rotation.y = PI * 0.5 if axis == 0 else 0.0; portal_backings[key] = backing
+## The exterior side of a door shows the faces of its open-door stream range while the door is open (see native_material.set_stream_open).
+func _stream_door(portal: Dictionary, open: bool) -> void:
+	for side in ["source", "destination"]:
+		var key := _room_key(str(portal[side]["stage"]), int(portal[side]["area"])); var panel: Variant = portal.get(side + "_panel", null)
+		if rooms.has(key) and panel is Dictionary and bool(room_info[key].get("exterior", false)): preload("res://scripts/world/rendering/native_material.gd").set_stream_open(rooms[key], str(panel["node"]), open)
 func _portal_by_key(key: String) -> Dictionary:
 	for portal: Dictionary in portal_layout:
 		if _portal_key(portal) == key: return portal
@@ -929,7 +998,21 @@ func _add_collision(mesh_node: MeshInstance3D, mesh: Mesh, layers: Array[int] = 
 		var body := StaticBody3D.new(); body.name = "RoomCollision_%d" % layer; body.collision_layer = layer; body.collision_mask = 0; var shape := CollisionShape3D.new(); shape.shape = geometry.duplicate() if layer == 4 else geometry
 		if layer == 4 and shape.shape is ConcavePolygonShape3D: (shape.shape as ConcavePolygonShape3D).backface_collision = true
 		body.add_child(shape); mesh_node.add_child(body)
+## A closed door must stop the player: the map's door panel face is clipped out of the room's player shape (it lies on the room's clip boundary), so each portal gets a thin blocker one body radius beyond the doorway plane on the outer side of the active room. It is off while the portal is open, and the doorway plane stays reachable for the contact tests.
+func _sync_portal_blockers() -> void:
+	for portal: Dictionary in portal_layout:
+		var key := _portal_key(portal); var body: StaticBody3D = portal_blockers.get(key)
+		var axis_x := str(portal["normal_axis"]) == "x"
+		var source_side := _room_key(str(portal["source"]["stage"]), int(portal["source"]["area"])) == active_room_key or _room_key(str(portal["destination"]["stage"]), int(portal["destination"]["area"])) != active_room_key
+		if not is_instance_valid(body):
+			body = StaticBody3D.new(); body.name = "PortalBlocker_" + key.replace(":", "_"); body.collision_mask = 0
+			var shape := CollisionShape3D.new(); var box := BoxShape3D.new(); var width := maxf(float(portal["shared_panel_size"][0]), 1.0) + 0.5
+			box.size = Vector3(0.1, 3.0, width) if axis_x else Vector3(width, 3.0, 0.1); shape.shape = box; body.add_child(shape); add_child(body); portal_blockers[key] = body
+		var center: Array = portal["world_center"]; var push := _outward_sign(portal, source_side) * (body_radius + 0.05)
+		body.global_position = Vector3(float(center[0]) + (push if axis_x else 0.0), float(center[1]) + 1.0, float(center[2]) + (0.0 if axis_x else push))
+		body.collision_layer = 0 if opened_portals.has(key) else 1
 func _refresh_room_state() -> void:
+	_sync_portal_blockers()
 	var visible := {}
 	visible_neighbor_keys.clear()
 	if not active_room_key.is_empty(): visible[active_room_key] = true
@@ -938,8 +1021,8 @@ func _refresh_room_state() -> void:
 		var source_key := _room_key(str(portal["source"]["stage"]), int(portal["source"]["area"])); var destination_key := _room_key(str(portal["destination"]["stage"]), int(portal["destination"]["area"]))
 		if source_key == active_room_key: visible[destination_key] = true; visible_neighbor_keys[destination_key] = true
 		elif destination_key == active_room_key: visible[source_key] = true; visible_neighbor_keys[source_key] = true
-	_clip_parked_exterior(visible)
 	_clip_exterior_rooms()
+	_anchor_parked_exterior()
 	for support in floor_supports.values():
 		if is_instance_valid(support): support.collision_layer = 0; support.collision_mask = 0; support.queue_free()
 	floor_supports.clear()
@@ -950,7 +1033,7 @@ func _refresh_room_state() -> void:
 			if collider.has_meta("native_stream_actor_layer"): collider.collision_layer = int(collider.get_meta("native_stream_actor_layer")) if room_key == active_room_key else 0
 		var clip_plane := Vector4.ZERO
 		var clip_enabled := false
-		var room_planes := PackedVector4Array(); var room_limits := PackedFloat32Array(); var room_clip_bounds := PackedVector4Array(); var room_clip_depths := PackedVector2Array(); var room_clip_bounded: Array[bool] = []; var room_clip_view_gate: Array[bool] = []; var room_clip_view_cut: Array[bool] = []
+		var room_planes := PackedVector4Array(); var room_limits := PackedFloat32Array(); var room_clip_bounds := PackedVector4Array(); var room_clip_depths := PackedVector2Array(); var room_clip_bounded: Array[bool] = []; var room_clip_view_gate: Array[bool] = []; var room_clip_view_cut: Array[bool] = []; var room_clip_aperture: Array[bool] = []
 		for portal: Dictionary in portal_layout:
 			var portal_key := _portal_key(portal)
 			if not opened_portals.has(portal_key): continue
@@ -958,11 +1041,11 @@ func _refresh_room_state() -> void:
 			if room_key != source_key and room_key != destination_key: continue
 			var source_side: bool = room_key == source_key; var axis := 0 if str(portal["normal_axis"]) == "x" else 2; var inward := -_outward_sign(portal, source_side); var plane := Vector4.ZERO; plane[axis] = inward; plane.w = -float(portal["world_center"][axis]) * inward; room_planes.append(plane)
 			var camera_source: bool = portal_camera_sides.get(portal_key, str(opened_from.get(portal_key, "")) == source_key); room_limits.append(-0.0001 if camera_source == source_side else 0.0001)
-			var bounded := bool(room_info[room_key].get("exterior", false)); room_clip_bounded.append(bounded); room_clip_view_gate.append(room_key != active_room_key and (source_key == active_room_key or destination_key == active_room_key)); room_clip_view_cut.append(bounded && room_key == active_room_key)
-			if bounded or room_clip_view_gate.back():
+			var bounded := bool(room_info[room_key].get("exterior", false)); room_clip_bounded.append(bounded); room_clip_aperture.append(not bounded); room_clip_view_gate.append(room_key != active_room_key and (source_key == active_room_key or destination_key == active_room_key)); room_clip_view_cut.append(bounded && room_key == active_room_key)
+			if bounded or room_clip_view_gate.back() or room_clip_aperture.back():
 				var region := _bounded_portal_region(str(room_key), portal, source_side); var lateral := 2 if axis == 0 else 0; var lateral_sign := plane.x if axis == 0 else -plane.z; var first := region.position[lateral] * lateral_sign; var last := region.end[lateral] * lateral_sign; room_clip_bounds.append(Vector4(minf(first, last), maxf(first, last), region.position.y, region.end.y)); first = region.position[axis] * inward + plane.w; last = region.end[axis] * inward + plane.w; room_clip_depths.append(Vector2(minf(first, last), maxf(first, last)))
 			else: room_clip_bounds.append(Vector4.ZERO); room_clip_depths.append(Vector2.ZERO)
-		var room_count := room_planes.size(); room_planes.resize(16); room_limits.resize(16); room_clip_bounds.resize(16); room_clip_depths.resize(16); room_clip_bounded.resize(16); room_clip_view_gate.resize(16); room_clip_view_cut.resize(16)
+		var room_count := room_planes.size(); room_planes.resize(16); room_limits.resize(16); room_clip_bounds.resize(16); room_clip_depths.resize(16); room_clip_bounded.resize(16); room_clip_view_gate.resize(16); room_clip_view_cut.resize(16); room_clip_aperture.resize(16)
 		var floor_planes := PackedVector4Array(); var floor_bounds := PackedVector4Array(); var floor_depths := PackedVector2Array(); var floor_bounded: Array[bool] = []
 		if room_key == active_room_key:
 			for portal: Dictionary in portal_layout:
@@ -983,20 +1066,20 @@ func _refresh_room_state() -> void:
 				if not ((source_key == active_room_key and destination_key == room_key) or (destination_key == active_room_key and source_key == room_key)): continue
 				var axis := 0 if str(portal["normal_axis"]) == "x" else 2; var inward := -_outward_sign(portal, source_key == room_key); clip_plane[axis] = inward; clip_plane.w = -float(portal["world_center"][axis]) * inward; clip_enabled = true; break
 		var shape_state := _room_clip_state(str(room_key), true) if room_key == active_room_key else {}
-		var applied_signature := [room_count, room_planes, room_clip_bounds, room_clip_depths, room_clip_bounded, room_clip_view_gate, room_clip_view_cut, floor_count, floor_planes, floor_bounds, floor_depths, floor_bounded].hash()
+		var applied_signature := [room_count, room_planes, room_clip_bounds, room_clip_depths, room_clip_bounded, room_clip_view_gate, room_clip_view_cut, room_clip_aperture, floor_count, floor_planes, floor_bounds, floor_depths, floor_bounded].hash()
 		for node: MeshInstance3D in mesh_nodes[room_key].values():
 			for surface in node.mesh.get_surface_count():
 				var material := node.get_active_material(surface) as ShaderMaterial
 				if material != null and int(material.get_meta("room_state_signature", 0)) == applied_signature: material.set_shader_parameter("room_clip_limits", room_limits)
 				elif material != null:
 					material.set_meta("room_state_signature", applied_signature)
-					material.set_shader_parameter("portal_clip_enabled", false); material.set_shader_parameter("room_clip_count", room_count); material.set_shader_parameter("room_clip_planes", room_planes); material.set_shader_parameter("room_clip_limits", room_limits); material.set_shader_parameter("room_clip_bounds", room_clip_bounds); material.set_shader_parameter("room_clip_depths", room_clip_depths); material.set_shader_parameter("room_clip_bounded", room_clip_bounded); material.set_shader_parameter("room_clip_view_gate", room_clip_view_gate); material.set_shader_parameter("room_clip_view_cut", room_clip_view_cut); material.set_shader_parameter("portal_floor_clip_count", floor_count); material.set_shader_parameter("portal_floor_clip_planes", floor_planes); material.set_shader_parameter("portal_floor_clip_bounds", floor_bounds); material.set_shader_parameter("portal_floor_clip_depths", floor_depths); material.set_shader_parameter("portal_floor_clip_bounded", floor_bounded)
+					material.set_shader_parameter("portal_clip_enabled", false); material.set_shader_parameter("room_clip_count", room_count); material.set_shader_parameter("room_clip_planes", room_planes); material.set_shader_parameter("room_clip_limits", room_limits); material.set_shader_parameter("room_clip_bounds", room_clip_bounds); material.set_shader_parameter("room_clip_depths", room_clip_depths); material.set_shader_parameter("room_clip_bounded", room_clip_bounded); material.set_shader_parameter("room_clip_view_gate", room_clip_view_gate); material.set_shader_parameter("room_clip_view_cut", room_clip_view_cut); material.set_shader_parameter("room_clip_aperture", room_clip_aperture); material.set_shader_parameter("portal_floor_clip_count", floor_count); material.set_shader_parameter("portal_floor_clip_planes", floor_planes); material.set_shader_parameter("portal_floor_clip_bounds", floor_bounds); material.set_shader_parameter("portal_floor_clip_depths", floor_depths); material.set_shader_parameter("portal_floor_clip_bounded", floor_bounded)
 			for body in node.get_children():
 				if not body is StaticBody3D: continue
 				if body.name == "RoomCollision_1":
 					if room_key == active_room_key:
 						var geometry := _player_room_shape(str(room_key), node, shape_state)
-						for shape: CollisionShape3D in body.find_children("*", "CollisionShape3D", true, false): shape.shape = geometry
+						for shape: CollisionShape3D in body.find_children("*", "CollisionShape3D", true, false): shape.shape = preload("res://scripts/world/core/native_floor.gd").filter_shape(node, geometry)
 					body.collision_layer = 1 if room_key == active_room_key and not bool(body.get_meta("native_floor_replaced", false)) else 0
 				if body.name == "GeneratedRoofPlayerCollision": body.collision_layer = 16 if room_key == active_room_key else 0
 		_refresh_native_floor_apertures(str(room_key))
@@ -1183,6 +1266,7 @@ func _refresh_collision(room_key: String, mesh_node: MeshInstance3D, mesh: Mesh)
 		for item in child.get_children():
 			if item is not CollisionShape3D: continue
 			item.shape = _collision_shape(room_key, str(mesh_node.name), mesh, child.name == "RoomCollision_4")
+			if child.name == "RoomCollision_1": item.shape = preload("res://scripts/world/core/native_floor.gd").filter_shape(mesh_node, item.shape)
 const PREP_BUDGET_USEC := 2500
 const PREFETCH_RADIUS := 8.0
 var prep_steps: Array[Callable] = []

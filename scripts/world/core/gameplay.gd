@@ -3,10 +3,12 @@ extends Node3D
 signal prepared(success: bool)
 signal room_changed(stage: String, area: int)
 signal stage_transition_requested(route: Dictionary)
+signal stage_preload_requested(route: Dictionary)
 signal location_requested(stage: String, area: int)
 signal native_scene_failed(reason: String)
 signal achievement_earned(id: String)
 signal game_over_requested
+signal title_requested
 var room_transfer_pending := false
 var prop_reward_message := ""
 var shop_pending := false
@@ -143,6 +145,7 @@ func _ready() -> void:
 	event_script.native_command_requested.connect(_native_dialogue_command)
 	var achievement_rules := Node.new(); achievement_rules.name = "AchievementRules"; achievement_rules.set_script(preload("res://scripts/world/core/achievement_rules.gd")); add_child(achievement_rules); achievement_rules.configure(self)
 	native_scenes = preload("res://scripts/cinematics/native_scene_dispatcher.gd").new(); add_child(native_scenes); native_scenes.configure(self)
+	_commit_story_state()  # the streamed start room runs its stage code (the runner host) before the first area selection commits the pending story byte
 	var layout_path := preload("res://scripts/world/core/room_stream.gd").layout_path_for(stage, native_area)
 	streaming_rooms = not layout_path.is_empty()
 	if streaming_rooms:
@@ -191,7 +194,9 @@ func _ready() -> void:
 			var storm := preload("res://scripts/world/rendering/flutter_storm.gd").new(); add_child(storm)
 			if not storm.configure(player.camera): push_warning("Cannot load Flutter storm backdrop")
 		elif not await room_stream.set_parked_exterior(str(parked_location["stage"]), int(parked_location["area"])): push_warning("Cannot load parked Flutter exterior")
-		elif not areas.is_empty(): _apply_fog(int(areas[area_picker.selected]["index"]))
+		else:
+			sky.set_parked(true)
+			if not areas.is_empty(): _apply_fog(int(areas[area_picker.selected]["index"]))
 	var door_path := manifest_path.get_base_dir().path_join("doors.json")
 	var door_data: Variant = JSON.parse_string(FileAccess.get_file_as_string(door_path)) if FileAccess.file_exists(door_path) else null
 	if door_data is Dictionary: routes = _story_routes(door_data.get("area_transitions", []))
@@ -228,6 +233,7 @@ func _ready() -> void:
 	player.died.connect(_player_died)
 	player.fired.connect(_on_player_fired)
 	player.special_sound_requested.connect(audio.play_sound)
+	player.loop_sound_requested.connect(audio.loop_sound)
 	if is_instance_valid(player.hose): player.hose.gauge_changed.connect(_special_gauge.bind(15))
 	for id: int in player.shots: player.shots[id].gauge_changed.connect(_special_gauge.bind(id))
 	playable = await _select_area(initial_area)
@@ -659,7 +665,7 @@ func _begin_message_stage_request(source: Dictionary) -> void:
 func _dialogue_started(_stage: String, _index: int) -> void:
 	if is_instance_valid(native_scenes) and native_scenes.active or not player.interaction_role.is_empty(): return
 	player.velocity = Vector3.ZERO; player._play_animation("idle")
-	if player.motion_tree != null: player.motion_tree.set("parameters/MotionSpeed/scale", 1.0)
+	if player.motion_tree != null: player.motion_tree.set("parameters/MotionSpeed/scale", player.CLIP_RATE)
 func _voice_holds_page() -> bool:
 	voice_hold = voice_hold and is_instance_valid(voice) and voice.playing
 	return voice_hold
@@ -755,6 +761,7 @@ func _native_context_changed(stage: String, area: int) -> void:
 		var pending: Array = preload("res://scripts/world/actors/native_props.gd").pending_scene_requests(scene_parent); pending.append({"key": "%s:%d:event%d:%d" % [stage, area, id, Time.get_ticks_usec()], "stage": stage, "area": area, "source_function": str(trigger["source_function"]), "argument": int(trigger["scene_id"]), "status": "pending_native_scene"}); scene_parent.set_meta("native_pending_scene_requests", pending); _run_native_scene_requests.call_deferred(scene_parent, stage, area)
 func _stream_room_activated(stage: String, area: int) -> void:
 	if not streaming_rooms: return
+	if stage == "ST04" and area == 1: request_handover_preload.call_deferred()
 	# Each streamed room has its own depth cue; actors spawned from here on must use the active room's area parameters.
 	depth_cue_parameters = preload("res://scripts/world/rendering/native_material.gd").area_parameters("res://assets/levels/%s/lighting.json" % stage, area)
 	preload("res://scripts/world/rendering/native_material.gd").depth_cue(player.player_model, depth_cue_parameters)
@@ -1094,6 +1101,7 @@ func _update_nearest_door() -> void:
 	var distance := INF
 	for route: Dictionary in routes:
 		if int(route["source_area"]) != index: continue
+		if route.has("availability") and not preload("res://scripts/world/actors/native_props.gd")._conditions_met(route["availability"]["all"], native_context, index): continue
 		if not route.get("source_panel", null) is Dictionary and route.get("native_door", {}).get("source_panel", null) is Dictionary: route["source_panel"] = route["native_door"]["source_panel"]
 		if preload("res://scripts/world/core/native_transition.gd").is_automatic(route) or preload("res://scripts/world/core/native_transition.gd").is_warp(route) or not preload("res://scripts/world/missions/mine/native_mine_lift.gd").lift_for_route(manifest_path.get_base_dir().get_file(), route).is_empty(): continue
 		var destination_stage := str(route.get("destination_stage", manifest_path.get_base_dir().get_file())); var destination_area := int(route["destination_area"]); var destination_known := false
@@ -1222,6 +1230,21 @@ func _update_automatic_route() -> void:
 func _native_event_set(id: int) -> bool:
 	var flags: Dictionary = native_context.get("event_flags", {})
 	return bool(flags.get(id, flags.get(str(id), false)))
+const HANDOVER_CLEARANCE := 0.5
+# The dock stage is built in the background (main_menu handover) while the player is still in Deck 1; the exit route onto it is the parked one.
+func request_handover_preload() -> void:
+	if not streaming_rooms or room_stream.active_room_key != "ST04:1" or not is_instance_valid(room_stream.parked_exterior) or parked_location.is_empty(): return
+	for route: Dictionary in routes:
+		if int(route.get("source_area", -1)) != 1 or str(route.get("destination_stage", "")) in ["ST04", "ST05", "ST06", "ST07"]: continue
+		var result := _parked_flutter_exit(route)
+		if str(result.get("destination_stage", "")) != str(room_stream.parked_exterior.get_meta("dock_stage", "")): continue
+		result["native_entry_fade"] = 0xFF; result["source_stage"] = "ST04"; stage_preload_requested.emit(result); return
+# Player and camera in the dock's own frame: the parked exterior transform is what lines the dock up in the view, so mapping through it is continuous.
+func _handover_info() -> Dictionary:
+	var transform: Transform3D = room_stream.parked_exterior.global_transform; var inverse: Transform3D = transform.affine_inverse(); var forward: Vector3 = transform.basis * Vector3.FORWARD; var turn := atan2(-forward.x, -forward.z)
+	var point: Vector3 = inverse * player.global_position; var velocity: Vector3 = inverse.basis * player.velocity
+	var camera_point: Vector3 = inverse * (player.camera_world_position if player.camera_world_valid else player.camera.global_position)
+	return {"position": [point.x, point.y, point.z], "camera_position": [camera_point.x, camera_point.y, camera_point.z], "yaw": player.player_model.rotation.y - turn, "camera_pitch": player.camera_pivot.rotation.x, "camera_yaw": player.camera_pivot.rotation.y - turn, "velocity": [velocity.x, velocity.y, velocity.z]}
 func _parked_flutter_exit(route: Dictionary) -> Dictionary:
 	if manifest_path.get_base_dir().get_file() != "ST04" or int(route.get("source_area", -1)) != 1 or str(route.get("destination_stage", "")) in ["ST04", "ST05", "ST06", "ST07"] or parked_location.is_empty(): return route
 	var stage := str(parked_location["stage"]); var area := int(parked_location["area"]); var data: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://assets/levels/%s/doors.json" % stage))
@@ -1293,6 +1316,10 @@ func _use_door(route: Dictionary, automatic: bool = false) -> void:
 	if loading: return
 	var source_stage := manifest_path.get_base_dir().get_file(); var source_area := area_picker.selected; var source_position := player.global_position; var source_yaw: float = player.player_model.rotation.y; var source_camera_rotation: Vector3 = player.camera_pivot.rotation; var source_spawn := spawn_position; var arrived := false
 	var fade_route := route.duplicate(true); fade_route["source_stage"] = source_stage; var fade_profile: Dictionary = preload("res://scripts/world/core/native_transition.gd").fade_profile(fade_route)
+	# The parked dock is already on screen through the open door, so leaving the Flutter onto it needs no fade.
+	var parked_exit: bool = streaming_rooms and is_instance_valid(room_stream.parked_exterior) and str(route.get("destination_stage", "")) == str(room_stream.parked_exterior.get_meta("dock_stage", ""))
+	var handover_info := {}
+	if parked_exit: fade_profile = {"exit": 0xFF, "entry": 0xFF}; request_handover_preload()
 	loading = true
 	nearest_door = {}
 	area_picker.disabled = true
@@ -1364,7 +1391,16 @@ func _use_door(route: Dictionary, automatic: bool = false) -> void:
 		if not ladder and not animated_transition: audio.play_sound(0xB9)
 	if flutter_exit:
 		if not player.begin_scripted_walk({"control": 2, "ticks": 8, "tick_rate": 25, "local_step_raw": [0, 0, -256]}, player.player_model.rotation.y): cancel_stage_transition(); return
-		player.set_physics_process(true); await player.scripted_walk_finished; player.set_physics_process(false)
+		player.set_physics_process(true)
+		if parked_exit:
+			# Hand control to the dock instance as soon as the player is clear of the hull, a step past the door plane.
+			var plane: Vector4 = room_stream.parked_exterior.get_meta("aperture_gates")[0]["plane"]; var walk := {"done": false}
+			player.scripted_walk_finished.connect(func(_completed: bool) -> void: walk["done"] = true, CONNECT_ONE_SHOT)
+			while not walk["done"] and plane.x * player.global_position.x + plane.z * player.global_position.z + plane.w < HANDOVER_CLEARANCE: await get_tree().physics_frame
+			if not walk["done"]: player.cancel_scripted_walk()
+			handover_info = _handover_info()
+		else: await player.scripted_walk_finished
+		player.set_physics_process(false)
 	var lift: Node = _lift_for(route)
 	if lift != null: await lift.ride_scene()
 	else: await transition_overlay.request(int(fade_profile.get("exit", 0xFF)))
@@ -1373,6 +1409,7 @@ func _use_door(route: Dictionary, automatic: bool = false) -> void:
 	var destination_streamed := not preload("res://scripts/world/core/room_stream.gd").layout_path_for(destination_stage, int(route["destination_area"])).is_empty()
 	if policy_changed or streaming_rooms != destination_streamed or (streaming_rooms and not room_stream.has_room(destination_stage, int(route["destination_area"]))):
 		var request := fade_route.duplicate(true); request["native_entry_fade"] = int(fade_profile.get("entry", 0xFF))
+		if not handover_info.is_empty(): request["native_handover"] = handover_info
 		stage_transition_requested.emit(request)
 		return
 	if destination_stage != manifest_path.get_base_dir().get_file() and streaming_rooms and not await _ensure_room_stage_data(destination_stage):

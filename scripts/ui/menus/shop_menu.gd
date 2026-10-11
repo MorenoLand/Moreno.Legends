@@ -247,7 +247,7 @@ func _confirm(item: int, selling: bool, parts: bool) -> void:
 	_close(4); _close(3)
 	if not selling and int(state["zenny"]) < rules.price(state, item, true): _open(4, _row(0xb)); await _wait_closed(4); return
 	_open(3, _row(0xe if rules.is_delivery(item) else 3))
-	var choice := await _choice(3)
+	var choice := await _choice(3); _close(3)  # the question closes before the reply opens, so only one message is on screen
 	if choice != 0: return
 	if selling: rules.sell(state, item)
 	else: rules.purchase(state, item)
@@ -267,7 +267,8 @@ func _recharge(bottle: bool) -> bool:
 	if int(tank[0]) == int(tank[1]): _open(4, _row(9)); await _wait_closed(4); return false
 	var price := (1000 if bottle else 100) * (int(tank[1]) - int(tank[0]))
 	_open(3, _row(7 if bottle else 6), price)
-	if await _choice(3) != 0: return false
+	var answer := await _choice(3); _close(3)
+	if answer != 0: return false
 	if int(state["zenny"]) < price: _open(4, _row(0xd)); await _wait_closed(4); return false
 	rules.add_zenny(state, -price); tank[0] = tank[1]; _store_state(); _close(4); _open(4, _row(8)); await _wait_closed(4)
 	return true

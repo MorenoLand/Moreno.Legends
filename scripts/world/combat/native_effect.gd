@@ -1,5 +1,5 @@
 extends Node3D
-const TICK := 1.0 / 30.0
+const TICK := 1.0 / 25.0
 const RAW_UNIT := 256.0
 var frames: Array = []
 var frame := 0

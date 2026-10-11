@@ -7,6 +7,8 @@ var d := PackedInt32Array()
 var c := PackedInt32Array()
 var unr := PackedInt32Array()
 var trace: Variant = null
+## When a dictionary: every projection stores its depth (SZ) under the packed screen position it produced, so that renderer packets can be carried back into the world.
+var depths: Variant = null
 
 
 func _init() -> void:
@@ -181,6 +183,8 @@ func _rtp(index: int, sf: int, lm: bool) -> void:
 	if sy >= 0x80000000 or sy < -0x80000000:
 		_flag(16 if sy > 0 else 15)
 	_push_sxy(sx >> 16, sy >> 16)
+	if depths != null:
+		depths[d[14]] = d[19]
 	var mac0 := q * (((c[27] & 0xFFFF) ^ 0x8000) - 0x8000) + c[28]
 	if mac0 >= 0x80000000 or mac0 < -0x80000000:
 		_flag(16 if mac0 > 0 else 15)

@@ -3,6 +3,9 @@ const SIMPLE_RAMP_ORIENTATION := {0x04: 0, 0x05: 1, 0x06: 2, 0x07: 3, 0x10: 0, 0
 const DIAGONAL_ORIENTATION := {0x14: 4, 0x16: 2, 0x17: 3, 0x15: 5, 0x23: 2, 0x24: 2, 0x33: 3, 0x34: 3, 0x43: 4, 0x44: 4, 0x53: 5, 0x54: 5}
 const BOX_KINDS := [0, 2, 3, 0x1C]
 const WALL_KIND := 0x1B
+## Record boxes that make nothing solid in the mesh: the 0x1C volume and kinds 0x27, 0x37, 0x47, 0x57 (GAME 0x800B4BFC: a tile-sized XZ bound test on the previous position that returns 0x41 inside and 0x43 outside, never a surface).
+const LIMIT_SKIP := [0x1C, 0x27, 0x37, 0x47, 0x57]
+const LIMIT_MARGIN := 0.1
 const TRIANGULAR_PRISM := [0x22, 0x32, 0x42, 0x52]
 static func active_boxes(source: Dictionary, area: int, native_context: Dictionary = {}) -> Array:
 	var data: Dictionary = source.get(str(area), {}); var records: Array = data.get("boxes", []).duplicate()
@@ -10,6 +13,15 @@ static func active_boxes(source: Dictionary, area: int, native_context: Dictiona
 		if not preload("res://scripts/world/actors/native_props.gd")._conditions_met(variant["predicate"]["all"], native_context, area): continue
 		records = records.filter(func(record: Dictionary) -> bool: return int(record["placement"]) != int(variant["placement"])); records.append_array(variant["boxes"])
 	return records
+## Rebuilds one placement's boxes after a state change (the Pokte houses): the old floor body goes, the mesh collision it replaced returns, then apply() builds the new set.
+static func replace_placement(level: Node3D, source: Dictionary, area: int, placement: int, native_context: Dictionary) -> void:
+	var old := level.get_node_or_null("NativePlacementFloor_%03d" % placement)
+	if old != null: level.remove_child(old); old.free()
+	for mesh: MeshInstance3D in level.find_children("placement_%03d_model_*" % placement, "MeshInstance3D", true, false):
+		_unlimit_mesh_collision(mesh)
+		for child in mesh.get_children():
+			if child is StaticBody3D and child.has_meta("native_floor_replaced"): child.collision_layer = 1; child.remove_meta("native_floor_replaced")
+	apply(level, {str(area): {"boxes": active_boxes(source, area, native_context).filter(func(record: Dictionary) -> bool: return int(record["placement"]) == placement)}}, area, native_context)
 static func apply(level: Node3D, source: Dictionary, area: int, native_context: Dictionary = {}) -> int:
 	var groups := {}; var automatic := {}; var manual := {}; var elevators := {}; var count := 0
 	for terrain: MeshInstance3D in level.find_children("terrain", "MeshInstance3D", true, false):
@@ -27,7 +39,9 @@ static func apply(level: Node3D, source: Dictionary, area: int, native_context: 
 		for record: Dictionary in records:
 			var kind := int(record["kind"]); ramp = ramp or (SIMPLE_RAMP_ORIENTATION.has(kind) and kind not in [0x04, 0x05, 0x06, 0x07]) or DIAGONAL_ORIENTATION.has(kind)
 			if kind not in BOX_KINDS and kind not in TRIANGULAR_PRISM and not SIMPLE_RAMP_ORIENTATION.has(kind) and not DIAGONAL_ORIENTATION.has(kind): unported = true
-		if not elevators.has(placement) and not ramp and not automatic.has(placement) and (unported or records.is_empty()): continue
+		if not elevators.has(placement) and not ramp and not automatic.has(placement) and (unported or records.is_empty()):
+			if unported and not records.is_empty(): _limit_mesh_collision(level, placement, records)
+			continue
 		var meshes := level.find_children("placement_%03d_model_*" % placement, "MeshInstance3D", true, false)
 		if meshes.is_empty(): continue
 		var body := StaticBody3D.new(); body.name = "NativePlacementFloor_%03d" % placement; body.collision_layer = 1; body.collision_mask = 0; body.set_meta("native_ledge_floor", true)
@@ -62,6 +76,7 @@ static func apply(level: Node3D, source: Dictionary, area: int, native_context: 
 				for mesh: MeshInstance3D in meshes:
 					for child in mesh.get_children():
 						if child is StaticBody3D and (child.collision_layer == 1 or child.name == "RoomCollision_1"): child.collision_layer = 0; child.set_meta("native_floor_replaced", true)
+			elif unported and not elevators.has(placement): _limit_mesh_collision(level, placement, records)
 			level.add_child(body); count += 1
 		else: body.free()
 	var walls: Array = source.get(str(area), {}).get("walls", [])
@@ -76,6 +91,49 @@ static func apply(level: Node3D, source: Dictionary, area: int, native_context: 
 			shape.shape = box; shape.position = Vector3(-float(x[0]) - float(x[1]), -float(y[0]) - float(y[1]), float(z[0]) + float(z[1])) / 512.0; wall_body.add_child(shape)
 		level.add_child(wall_body)
 	return count
+## A placement that keeps its mesh collision (it holds a kind the port has no shape for) is solid only where the original's records are: mesh faces outside every record box (the grass layer over the floor, vine and moss decoration) are dropped from the player's collision (GAME 0x800B36E8 only tests the records).
+static func _limit_mesh_collision(level: Node3D, placement: int, records: Array) -> void:
+	var boxes: Array[AABB] = []
+	for record: Dictionary in records:
+		if int(record["kind"]) in LIMIT_SKIP: continue
+		var x: Array = record["x"]; var y: Array = record["y"]; var z: Array = record["z"]
+		boxes.append(AABB(Vector3(-float(x[1]), -float(y[1]), float(z[0])) / 256.0, Vector3(float(x[1]) - float(x[0]), float(y[1]) - float(y[0]), float(z[1]) - float(z[0])) / 256.0).grow(LIMIT_MARGIN))
+	for mesh: MeshInstance3D in level.find_children("placement_%03d_model_*" % placement, "MeshInstance3D", true, false):
+		var to_level := Transform3D.IDENTITY; var node: Node = mesh
+		while node != null and node != level: to_level = (node as Node3D).transform * to_level; node = node.get_parent()
+		mesh.set_meta("native_collision_limit", {"boxes": boxes, "transform": to_level, "cache": {}})
+		for child in mesh.get_children():
+			if child is StaticBody3D and child.name == "RoomCollision_1":
+				for item in child.get_children():
+					if item is CollisionShape3D: item.shape = filter_shape(mesh, item.shape)
+## Gives a mesh node its unfiltered collision shapes back and drops its limit (the placement's records changed).
+static func _unlimit_mesh_collision(mesh: Node) -> void:
+	if not mesh.has_meta("native_collision_limit"): return
+	var cache: Dictionary = (mesh.get_meta("native_collision_limit") as Dictionary)["cache"]
+	var originals := {}
+	for source: Shape3D in cache: originals[cache[source]] = source
+	for child in mesh.get_children():
+		if child is StaticBody3D and child.name == "RoomCollision_1":
+			for item in child.get_children():
+				if item is CollisionShape3D and originals.has(item.shape): item.shape = originals[item.shape]
+	mesh.remove_meta("native_collision_limit")
+## The player collision shape of a mesh node limited to its placement's records (see _limit_mesh_collision); null when no face lies inside one. Other shapes pass through.
+static func filter_shape(mesh: Node, shape: Shape3D) -> Shape3D:
+	if not mesh.has_meta("native_collision_limit"): return shape
+	var limit: Dictionary = mesh.get_meta("native_collision_limit")
+	if shape is not ConcavePolygonShape3D: return shape
+	var cache: Dictionary = limit["cache"]
+	if cache.has(shape): return cache[shape]
+	var faces := (shape as ConcavePolygonShape3D).get_faces(); var kept := PackedVector3Array()
+	for index in range(0, faces.size() - 2, 3):
+		var centre: Vector3 = (limit["transform"] as Transform3D) * ((faces[index] + faces[index + 1] + faces[index + 2]) / 3.0)
+		for box: AABB in limit["boxes"]:
+			if box.has_point(centre): kept.append(faces[index]); kept.append(faces[index + 1]); kept.append(faces[index + 2]); break
+	var result: ConcavePolygonShape3D = null
+	if not kept.is_empty():
+		result = ConcavePolygonShape3D.new(); result.set_faces(kept); result.backface_collision = (shape as ConcavePolygonShape3D).backface_collision
+	cache[shape] = result
+	return result
 static func _volume_enabled(native_context: Dictionary) -> bool:
 	if int(native_context.get("native_engine_active_7cec0", 0)) == 0: return true
 	var flags: Variant = native_context.get("event_flags", null)

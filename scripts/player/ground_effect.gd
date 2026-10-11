@@ -11,7 +11,7 @@ func _ready() -> void:
 		data = parsed; ring_material = StandardMaterial3D.new(); ring_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; ring_material.vertex_color_use_as_albedo = true; ring_material.cull_mode = BaseMaterial3D.CULL_DISABLED; ring_material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST; ring_material.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED; ring_material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD; ring_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA; ring_material.albedo_texture = load("res://assets/player/effects/" + str(data["texture"])) as Texture2D
 	mesh = ImmediateMesh.new(); material_override = ring_material; cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF; spin = int(Time.get_ticks_msec() * 0.03) & 63; _draw()
 func _physics_process(delta: float) -> void:
-	accumulator += delta * 30.0
+	accumulator += delta * 25.0
 	if accumulator < 1.0: return
 	while accumulator >= 1.0: accumulator -= 1.0; tick += 1; spin += 1
 	if tick >= int(data["lifeTicks"]["value"]): queue_free(); return
